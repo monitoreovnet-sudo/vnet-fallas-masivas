@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Registro y Monitoreo de Fallas Masivas CDA</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">vnet</span>
+      <span class="brand-sub">Registro y Monitoreo de Fallas Masivas CDA</span>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="crear">Crear Ticket</button>
+    <button class="tab-btn" data-tab="masivo">Modificar Todo el Ticket</button>
+    <button class="tab-btn" data-tab="individual">Cambiar Puertos Seleccionados</button>
+    <button class="tab-btn" data-tab="cerrar">Cerrar Ticket</button>
+    <button class="tab-btn" data-tab="consultar">Consultar / Log</button>
+  </nav>
+
+  <main id="app">
+
+  <!-- ===================== CREAR TICKET ===================== -->
+  <section id="tab-crear" class="tab-panel active">
+    <h2>Crear Ticket</h2>
+    <div class="grid-2">
+      <div class="field">
+        <label>Ticket CRM-COR <small>(solo números)</small></label>
+        <input id="c_ticket_crm" placeholder="Ej: 123456" inputmode="numeric" />
+      </div>
+      <div class="field">
+        <label>Tickets Vinculados</label>
+        <input id="c_tickets_vinculados" placeholder="Ej: 123456" />
+      </div>
+      <div class="field">
+        <label>Fecha de Apertura del CDA</label>
+        <input id="c_fecha_cda" type="datetime-local" />
+      </div>
+      <div class="field">
+        <label>Fecha de Apertura del CRM</label>
+        <input id="c_fecha_crm" type="datetime-local" />
+      </div>
+      <div class="field">
+        <label>Estado del Ticket</label>
+        <select id="c_estado_ticket"></select>
+      </div>
+      <div class="field">
+        <label>Unidad Resolutoria</label>
+        <select id="c_unidad_resolutoria"></select>
+      </div>
+      <div class="field">
+        <label>Categoría de la Afectación</label>
+        <select id="c_categoria"></select>
+      </div>
+      <div class="field">
+        <label>Afectación</label>
+        <select id="c_afectacion"></select>
+      </div>
+      <div class="field">
+        <label>Comentario</label>
+        <select id="c_comentario"></select>
+      </div>
+      <div class="field">
+        <label>Oficina donde se generó la falla</label>
+        <select id="c_oficina"></select>
+      </div>
+    </div>
+    <div class="field">
+      <label>Describa brevemente</label>
+      <textarea id="c_descripcion" rows="2" placeholder="Explique..."></textarea>
+    </div>
+
+    <hr />
+    <h3>OLTs / Tarjetas / Puertos afectados</h3>
+    <p class="hint">Agrega una fila por cada combinación de OLT, Tarjeta y Puerto afectado. Cada fila se podrá editar individualmente más adelante desde "Cambiar Puertos Seleccionados".</p>
+
+    <div class="add-row-form grid-6">
+      <div class="field">
+        <label>OLT</label>
+        <select id="row_olt"></select>
+      </div>
+      <div class="field">
+        <label>Tarjeta</label>
+        <select id="row_tarjeta"></select>
+      </div>
+      <div class="field">
+        <label>Puerto</label>
+        <select id="row_puerto"></select>
+      </div>
+      <div class="field">
+        <label>Sector</label>
+        <input id="row_sector" value="DESCONOCIDO" />
+      </div>
+      <div class="field">
+        <label>Edificio</label>
+        <input id="row_edificio" value="DESCONOCIDO" />
+      </div>
+      <div class="field">
+        <label>No. Reportaron</label>
+        <input id="row_no_reportaron" type="number" value="0" min="0" />
+      </div>
+      <div class="field">
+        <label>Nro. Afectados</label>
+        <input id="row_nro_afectados" type="number" value="0" min="0" />
+      </div>
+      <div class="field field-btn">
+        <button id="btn_add_row" class="btn-secondary" type="button">+ Agregar fila</button>
+      </div>
+      <div class="field field-btn">
+        <button id="btn_add_all_ports" class="btn-secondary" type="button">+ Agregar todos los puertos de la tarjeta</button>
+      </div>
+    </div>
+
+    <table class="rows-table" id="rows_table">
+      <thead>
+        <tr>
+          <th>OLT</th><th>Tarjeta</th><th>Puerto</th><th>Sector</th><th>Edificio</th>
+          <th>No. Reportaron</th><th>Nro. Afectados</th><th></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <button id="btn_crear_ticket" class="btn-primary">Crear Ticket</button>
+    <div id="crear_msg" class="msg"></div>
+  </section>
+
+  <!-- ===================== MODIFICAR TODO EL TICKET (MASIVO) ===================== -->
+  <section id="tab-masivo" class="tab-panel">
+    <h2>Cambiar Todo el Ticket</h2>
+    <div class="field">
+      <label>Ingreso del ticket a buscar</label>
+      <div class="search-row">
+        <input id="m_buscar" placeholder="Ingrese el número de ticket" />
+        <button id="m_buscar_btn" class="btn-secondary" type="button">Buscar</button>
+      </div>
+    </div>
+
+    <div id="m_form" class="hidden">
+      <div class="grid-2">
+        <div class="field">
+          <label>Estado del Ticket</label>
+          <select id="m_estado_ticket"></select>
+        </div>
+        <div class="field">
+          <label>OLT <small>(cambia el OLT en TODOS los puertos del ticket)</small></label>
+          <input id="m_olt" placeholder="Nuevo OLT" />
+        </div>
+        <div class="field">
+          <label>Unidad Resolutoria</label>
+          <select id="m_unidad_resolutoria"></select>
+        </div>
+        <div class="field">
+          <label>Oficina</label>
+          <select id="m_oficina"></select>
+        </div>
+        <div class="field">
+          <label>Fecha Apertura CDA</label>
+          <input id="m_fecha_cda" type="datetime-local" />
+        </div>
+        <div class="field">
+          <label>Fecha Apertura CRM</label>
+          <input id="m_fecha_crm" type="datetime-local" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Avance del CRM</label>
+        <textarea id="m_avance" rows="2" placeholder="Avance..."></textarea>
+      </div>
+      <button id="btn_guardar_masivo" class="btn-primary">Cambiar Todo el Ticket</button>
+      <div id="masivo_msg" class="msg"></div>
+    </div>
+  </section>
+
+  <!-- ===================== CAMBIAR PUERTOS SELECCIONADOS ===================== -->
+  <section id="tab-individual" class="tab-panel">
+    <h2>Cambiar Puertos Seleccionados</h2>
+    <div class="field">
+      <label>Ingreso del ticket a buscar</label>
+      <div class="search-row">
+        <input id="i_buscar" placeholder="Ingrese el número de ticket" />
+        <button id="i_buscar_btn" class="btn-secondary" type="button">Buscar</button>
+      </div>
+    </div>
+
+    <table class="rows-table" id="i_table">
+      <thead>
+        <tr><th>Ticket</th><th>OLT</th><th>Tarjeta</th><th>Puerto</th><th>Estado</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <button id="btn_guardar_individual" class="btn-primary hidden">Cambiar Puertos Seleccionados</button>
+    <div id="individual_msg" class="msg"></div>
+  </section>
+
+  <!-- ===================== CERRAR TICKET ===================== -->
+  <section id="tab-cerrar" class="tab-panel">
+    <h2>Cerrar este Ticket</h2>
+    <div class="field">
+      <label>Ingreso del ticket a buscar</label>
+      <input id="z_buscar" placeholder="Ingrese el número de ticket" />
+    </div>
+    <div class="grid-2">
+      <div class="field">
+        <label>Fecha en que cerró el CRM</label>
+        <input id="z_fecha_crm" type="datetime-local" />
+      </div>
+      <div class="field">
+        <label>Fecha en que cerró el CDA</label>
+        <input id="z_fecha_cda" type="datetime-local" />
+      </div>
+    </div>
+    <button id="btn_cerrar_ticket" class="btn-primary">Cerrar este Ticket</button>
+    <div id="cerrar_msg" class="msg"></div>
+  </section>
+
+  <!-- ===================== CONSULTAR / LOG ===================== -->
+  <section id="tab-consultar" class="tab-panel">
+    <h2>Consultar Ticket y Log de Cambios</h2>
+    <div class="field">
+      <label>Ingreso del ticket a buscar</label>
+      <div class="search-row">
+        <input id="q_buscar" placeholder="Ingrese el número de ticket" />
+        <button id="q_buscar_btn" class="btn-secondary" type="button">Buscar</button>
+      </div>
+    </div>
+    <div id="q_resultado"></div>
+  </section>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
