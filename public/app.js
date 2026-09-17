@@ -71,13 +71,41 @@ async function loadLookups() {
   fillSelect(document.getElementById("m_estado_ticket"), LOOKUPS.estados_ticket, { valueKey: "nombre" });
   fillSelect(document.getElementById("m_unidad_resolutoria"), LOOKUPS.unidades_resolutorias, { valueKey: "nombre" });
   fillSelect(document.getElementById("m_oficina"), LOOKUPS.oficinas, { valueKey: "id" });
+
+  actualizarVisibilidadOficinas();
 }
 
 document.getElementById("c_categoria").addEventListener("change", (e) => {
   const catId = e.target.value;
   const afectaciones = LOOKUPS.afectaciones.filter((a) => String(a.categoria_id) === String(catId));
   fillSelect(document.getElementById("c_afectacion"), afectaciones, { valueKey: "nombre" });
+  actualizarVisibilidadOficinas();
 });
+
+// Nombre exacto de la categoría que habilita el flujo de Oficinas/OLT.
+const CATEGORIA_INTERNET_PLEY = "Soporte Técnico (Internet / Pley)";
+// Nombre exacto de la oficina comodín (sin localidad, para soporte que no aplica a una oficina real).
+const OFICINA_COMODIN_NOMBRE = "1. Soporte técnico, pero no aplica";
+
+function categoriaEsInternetPley() {
+  const catId = document.getElementById("c_categoria").value;
+  const cat = LOOKUPS.categorias.find((c) => String(c.id) === String(catId));
+  return !!cat && cat.nombre === CATEGORIA_INTERNET_PLEY;
+}
+
+function oficinaComodinId() {
+  const of = (LOOKUPS.oficinas || []).find((o) => o.nombre === OFICINA_COMODIN_NOMBRE);
+  return of ? String(of.id) : null;
+}
+
+// Muestra/oculta "Oficinas afectadas" según la categoría, y muestra los
+// campos alternos (Nro Afectados / Nro Reportaron a nivel de ticket)
+// cuando la categoría NO es Soporte Técnico (Internet/Pley).
+function actualizarVisibilidadOficinas() {
+  const esInternet = categoriaEsInternetPley();
+  document.getElementById("oficinas_section").classList.toggle("hidden", !esInternet);
+  document.getElementById("otros_categoria_block").classList.toggle("hidden", esInternet);
+}
 
 // ---------------------------------------------------------------
 // CREAR TICKET: árbol anidado Oficina -> OLT -> Tarjeta -> Puerto
@@ -103,17 +131,24 @@ document.getElementById("btn_add_oficina").addEventListener("click", async () =>
     return;
   }
   const nombre = select.selectedOptions[0].textContent;
+  const esComodin = String(oficinaId) === oficinaComodinId();
 
   let oltsCatalogo = [];
-  try {
-    const data = await apiSend("/lookups", "POST", { oficina_id: oficinaId });
-    oltsCatalogo = data.olts.map((o) => o.codigo);
-  } catch (e) { /* si falla el autocompletado no bloquea el flujo */ }
+  if (!esComodin) {
+    try {
+      const data = await apiSend("/lookups", "POST", { oficina_id: oficinaId });
+      oltsCatalogo = data.olts.map((o) => o.codigo);
+    } catch (e) { /* si falla el autocompletado no bloquea el flujo */ }
+  }
 
   oficinasState.push({
     oficina_id: oficinaId,
     nombre,
+    es_comodin: esComodin,
     olts_catalogo: oltsCatalogo,
+    // Solo se usan cuando es_comodin = true (sin OLT/Tarjeta/Puerto).
+    comodin_no_reportaron: 0,
+    comodin_nro_afectados: 0,
     olts: Array.from({ length: NUM_OLTS_POR_OFICINA }, () => ({
       texto: "", sector: "DESCONOCIDO", edificio: "DESCONOCIDO", no_reportaron: 0, tarjetas: {},
     })),
@@ -181,6 +216,29 @@ function renderOficinas() {
     box.querySelector(".btn-remove").addEventListener("click", () => removeOficina(oIdx));
 
     const oltsGrid = box.querySelector(".olts-grid");
+
+    // Oficina comodín: sin OLT/Tarjeta/Puerto, solo dos campos simples.
+    if (of.es_comodin) {
+      oltsGrid.innerHTML = `
+        <div class="field">
+          <label>Nro de afectados</label>
+          <input type="number" min="0" class="comodin-nro-afectados" value="${of.comodin_nro_afectados}" />
+        </div>
+        <div class="field">
+          <label>Nro Personas que reportaron la falla</label>
+          <input type="number" min="0" class="comodin-no-reportaron" value="${of.comodin_no_reportaron}" />
+        </div>
+      `;
+      oltsGrid.querySelector(".comodin-nro-afectados").addEventListener("input", (e) => {
+        of.comodin_nro_afectados = Number(e.target.value || 0);
+      });
+      oltsGrid.querySelector(".comodin-no-reportaron").addEventListener("input", (e) => {
+        of.comodin_no_reportaron = Number(e.target.value || 0);
+      });
+      cont.appendChild(box);
+      return;
+    }
+
     const datalistId = `olts-datalist-${oIdx}`;
     const datalist = document.createElement("datalist");
     datalist.id = datalistId;
@@ -302,10 +360,24 @@ function renderOficinas() {
 }
 
 // Convierte el árbol en la lista plana que espera la API: una fila por
-// cada combinación Oficina + OLT + Tarjeta + Puerto.
+// cada combinación Oficina + OLT + Tarjeta + Puerto. La oficina comodín
+// genera una única fila sintética (sin OLT/Tarjeta/Puerto reales).
 function flattenOficinas() {
   const puertos = [];
   for (const of of oficinasState) {
+    if (of.es_comodin) {
+      puertos.push({
+        oficina_id: of.oficina_id,
+        olt: "N/A",
+        tarjeta: "N/A",
+        puerto: "N/A",
+        sector: "DESCONOCIDO",
+        edificio: "DESCONOCIDO",
+        no_clientes_reportaron: Number(of.comodin_no_reportaron || 0),
+        nro_clientes_afectados: Number(of.comodin_nro_afectados || 0),
+      });
+      continue;
+    }
     for (const olt of of.olts) {
       if (!olt.texto.trim()) continue;
       for (const tarjetaNombre of Object.keys(olt.tarjetas)) {
@@ -328,6 +400,22 @@ function flattenOficinas() {
   return puertos;
 }
 
+// Cuando la categoría NO es Soporte Técnico (Internet/Pley), no hay
+// oficinas ni OLT: se genera una única fila sintética con los campos
+// alternos a nivel de ticket.
+function construirPuertosSinOficina() {
+  return [{
+    oficina_id: null,
+    olt: "N/A",
+    tarjeta: "N/A",
+    puerto: "N/A",
+    sector: "DESCONOCIDO",
+    edificio: "DESCONOCIDO",
+    no_clientes_reportaron: Number(document.getElementById("c_otros_no_reportaron").value || 0),
+    nro_clientes_afectados: Number(document.getElementById("c_otros_nro_afectados").value || 0),
+  }];
+}
+
 document.getElementById("btn_crear_ticket").addEventListener("click", async () => {
   const msg = document.getElementById("crear_msg");
   try {
@@ -342,7 +430,7 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
       afectacion: document.getElementById("c_afectacion").value,
       comentario: document.getElementById("c_comentario").value,
       descripcion: document.getElementById("c_descripcion").value,
-      puertos: flattenOficinas(),
+      puertos: categoriaEsInternetPley() ? flattenOficinas() : construirPuertosSinOficina(),
     };
     if (payload.puertos.length === 0) {
       throw new Error("Agrega al menos una oficina, con al menos un OLT, tarjeta y puerto.");
@@ -352,6 +440,8 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
     oficinasState = [];
     renderOficinas();
     document.getElementById("c_ticket_crm").value = "";
+    document.getElementById("c_otros_no_reportaron").value = "0";
+    document.getElementById("c_otros_nro_afectados").value = "0";
   } catch (err) {
     showMsg(msg, err.message, false);
   }

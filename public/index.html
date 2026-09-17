@@ -71,15 +71,28 @@
     </div>
 
     <hr />
-    <h3>Oficinas afectadas</h3>
-    <p class="hint">Agrega cada oficina donde ocurrió la falla. Dentro de cada oficina podrás registrar sus OLTs, y dentro de cada OLT sus Tarjetas y Puertos.</p>
+    <div id="oficinas_section">
+      <h3>Oficinas afectadas</h3>
+      <p class="hint">Agrega cada oficina donde ocurrió la falla. Dentro de cada oficina podrás registrar sus OLTs, y dentro de cada OLT sus Tarjetas y Puertos.</p>
 
-    <div class="search-row">
-      <select id="add_oficina_select"></select>
-      <button id="btn_add_oficina" class="btn-secondary" type="button">+ Agregar Oficina</button>
+      <div class="search-row">
+        <select id="add_oficina_select"></select>
+        <button id="btn_add_oficina" class="btn-secondary" type="button">+ Agregar Oficina</button>
+      </div>
+
+      <div id="oficinas_container"></div>
     </div>
 
-    <div id="oficinas_container"></div>
+    <div id="otros_categoria_block" class="grid-2 hidden">
+      <div class="field">
+        <label>Nro de afectados</label>
+        <input id="c_otros_nro_afectados" type="number" min="0" value="0" />
+      </div>
+      <div class="field">
+        <label>Nro Personas que reportaron la falla</label>
+        <input id="c_otros_no_reportaron" type="number" min="0" value="0" />
+      </div>
+    </div>
 
     <hr />
     <button id="btn_crear_ticket" class="btn-primary">Crear Ticket</button>

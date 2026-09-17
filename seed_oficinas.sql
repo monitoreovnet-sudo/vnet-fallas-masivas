@@ -102,3 +102,10 @@ INSERT INTO oficinas (codigo, nombre, estado, localidad) VALUES
 ('ENLA', 'ENLACE MATURÍN - PUERTO ORDAZ - TRAMO - PUERTO ORDAZ - TEMBLADOR', NULL, NULL),
 ('ESM', 'ESM - EL SOMBRERO', 'GUARICO', 'EL SOMBRERO'),
 ('PAGI', 'PAGINA WEB', NULL, NULL);
+
+-- Oficina comodín: usada cuando la categoría no es Soporte Técnico
+-- (Internet/Pley), o cuando el soporte no aplica a una oficina/localidad real.
+-- El "1." al inicio del nombre es intencional: así queda primera al ordenar
+-- alfabéticamente en los combos.
+INSERT INTO oficinas (codigo, nombre, estado, localidad) VALUES
+('SOP', '1. Soporte técnico, pero no aplica', NULL, NULL);
