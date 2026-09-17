@@ -64,10 +64,6 @@
         <label>Comentario</label>
         <select id="c_comentario"></select>
       </div>
-      <div class="field">
-        <label>Oficina donde se generó la falla</label>
-        <select id="c_oficina"></select>
-      </div>
     </div>
     <div class="field">
       <label>Describa brevemente</label>
@@ -75,56 +71,17 @@
     </div>
 
     <hr />
-    <h3>OLTs / Tarjetas / Puertos afectados</h3>
-    <p class="hint">Agrega una fila por cada combinación de OLT, Tarjeta y Puerto afectado. Cada fila se podrá editar individualmente más adelante desde "Cambiar Puertos Seleccionados".</p>
+    <h3>Oficinas afectadas</h3>
+    <p class="hint">Agrega cada oficina donde ocurrió la falla. Dentro de cada oficina podrás registrar sus OLTs, y dentro de cada OLT sus Tarjetas y Puertos.</p>
 
-    <div class="add-row-form grid-6">
-      <div class="field">
-        <label>OLT</label>
-        <select id="row_olt"></select>
-      </div>
-      <div class="field">
-        <label>Tarjeta</label>
-        <select id="row_tarjeta"></select>
-      </div>
-      <div class="field">
-        <label>Puerto</label>
-        <select id="row_puerto"></select>
-      </div>
-      <div class="field">
-        <label>Sector</label>
-        <input id="row_sector" value="DESCONOCIDO" />
-      </div>
-      <div class="field">
-        <label>Edificio</label>
-        <input id="row_edificio" value="DESCONOCIDO" />
-      </div>
-      <div class="field">
-        <label>No. Reportaron</label>
-        <input id="row_no_reportaron" type="number" value="0" min="0" />
-      </div>
-      <div class="field">
-        <label>Nro. Afectados</label>
-        <input id="row_nro_afectados" type="number" value="0" min="0" />
-      </div>
-      <div class="field field-btn">
-        <button id="btn_add_row" class="btn-secondary" type="button">+ Agregar fila</button>
-      </div>
-      <div class="field field-btn">
-        <button id="btn_add_all_ports" class="btn-secondary" type="button">+ Agregar todos los puertos de la tarjeta</button>
-      </div>
+    <div class="search-row">
+      <select id="add_oficina_select"></select>
+      <button id="btn_add_oficina" class="btn-secondary" type="button">+ Agregar Oficina</button>
     </div>
 
-    <table class="rows-table" id="rows_table">
-      <thead>
-        <tr>
-          <th>OLT</th><th>Tarjeta</th><th>Puerto</th><th>Sector</th><th>Edificio</th>
-          <th>No. Reportaron</th><th>Nro. Afectados</th><th></th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+    <div id="oficinas_container"></div>
 
+    <hr />
     <button id="btn_crear_ticket" class="btn-primary">Crear Ticket</button>
     <div id="crear_msg" class="msg"></div>
   </section>

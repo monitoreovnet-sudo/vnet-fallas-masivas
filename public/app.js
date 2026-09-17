@@ -66,7 +66,7 @@ async function loadLookups() {
   fillSelect(document.getElementById("c_unidad_resolutoria"), LOOKUPS.unidades_resolutorias, { valueKey: "nombre" });
   fillSelect(document.getElementById("c_categoria"), LOOKUPS.categorias, { valueKey: "id" });
   fillSelect(document.getElementById("c_comentario"), LOOKUPS.comentarios, { valueKey: "nombre" });
-  fillSelect(document.getElementById("c_oficina"), LOOKUPS.oficinas, { valueKey: "id" });
+  fillSelect(document.getElementById("add_oficina_select"), LOOKUPS.oficinas, { valueKey: "id" });
 
   fillSelect(document.getElementById("m_estado_ticket"), LOOKUPS.estados_ticket, { valueKey: "nombre" });
   fillSelect(document.getElementById("m_unidad_resolutoria"), LOOKUPS.unidades_resolutorias, { valueKey: "nombre" });
@@ -80,105 +80,253 @@ document.getElementById("c_categoria").addEventListener("change", (e) => {
 });
 
 // ---------------------------------------------------------------
-// CREAR TICKET: OLT / Tarjeta / Puerto dinámicos
+// CREAR TICKET: árbol anidado Oficina -> OLT -> Tarjeta -> Puerto
 // ---------------------------------------------------------------
-const rowOlt = document.getElementById("row_olt");
-const rowTarjeta = document.getElementById("row_tarjeta");
-const rowPuerto = document.getElementById("row_puerto");
-let officeOlts = [];
-let rows = [];
+// Constantes fijas del negocio (independientes del catálogo de OLTs,
+// que solo se usa para el autocompletado del campo de texto).
+const NUM_OLTS_POR_OFICINA = 4;
+const NUM_TARJETAS = 18;
+const NUM_PUERTOS = 16;
 
-document.getElementById("c_oficina").addEventListener("change", async (e) => {
-  const oficinaId = e.target.value;
-  rowOlt.innerHTML = '<option value="">Seleccione:</option>';
-  rowTarjeta.innerHTML = "";
-  rowPuerto.innerHTML = "";
+// Estado en árbol. Cada nivel es autónomo: cambiar algo en una oficina
+// u OLT nunca toca los datos de otra rama.
+// oficinasState = [ { oficina_id, nombre, olts: [ { texto, sector, edificio,
+//   no_reportaron, tarjetas: { "Tarjeta 1": { puertos: { "Puerto 1": { no_afectados } } } } } x4 ] } ]
+let oficinasState = [];
+
+document.getElementById("btn_add_oficina").addEventListener("click", async () => {
+  const select = document.getElementById("add_oficina_select");
+  const oficinaId = select.value;
   if (!oficinaId) return;
-  const data = await apiSend("/lookups", "POST", { oficina_id: oficinaId });
-  officeOlts = data.olts;
-  fillSelect(rowOlt, officeOlts, { valueKey: "codigo", labelKey: "codigo" });
+  if (oficinasState.some((o) => String(o.oficina_id) === String(oficinaId))) {
+    alert("Esa oficina ya fue agregada.");
+    return;
+  }
+  const nombre = select.selectedOptions[0].textContent;
+
+  let oltsCatalogo = [];
+  try {
+    const data = await apiSend("/lookups", "POST", { oficina_id: oficinaId });
+    oltsCatalogo = data.olts.map((o) => o.codigo);
+  } catch (e) { /* si falla el autocompletado no bloquea el flujo */ }
+
+  oficinasState.push({
+    oficina_id: oficinaId,
+    nombre,
+    olts_catalogo: oltsCatalogo,
+    olts: Array.from({ length: NUM_OLTS_POR_OFICINA }, () => ({
+      texto: "", sector: "DESCONOCIDO", edificio: "DESCONOCIDO", no_reportaron: 0, tarjetas: {},
+    })),
+  });
+  renderOficinas();
 });
 
-function tarjetaOptions(numTarjetas) {
-  const opts = [];
-  for (let i = 1; i <= numTarjetas; i++) opts.push({ nombre: `Tarjeta ${i}` });
-  opts.push({ nombre: "NODO" }, { nombre: "ENLACE" }, { nombre: "TODAS" }, { nombre: "DESCONOCIDO" });
-  return opts;
+function removeOficina(oIdx) {
+  oficinasState.splice(oIdx, 1);
+  renderOficinas();
 }
-function puertoOptions(numPuertos) {
-  const opts = [];
-  for (let i = 1; i <= numPuertos; i++) opts.push({ nombre: `Puerto ${i}` });
-  opts.push({ nombre: "TODOS" }, { nombre: "DESCONOCIDO" });
-  return opts;
+
+function toggleTarjeta(oIdx, oltIdx, tarjetaNombre, checked) {
+  const olt = oficinasState[oIdx].olts[oltIdx];
+  if (checked) {
+    if (!olt.tarjetas[tarjetaNombre]) olt.tarjetas[tarjetaNombre] = { puertos: {} };
+  } else {
+    delete olt.tarjetas[tarjetaNombre];
+  }
+  renderOficinas();
 }
 
-rowOlt.addEventListener("change", () => {
-  const olt = officeOlts.find((o) => o.codigo === rowOlt.value);
-  const numTarjetas = olt ? olt.num_tarjetas : 17;
-  fillSelect(rowTarjeta, tarjetaOptions(numTarjetas), { valueKey: "nombre" });
-  rowPuerto.innerHTML = "";
-});
-rowTarjeta.addEventListener("change", () => {
-  const olt = officeOlts.find((o) => o.codigo === rowOlt.value);
-  const numPuertos = olt ? olt.puertos_por_tarjeta : 16;
-  fillSelect(rowPuerto, puertoOptions(numPuertos), { valueKey: "nombre" });
-});
+function selectAllTarjetas(oIdx, oltIdx) {
+  const olt = oficinasState[oIdx].olts[oltIdx];
+  for (let i = 1; i <= NUM_TARJETAS; i++) {
+    const nombre = `Tarjeta ${i}`;
+    if (!olt.tarjetas[nombre]) olt.tarjetas[nombre] = { puertos: {} };
+  }
+  renderOficinas();
+}
 
-function renderRows() {
-  const tbody = document.querySelector("#rows_table tbody");
-  tbody.innerHTML = "";
-  rows.forEach((r, idx) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${r.olt}</td><td>${r.tarjeta}</td><td>${r.puerto}</td>
-      <td>${r.sector}</td><td>${r.edificio}</td>
-      <td>${r.no_clientes_reportaron}</td><td>${r.nro_clientes_afectados}</td>
-      <td><button type="button" data-idx="${idx}" class="btn-secondary btn-del">Quitar</button></td>
+function togglePuerto(oIdx, oltIdx, tarjetaNombre, puertoNombre, checked) {
+  const tarjeta = oficinasState[oIdx].olts[oltIdx].tarjetas[tarjetaNombre];
+  if (checked) {
+    if (!tarjeta.puertos[puertoNombre]) tarjeta.puertos[puertoNombre] = { no_afectados: 0 };
+  } else {
+    delete tarjeta.puertos[puertoNombre];
+  }
+  renderOficinas();
+}
+
+function selectAllPuertos(oIdx, oltIdx, tarjetaNombre) {
+  const tarjeta = oficinasState[oIdx].olts[oltIdx].tarjetas[tarjetaNombre];
+  for (let i = 1; i <= NUM_PUERTOS; i++) {
+    const nombre = `Puerto ${i}`;
+    if (!tarjeta.puertos[nombre]) tarjeta.puertos[nombre] = { no_afectados: 0 };
+  }
+  renderOficinas();
+}
+
+function renderOficinas() {
+  const cont = document.getElementById("oficinas_container");
+  cont.innerHTML = "";
+
+  oficinasState.forEach((of, oIdx) => {
+    const box = document.createElement("div");
+    box.className = "tree-box tree-oficina";
+    box.innerHTML = `
+      <div class="tree-header">
+        <strong>Oficina:</strong> ${of.nombre}
+        <button type="button" class="btn-secondary btn-remove" data-oidx="${oIdx}">Quitar oficina</button>
+      </div>
+      <div class="tree-body olts-grid"></div>
     `;
-    tbody.appendChild(tr);
-  });
-  tbody.querySelectorAll(".btn-del").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      rows.splice(Number(btn.dataset.idx), 1);
-      renderRows();
+    box.querySelector(".btn-remove").addEventListener("click", () => removeOficina(oIdx));
+
+    const oltsGrid = box.querySelector(".olts-grid");
+    const datalistId = `olts-datalist-${oIdx}`;
+    const datalist = document.createElement("datalist");
+    datalist.id = datalistId;
+    (of.olts_catalogo || []).forEach((code) => {
+      const opt = document.createElement("option");
+      opt.value = code;
+      datalist.appendChild(opt);
     });
+    oltsGrid.appendChild(datalist);
+
+    of.olts.forEach((olt, oltIdx) => {
+      const oltBox = document.createElement("div");
+      oltBox.className = "tree-box tree-olt";
+      oltBox.innerHTML = `
+        <label>OLT ${oltIdx + 1}</label>
+        <input type="text" list="${datalistId}" placeholder="Escriba o seleccione el código de OLT" value="${olt.texto}" class="olt-texto" />
+      `;
+      const oltInput = oltBox.querySelector(".olt-texto");
+      oltInput.addEventListener("input", () => { olt.texto = oltInput.value; });
+      oltInput.addEventListener("change", () => { olt.texto = oltInput.value; renderOficinas(); });
+
+      if (olt.texto.trim()) {
+        const datosBox = document.createElement("div");
+        datosBox.className = "tree-body";
+        datosBox.innerHTML = `
+          <div class="grid-3">
+            <div class="field">
+              <label>Sector</label>
+              <input type="text" class="olt-sector" value="${olt.sector}" />
+            </div>
+            <div class="field">
+              <label>Edificio</label>
+              <input type="text" class="olt-edificio" value="${olt.edificio}" />
+            </div>
+            <div class="field">
+              <label>No. Reportaron</label>
+              <input type="number" min="0" class="olt-no-reportaron" value="${olt.no_reportaron}" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Tarjeta (selección múltiple)</label>
+            <div class="multiselect-row">
+              <div class="checkbox-grid tarjetas-grid"></div>
+              <button type="button" class="btn-secondary btn-todas-tarjetas">Todas</button>
+            </div>
+          </div>
+          <div class="tarjetas-container"></div>
+        `;
+        datosBox.querySelector(".olt-sector").addEventListener("input", (e) => { olt.sector = e.target.value; });
+        datosBox.querySelector(".olt-edificio").addEventListener("input", (e) => { olt.edificio = e.target.value; });
+        datosBox.querySelector(".olt-no-reportaron").addEventListener("input", (e) => { olt.no_reportaron = Number(e.target.value || 0); });
+        datosBox.querySelector(".btn-todas-tarjetas").addEventListener("click", () => selectAllTarjetas(oIdx, oltIdx));
+
+        const tarjetasGrid = datosBox.querySelector(".tarjetas-grid");
+        for (let i = 1; i <= NUM_TARJETAS; i++) {
+          const nombre = `Tarjeta ${i}`;
+          const checked = !!olt.tarjetas[nombre];
+          const lbl = document.createElement("label");
+          lbl.className = "chk";
+          lbl.innerHTML = `<input type="checkbox" ${checked ? "checked" : ""} /> ${nombre}`;
+          lbl.querySelector("input").addEventListener("change", (e) => toggleTarjeta(oIdx, oltIdx, nombre, e.target.checked));
+          tarjetasGrid.appendChild(lbl);
+        }
+
+        const tarjetasContainer = datosBox.querySelector(".tarjetas-container");
+        Object.keys(olt.tarjetas).forEach((tarjetaNombre) => {
+          const tarjeta = olt.tarjetas[tarjetaNombre];
+          const tBox = document.createElement("div");
+          tBox.className = "tree-box tree-tarjeta";
+          tBox.innerHTML = `
+            <div class="tree-header"><strong>${tarjetaNombre}</strong></div>
+            <div class="field">
+              <label>Puerto (selección múltiple)</label>
+              <div class="multiselect-row">
+                <div class="checkbox-grid puertos-grid"></div>
+                <button type="button" class="btn-secondary btn-todos-puertos">Todos</button>
+              </div>
+            </div>
+            <div class="puertos-container"></div>
+          `;
+          tBox.querySelector(".btn-todos-puertos").addEventListener("click", () => selectAllPuertos(oIdx, oltIdx, tarjetaNombre));
+
+          const puertosGrid = tBox.querySelector(".puertos-grid");
+          for (let i = 1; i <= NUM_PUERTOS; i++) {
+            const pNombre = `Puerto ${i}`;
+            const checked = !!tarjeta.puertos[pNombre];
+            const lbl = document.createElement("label");
+            lbl.className = "chk";
+            lbl.innerHTML = `<input type="checkbox" ${checked ? "checked" : ""} /> ${pNombre}`;
+            lbl.querySelector("input").addEventListener("change", (e) => togglePuerto(oIdx, oltIdx, tarjetaNombre, pNombre, e.target.checked));
+            puertosGrid.appendChild(lbl);
+          }
+
+          const puertosContainer = tBox.querySelector(".puertos-container");
+          Object.keys(tarjeta.puertos).forEach((puertoNombre) => {
+            const pField = document.createElement("div");
+            pField.className = "field puerto-field";
+            pField.innerHTML = `
+              <label>${puertoNombre} — No. Afectados</label>
+              <input type="number" min="0" value="${tarjeta.puertos[puertoNombre].no_afectados}" />
+            `;
+            pField.querySelector("input").addEventListener("input", (e) => {
+              tarjeta.puertos[puertoNombre].no_afectados = Number(e.target.value || 0);
+            });
+            puertosContainer.appendChild(pField);
+          });
+
+          tarjetasContainer.appendChild(tBox);
+        });
+
+        oltBox.appendChild(datosBox);
+      }
+
+      oltsGrid.appendChild(oltBox);
+    });
+
+    cont.appendChild(box);
   });
 }
 
-function currentRowValues() {
-  return {
-    olt: rowOlt.value,
-    tarjeta: rowTarjeta.value,
-    puerto: rowPuerto.value,
-    sector: document.getElementById("row_sector").value || "DESCONOCIDO",
-    edificio: document.getElementById("row_edificio").value || "DESCONOCIDO",
-    no_clientes_reportaron: Number(document.getElementById("row_no_reportaron").value || 0),
-    nro_clientes_afectados: Number(document.getElementById("row_nro_afectados").value || 0),
-  };
+// Convierte el árbol en la lista plana que espera la API: una fila por
+// cada combinación Oficina + OLT + Tarjeta + Puerto.
+function flattenOficinas() {
+  const puertos = [];
+  for (const of of oficinasState) {
+    for (const olt of of.olts) {
+      if (!olt.texto.trim()) continue;
+      for (const tarjetaNombre of Object.keys(olt.tarjetas)) {
+        const tarjeta = olt.tarjetas[tarjetaNombre];
+        for (const puertoNombre of Object.keys(tarjeta.puertos)) {
+          puertos.push({
+            oficina_id: of.oficina_id,
+            olt: olt.texto.trim(),
+            tarjeta: tarjetaNombre,
+            puerto: puertoNombre,
+            sector: olt.sector || "DESCONOCIDO",
+            edificio: olt.edificio || "DESCONOCIDO",
+            no_clientes_reportaron: Number(olt.no_reportaron || 0),
+            nro_clientes_afectados: Number(tarjeta.puertos[puertoNombre].no_afectados || 0),
+          });
+        }
+      }
+    }
+  }
+  return puertos;
 }
-
-document.getElementById("btn_add_row").addEventListener("click", () => {
-  const v = currentRowValues();
-  if (!v.olt || !v.tarjeta || !v.puerto) {
-    alert("Seleccione OLT, Tarjeta y Puerto antes de agregar la fila.");
-    return;
-  }
-  rows.push(v);
-  renderRows();
-});
-
-document.getElementById("btn_add_all_ports").addEventListener("click", () => {
-  const olt = officeOlts.find((o) => o.codigo === rowOlt.value);
-  if (!olt || !rowTarjeta.value) {
-    alert("Seleccione OLT y Tarjeta antes de agregar todos los puertos.");
-    return;
-  }
-  const base = currentRowValues();
-  for (let i = 1; i <= olt.puertos_por_tarjeta; i++) {
-    rows.push({ ...base, puerto: `Puerto ${i}` });
-  }
-  renderRows();
-});
 
 document.getElementById("btn_crear_ticket").addEventListener("click", async () => {
   const msg = document.getElementById("crear_msg");
@@ -194,13 +342,15 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
       afectacion: document.getElementById("c_afectacion").value,
       comentario: document.getElementById("c_comentario").value,
       descripcion: document.getElementById("c_descripcion").value,
-      oficina_id: document.getElementById("c_oficina").value || null,
-      puertos: rows,
+      puertos: flattenOficinas(),
     };
+    if (payload.puertos.length === 0) {
+      throw new Error("Agrega al menos una oficina, con al menos un OLT, tarjeta y puerto.");
+    }
     const res = await apiSend("/tickets", "POST", payload);
-    showMsg(msg, `Ticket ${res.ticket_crm} creado correctamente (#${res.id}).`, true);
-    rows = [];
-    renderRows();
+    showMsg(msg, `Ticket ${res.ticket_crm} creado correctamente (#${res.id}) con ${payload.puertos.length} puerto(s).`, true);
+    oficinasState = [];
+    renderOficinas();
     document.getElementById("c_ticket_crm").value = "";
   } catch (err) {
     showMsg(msg, err.message, false);

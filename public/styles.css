@@ -153,6 +153,63 @@ input:focus, select:focus, textarea:focus {
   font-weight: 600;
 }
 
+/* ---------- Árbol anidado: Oficina > OLT > Tarjeta > Puerto ---------- */
+
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+.tree-box {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  background: white;
+}
+.tree-oficina { border-left: 4px solid var(--purple); background: #fbfaff; }
+.tree-olt { border-left: 4px solid #a688c9; margin-bottom: 10px; }
+.tree-tarjeta { border-left: 4px solid #c9b3e0; background: #faf7fd; margin-top: 10px; }
+
+.tree-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  color: var(--purple-dark);
+}
+
+.tree-body { margin-top: 8px; }
+
+.olts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.multiselect-row { display: flex; gap: 10px; align-items: flex-start; }
+.multiselect-row .btn-secondary { flex-shrink: 0; white-space: nowrap; }
+
+.checkbox-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 8px;
+  background: #fcfbfe;
+  max-height: 130px;
+  overflow-y: auto;
+}
+.checkbox-grid .chk {
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.checkbox-grid .chk input { width: auto; }
+
+.puerto-field { max-width: 260px; }
+
 @media (max-width: 800px) {
-  .grid-2, .grid-6 { grid-template-columns: 1fr; }
+  .grid-2, .grid-6, .grid-3, .olts-grid { grid-template-columns: 1fr; }
 }

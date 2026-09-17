@@ -105,6 +105,7 @@ CREATE INDEX IF NOT EXISTS idx_tickets_crm ON tickets(ticket_crm);
 CREATE TABLE IF NOT EXISTS ticket_puertos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+  oficina_id INTEGER REFERENCES oficinas(id), -- oficina bajo la que se registró este OLT
   olt TEXT NOT NULL,                      -- código OLT, o "TODAS"
   tarjeta TEXT NOT NULL,                  -- "Tarjeta N" / "TODAS" / "NODO" / "ENLACE"
   puerto TEXT NOT NULL,                   -- "Puerto N" / "TODOS" / "DESCONOCIDO"
