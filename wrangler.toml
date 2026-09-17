@@ -7,4 +7,4 @@ pages_build_output_dir = "public"
 [[d1_databases]]
 binding = "DB"
 database_name = "vnet_fallas_masivas"
-database_id = "REEMPLAZA_ESTE_ID_DESPUES_DE_CREAR_LA_BASE"
+database_id = "49d7c81a-56d7-4cfb-b0f4-6f85166013f7"
