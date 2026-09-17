@@ -2,7 +2,7 @@ import { json, badRequest, notFound, currentUserEmail, logCambio, nowIso } from 
 
 // POST /api/tickets/:id/cerrar
 // Body: { fecha_solucion_crm, fecha_solucion_cda }
-// Únicos campos editables al cerrar. Fija estado_ticket = "CIERRE DEL TICKET".
+// Únicos campos editables al cerrar. Fija estado_ticket = "CERRADO".
 export async function onRequestPost({ request, env, params }) {
   const db = env.DB;
   const usuario = currentUserEmail(request);
@@ -21,7 +21,7 @@ export async function onRequestPost({ request, env, params }) {
   await db
     .prepare(
       `UPDATE tickets
-       SET fecha_solucion_crm = ?, fecha_solucion_cda = ?, estado_ticket = 'CIERRE DEL TICKET', actualizado_en = ?
+       SET fecha_solucion_crm = ?, fecha_solucion_cda = ?, estado_ticket = 'CERRADO', actualizado_en = ?
        WHERE id = ?`
     )
     .bind(body.fecha_solucion_crm, body.fecha_solucion_cda, nowIso(), ticket.id)
@@ -48,7 +48,7 @@ export async function onRequestPost({ request, env, params }) {
     tipo_cambio: "cierre",
     campo: "estado_ticket",
     valor_anterior: ticket.estado_ticket,
-    valor_nuevo: "CIERRE DEL TICKET",
+    valor_nuevo: "CERRADO",
     usuario_email: usuario,
   });
 

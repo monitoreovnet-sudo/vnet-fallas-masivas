@@ -58,8 +58,8 @@ INSERT INTO catalogo_unidades_resolutorias (nombre, orden) VALUES
 INSERT INTO catalogo_estados_ticket (nombre, orden) VALUES
 ('EN CURSO (ASIGNADO)', 1),
 ('EN OBSERVACIÓN', 2),
-('CIERRE DEL TICKET', 3),
-('CERRADO', 4);
+('CERRADO', 3),
+('VENTANA DE MANTENIMIENTO', 4);
 
 INSERT INTO catalogo_estados_puerto (nombre, orden) VALUES
 ('EN CURSO (ASIGNADO)', 1),
