@@ -41,6 +41,23 @@ function toLocalInputValue(iso) {
   // recorta a "YYYY-MM-DDTHH:MM" para <input type=datetime-local>
   return String(iso).slice(0, 16);
 }
+// Fuerza solo dígitos mientras el usuario escribe (sin espacios ni caracteres
+// especiales), para los campos Ticket CMR-COR y Tickets Vinculados.
+function soloDigitos(input) {
+  input.addEventListener("input", () => {
+    const limpio = input.value.replace(/[^0-9]/g, "");
+    if (limpio !== input.value) input.value = limpio;
+  });
+}
+["c_ticket_cmr", "c_tickets_vinculados"].forEach((id) => soloDigitos(document.getElementById(id)));
+
+// Formatea un número de ticket con un espacio visual cada 3 dígitos
+// (de derecha a izquierda), únicamente para lectura en pantallas de
+// consulta/log/dashboard. Nunca se usa este valor para guardar ni buscar.
+function formatearTicket(numero) {
+  if (!numero) return "";
+  return String(numero).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+}
 
 // ---------------------------------------------------------------
 // Pestañas
@@ -418,10 +435,10 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
   const msg = document.getElementById("crear_msg");
   try {
     const payload = {
-      ticket_crm: document.getElementById("c_ticket_crm").value.trim(),
+      ticket_cmr: document.getElementById("c_ticket_cmr").value.trim(),
       tickets_vinculados: document.getElementById("c_tickets_vinculados").value.trim(),
       fecha_apertura_cda: document.getElementById("c_fecha_cda").value,
-      fecha_apertura_crm: document.getElementById("c_fecha_crm").value,
+      fecha_apertura_cmr: document.getElementById("c_fecha_cmr").value,
       estado_ticket: document.getElementById("c_estado_ticket").value,
       unidad_resolutoria: document.getElementById("c_unidad_resolutoria").value,
       categoria_afectacion: document.getElementById("c_categoria").selectedOptions[0]?.textContent || "",
@@ -434,10 +451,10 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
       throw new Error("Agrega al menos una oficina, con al menos un OLT, tarjeta y puerto.");
     }
     const res = await apiSend("/tickets", "POST", payload);
-    showMsg(msg, `Ticket ${res.ticket_crm} creado correctamente (#${res.id}) con ${payload.puertos.length} puerto(s).`, true);
+    showMsg(msg, `Ticket ${res.ticket_cmr} creado correctamente (#${res.id}) con ${payload.puertos.length} puerto(s).`, true);
     oficinasState = [];
     renderOficinas();
-    document.getElementById("c_ticket_crm").value = "";
+    document.getElementById("c_ticket_cmr").value = "";
     document.getElementById("c_otros_no_reportaron").value = "0";
     document.getElementById("c_otros_nro_afectados").value = "0";
   } catch (err) {
@@ -463,13 +480,13 @@ async function mcBuscarYMostrar(alcance) {
   resultMsg.textContent = "";
   mcOcultarEscenarios();
 
-  const crm = document.getElementById("mc_ticket").value.trim();
+  const cmr = document.getElementById("mc_ticket").value.trim();
   const estado = document.getElementById("mc_estado").value;
-  if (!crm) { showMsg(msg, "Ingrese el número de ticket.", false); return; }
+  if (!cmr) { showMsg(msg, "Ingrese el número de ticket.", false); return; }
   if (!estado) { showMsg(msg, "Seleccione el nuevo estado del ticket.", false); return; }
 
   try {
-    const data = await apiGet(`/tickets/${encodeURIComponent(crm)}`);
+    const data = await apiGet(`/tickets/${encodeURIComponent(cmr)}`);
     mcTicket = data.ticket;
     mcPuertos = data.puertos;
     msg.textContent = "";
@@ -492,7 +509,7 @@ document.getElementById("mc_btn_puertos").addEventListener("click", () => mcBusc
 // --- Escenario 1: <> Cerrado + Masivo ---
 function mcRenderEscenario1() {
   fillSelect(document.getElementById("e1_unidad_resolutoria"), LOOKUPS.unidades_resolutorias, { valueKey: "nombre", placeholder: "No modificar" });
-  document.getElementById("e1_fecha_crm").value = "";
+  document.getElementById("e1_fecha_cmr").value = "";
   document.getElementById("e1_fecha_cda").value = "";
   document.getElementById("e1_unidad_resolutoria").value = "";
   document.getElementById("e1_avance").value = "";
@@ -503,17 +520,17 @@ document.getElementById("e1_btn_guardar").addEventListener("click", async () => 
   const msg = document.getElementById("mc_msg");
   try {
     const body = { estado_ticket: document.getElementById("mc_estado").value };
-    const fechaCrm = document.getElementById("e1_fecha_crm").value;
+    const fechaCmr = document.getElementById("e1_fecha_cmr").value;
     const fechaCda = document.getElementById("e1_fecha_cda").value;
     const unidad = document.getElementById("e1_unidad_resolutoria").value;
     const avance = document.getElementById("e1_avance").value.trim();
-    if (fechaCrm) body.fecha_apertura_crm = fechaCrm;
+    if (fechaCmr) body.fecha_apertura_cmr = fechaCmr;
     if (fechaCda) body.fecha_apertura_cda = fechaCda;
     if (unidad) body.unidad_resolutoria = unidad;
     if (avance) body.avance_cmr = avance;
 
     await apiSend(`/tickets/${mcTicket.id}/masivo`, "PATCH", body);
-    showMsg(msg, `Ticket ${mcTicket.ticket_crm} actualizado correctamente (modificación masiva).`, true);
+    showMsg(msg, `Ticket ${mcTicket.ticket_cmr} actualizado correctamente (modificación masiva).`, true);
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -587,7 +604,7 @@ document.getElementById("e2_btn_guardar").addEventListener("click", async () => 
 
 // --- Escenario 3: Cerrado + Masivo ---
 function mcRenderEscenario3() {
-  document.getElementById("e3_fecha_crm").value = "";
+  document.getElementById("e3_fecha_cmr").value = "";
   document.getElementById("e3_fecha_cda").value = "";
   document.getElementById("mc_escenario_3").classList.remove("hidden");
 }
@@ -595,13 +612,13 @@ function mcRenderEscenario3() {
 document.getElementById("e3_btn_guardar").addEventListener("click", async () => {
   const msg = document.getElementById("mc_msg");
   try {
-    const fecha_solucion_crm = document.getElementById("e3_fecha_crm").value;
+    const fecha_solucion_cmr = document.getElementById("e3_fecha_cmr").value;
     const fecha_solucion_cda = document.getElementById("e3_fecha_cda").value;
-    if (!fecha_solucion_crm || !fecha_solucion_cda) {
-      throw new Error("Indica ambas fechas de cierre (CRM y CDA).");
+    if (!fecha_solucion_cmr || !fecha_solucion_cda) {
+      throw new Error("Indica ambas fechas de cierre (CMR y CDA).");
     }
-    await apiSend(`/tickets/${mcTicket.id}/cerrar`, "POST", { fecha_solucion_crm, fecha_solucion_cda });
-    showMsg(msg, `Ticket ${mcTicket.ticket_crm} cerrado correctamente (cierre masivo).`, true);
+    await apiSend(`/tickets/${mcTicket.id}/cerrar`, "POST", { fecha_solucion_cmr, fecha_solucion_cda });
+    showMsg(msg, `Ticket ${mcTicket.ticket_cmr} cerrado correctamente (cierre masivo).`, true);
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -609,7 +626,7 @@ document.getElementById("e3_btn_guardar").addEventListener("click", async () => 
 
 // --- Escenario 4: Cerrado + Por Puertos ---
 function mcRenderEscenario4() {
-  document.getElementById("e4_fecha_crm").value = "";
+  document.getElementById("e4_fecha_cmr").value = "";
   document.getElementById("e4_fecha_cda").value = "";
   const tbody = document.querySelector("#e4_table tbody");
   tbody.innerHTML = "";
@@ -630,10 +647,10 @@ function mcRenderEscenario4() {
 document.getElementById("e4_btn_guardar").addEventListener("click", async () => {
   const msg = document.getElementById("mc_msg");
   try {
-    const fecha_cierre_crm = document.getElementById("e4_fecha_crm").value;
+    const fecha_cierre_cmr = document.getElementById("e4_fecha_cmr").value;
     const fecha_cierre_cda = document.getElementById("e4_fecha_cda").value;
-    if (!fecha_cierre_crm || !fecha_cierre_cda) {
-      throw new Error("Indica ambas fechas de cierre (CRM y CDA).");
+    if (!fecha_cierre_cmr || !fecha_cierre_cda) {
+      throw new Error("Indica ambas fechas de cierre (CMR y CDA).");
     }
     const tbody = document.querySelector("#e4_table tbody");
     const seleccionados = [];
@@ -643,7 +660,7 @@ document.getElementById("e4_btn_guardar").addEventListener("click", async () => 
       seleccionados.push({
         id: mcPuertos[idx].id,
         estado_puerto: "CERRADO",
-        fecha_cierre_crm,
+        fecha_cierre_cmr,
         fecha_cierre_cda,
       });
     });
@@ -662,30 +679,30 @@ document.getElementById("e4_btn_guardar").addEventListener("click", async () => 
 // ---------------------------------------------------------------
 document.getElementById("q_buscar_btn").addEventListener("click", async () => {
   const cont = document.getElementById("q_resultado");
-  const crm = document.getElementById("q_buscar").value.trim();
+  const cmr = document.getElementById("q_buscar").value.trim();
   cont.innerHTML = "";
   try {
     const [detalle, logData] = await Promise.all([
-      apiGet(`/tickets/${encodeURIComponent(crm)}`),
-      apiGet(`/tickets/${encodeURIComponent(crm)}/log`),
+      apiGet(`/tickets/${encodeURIComponent(cmr)}`),
+      apiGet(`/tickets/${encodeURIComponent(cmr)}/log`),
     ]);
     const t = detalle.ticket;
     const card = document.createElement("div");
     card.className = "ticket-card";
     card.innerHTML = `
-      <h3>Ticket ${t.ticket_crm} <span class="badge">${t.estado_ticket}</span></h3>
+      <h3>Ticket ${formatearTicket(t.ticket_cmr)} <span class="badge">${t.estado_ticket}</span></h3>
       <div class="kv">
         <div><span>Oficina:</span> ${t.oficina_nombre || "-"}</div>
         <div><span>Unidad Resolutoria:</span> ${t.unidad_resolutoria || "-"}</div>
         <div><span>Categoría:</span> ${t.categoria_afectacion || "-"}</div>
         <div><span>Afectación:</span> ${t.afectacion || "-"}</div>
         <div><span>Apertura CDA:</span> ${t.fecha_apertura_cda || "-"}</div>
-        <div><span>Apertura CRM:</span> ${t.fecha_apertura_crm || "-"}</div>
+        <div><span>Apertura CMR:</span> ${t.fecha_apertura_cmr || "-"}</div>
         <div><span>Solución CDA:</span> ${t.fecha_solucion_cda || "-"}</div>
-        <div><span>Solución CRM:</span> ${t.fecha_solucion_crm || "-"}</div>
+        <div><span>Solución CMR:</span> ${t.fecha_solucion_cmr || "-"}</div>
       </div>
       <p><strong>Descripción:</strong> ${t.descripcion || "-"}</p>
-      <p><strong>Avance del CRM:</strong> ${t.avance_cmr || "-"}</p>
+      <p><strong>Avance del CMR:</strong> ${t.avance_cmr || "-"}</p>
     `;
     cont.appendChild(card);
 

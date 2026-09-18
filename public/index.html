@@ -27,20 +27,20 @@
     <h2>Crear Ticket</h2>
     <div class="grid-2">
       <div class="field">
-        <label>Ticket CRM-COR <small>(solo números)</small></label>
-        <input id="c_ticket_crm" placeholder="Ej: 123456" inputmode="numeric" />
+        <label>Ticket CMR-COR <small>(solo números)</small></label>
+        <input id="c_ticket_cmr" placeholder="Ej: 123456" inputmode="numeric" maxlength="20" />
       </div>
       <div class="field">
-        <label>Tickets Vinculados</label>
-        <input id="c_tickets_vinculados" placeholder="Ej: 123456" />
+        <label>Tickets Vinculados <small>(solo números)</small></label>
+        <input id="c_tickets_vinculados" placeholder="Ej: 123456" inputmode="numeric" maxlength="20" />
       </div>
       <div class="field">
         <label>Fecha de Apertura del CDA</label>
         <input id="c_fecha_cda" type="datetime-local" />
       </div>
       <div class="field">
-        <label>Fecha de Apertura del CRM</label>
-        <input id="c_fecha_crm" type="datetime-local" />
+        <label>Fecha de Apertura del CMR</label>
+        <input id="c_fecha_cmr" type="datetime-local" />
       </div>
       <div class="field">
         <label>Estado del Ticket</label>
@@ -126,8 +126,8 @@
       <p class="hint">Solo se envían los campos que llenes; los que dejes vacíos no se modifican.</p>
       <div class="grid-2">
         <div class="field">
-          <label>Fecha Apertura CRM</label>
-          <input id="e1_fecha_crm" type="datetime-local" />
+          <label>Fecha Apertura CMR</label>
+          <input id="e1_fecha_cmr" type="datetime-local" />
         </div>
         <div class="field">
           <label>Fecha Apertura CDA</label>
@@ -139,7 +139,7 @@
         </div>
       </div>
       <div class="field">
-        <label>Avance del CRM</label>
+        <label>Avance del CMR</label>
         <textarea id="e1_avance" rows="2" placeholder="Avance..."></textarea>
       </div>
       <button id="e1_btn_guardar" class="btn-primary">Aplicar a Todo el Ticket</button>
@@ -166,8 +166,8 @@
       <p class="hint">Se cerrarán TODOS los registros asociados a este ticket.</p>
       <div class="grid-2">
         <div class="field">
-          <label>Fecha de Cierre CRM</label>
-          <input id="e3_fecha_crm" type="datetime-local" />
+          <label>Fecha de Cierre CMR</label>
+          <input id="e3_fecha_cmr" type="datetime-local" />
         </div>
         <div class="field">
           <label>Fecha de Cierre CDA</label>
@@ -183,8 +183,8 @@
       <h3>Cierre por Puertos</h3>
       <div class="grid-2">
         <div class="field">
-          <label>Fecha de Cierre CRM</label>
-          <input id="e4_fecha_crm" type="datetime-local" />
+          <label>Fecha de Cierre CMR</label>
+          <input id="e4_fecha_cmr" type="datetime-local" />
         </div>
         <div class="field">
           <label>Fecha de Cierre CDA</label>

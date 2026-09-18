@@ -4,7 +4,7 @@ import { json, notFound } from "../../../_lib/helpers.js";
 export async function onRequestGet({ params, env }) {
   const db = env.DB;
   const ticket = await db
-    .prepare("SELECT id FROM tickets WHERE id = ? OR ticket_crm = ?")
+    .prepare("SELECT id FROM tickets WHERE id = ? OR ticket_cmr = ?")
     .bind(params.id, params.id)
     .first();
   if (!ticket) return notFound("Ticket no encontrado");

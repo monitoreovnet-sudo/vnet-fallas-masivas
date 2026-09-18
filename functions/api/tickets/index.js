@@ -1,10 +1,10 @@
 import { json, badRequest, currentUserEmail, logCambio, nowIso } from "../../_lib/helpers.js";
 
-// GET /api/tickets?crm=326159&estado=EN+CURSO&oficina_id=3&limit=50
+// GET /api/tickets?cmr=326159&estado=EN+CURSO&oficina_id=3&limit=50
 export async function onRequestGet({ request, env }) {
   const db = env.DB;
   const url = new URL(request.url);
-  const crm = url.searchParams.get("crm");
+  const cmr = url.searchParams.get("cmr");
   const estado = url.searchParams.get("estado");
   const oficinaId = url.searchParams.get("oficina_id");
   const limit = Math.min(Number(url.searchParams.get("limit") || 100), 500);
@@ -18,9 +18,9 @@ export async function onRequestGet({ request, env }) {
   `;
   const binds = [];
 
-  if (crm) {
-    sql += " AND t.ticket_crm LIKE ?";
-    binds.push(`%${crm}%`);
+  if (cmr) {
+    sql += " AND t.ticket_cmr LIKE ?";
+    binds.push(`%${cmr}%`);
   }
   if (estado) {
     sql += " AND t.estado_ticket = ?";
@@ -47,10 +47,10 @@ export async function onRequestPost({ request, env }) {
   const usuario = currentUserEmail(request);
 
   const {
-    ticket_crm,
+    ticket_cmr,
     tickets_vinculados,
     fecha_apertura_cda,
-    fecha_apertura_crm,
+    fecha_apertura_cmr,
     estado_ticket,
     unidad_resolutoria,
     categoria_afectacion,
@@ -61,37 +61,43 @@ export async function onRequestPost({ request, env }) {
     puertos, // [{ olt, tarjeta, puerto, sector, edificio, no_clientes_reportaron, nro_clientes_afectados }]
   } = body;
 
-  if (!ticket_crm || !/^[0-9]+$/.test(String(ticket_crm))) {
-    return badRequest("El Ticket CRM-COR es obligatorio y debe contener solo números.");
+  if (!ticket_cmr || !/^[0-9]+$/.test(String(ticket_cmr))) {
+    return badRequest("El Ticket CMR-COR es obligatorio y debe contener solo números.");
   }
   if (!Array.isArray(puertos) || puertos.length === 0) {
     return badRequest("Debe incluir al menos un OLT/Tarjeta/Puerto afectado.");
   }
 
-  const existing = await db.prepare("SELECT id FROM tickets WHERE ticket_crm = ?").bind(String(ticket_crm)).first();
+  const existing = await db.prepare("SELECT id FROM tickets WHERE ticket_cmr = ?").bind(String(ticket_cmr)).first();
   if (existing) {
-    return badRequest(`Ya existe un ticket registrado con el número ${ticket_crm}.`);
+    return badRequest(`Ya existe un ticket registrado con el número ${ticket_cmr}.`);
   }
+
+  // El ticket puede abarcar varias oficinas (una por cada OLT registrado).
+  // El campo tickets.oficina_id guarda la primera como oficina "principal"
+  // para efectos de listado/filtro; la oficina real de cada OLT queda en
+  // ticket_puertos.oficina_id.
+  const oficinaPrincipal = oficina_id || (puertos.find((p) => p.oficina_id) || {}).oficina_id || null;
 
   const insertTicket = await db
     .prepare(
       `INSERT INTO tickets
-        (ticket_crm, tickets_vinculados, fecha_apertura_cda, fecha_apertura_crm, estado_ticket,
+        (ticket_cmr, tickets_vinculados, fecha_apertura_cda, fecha_apertura_cmr, estado_ticket,
          unidad_resolutoria, categoria_afectacion, afectacion, comentario, descripcion, oficina_id, creado_por)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
-      String(ticket_crm),
+      String(ticket_cmr),
       tickets_vinculados || null,
       fecha_apertura_cda || null,
-      fecha_apertura_crm || null,
+      fecha_apertura_cmr || null,
       estado_ticket || "EN CURSO (ASIGNADO)",
       unidad_resolutoria || null,
       categoria_afectacion || null,
       afectacion || null,
       comentario || null,
       descripcion || null,
-      oficina_id || null,
+      oficinaPrincipal,
       usuario
     )
     .run();
@@ -102,11 +108,12 @@ export async function onRequestPost({ request, env }) {
     const ins = await db
       .prepare(
         `INSERT INTO ticket_puertos
-          (ticket_id, olt, tarjeta, puerto, sector, edificio, no_clientes_reportaron, nro_clientes_afectados, estado_puerto)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          (ticket_id, oficina_id, olt, tarjeta, puerto, sector, edificio, no_clientes_reportaron, nro_clientes_afectados, estado_puerto)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
         ticketId,
+        p.oficina_id || null,
         p.olt,
         p.tarjeta,
         p.puerto,
@@ -134,9 +141,9 @@ export async function onRequestPost({ request, env }) {
     tipo_cambio: "creacion",
     campo: "ticket",
     valor_anterior: null,
-    valor_nuevo: `Ticket ${ticket_crm} creado con ${puertos.length} puerto(s)`,
+    valor_nuevo: `Ticket ${ticket_cmr} creado con ${puertos.length} puerto(s)`,
     usuario_email: usuario,
   });
 
-  return json({ id: ticketId, ticket_crm: String(ticket_crm), creado_en: nowIso() }, 201);
+  return json({ id: ticketId, ticket_cmr: String(ticket_cmr), creado_en: nowIso() }, 201);
 }

@@ -1,10 +1,21 @@
 import { json, badRequest, notFound, currentUserEmail, logCambio, nowIso } from "../../../_lib/helpers.js";
 
 // PATCH /api/tickets/:id/puertos
-// Body: { puertos: [{ id, tarjeta, puerto, estado_puerto }, ...] }
-// Único endpoint autorizado a tocar estos campos a nivel de puerto individual,
-// replicando la pantalla "Cambiar Puertos Seleccionados": tarjeta, puerto, estado.
-const CAMPOS_PERMITIDOS = ["tarjeta", "puerto", "estado_puerto"];
+// Body: { puertos: [{ id, oficina_id, olt, tarjeta, puerto, estado_puerto,
+//                      fecha_cierre_cmr, fecha_cierre_cda }, ...] }
+// Único endpoint autorizado a tocar estos campos a nivel de puerto individual.
+// Cubre dos escenarios de la pantalla unificada "Modificar / Cerrar Ticket":
+//  - Modificación por Puertos: oficina_id, olt, tarjeta, puerto, estado_puerto
+//  - Cierre por Puertos: estado_puerto = 'CERRADO' + fecha_cierre_cmr/cda
+const CAMPOS_PERMITIDOS = [
+  "oficina_id",
+  "olt",
+  "tarjeta",
+  "puerto",
+  "estado_puerto",
+  "fecha_cierre_cmr",
+  "fecha_cierre_cda",
+];
 
 export async function onRequestPatch({ request, env, params }) {
   const db = env.DB;
@@ -12,7 +23,7 @@ export async function onRequestPatch({ request, env, params }) {
   const body = await request.json();
 
   const ticket = await db
-    .prepare("SELECT id FROM tickets WHERE id = ? OR ticket_crm = ?")
+    .prepare("SELECT id FROM tickets WHERE id = ? OR ticket_cmr = ?")
     .bind(params.id, params.id)
     .first();
   if (!ticket) return notFound("Ticket no encontrado");

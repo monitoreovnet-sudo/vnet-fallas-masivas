@@ -4,13 +4,13 @@ import { json, badRequest, notFound, currentUserEmail, logCambio, nowIso } from 
 // Único endpoint autorizado a tocar estos campos a la vez, replicando
 // exactamente los campos editables de la pantalla "Cambiar Todo el Ticket":
 //   estado_ticket, olt (aplica a TODOS los puertos del ticket), avance_cmr,
-//   fecha_apertura_cda, fecha_apertura_crm, unidad_resolutoria, oficina_id
+//   fecha_apertura_cda, fecha_apertura_cmr, unidad_resolutoria, oficina_id
 const CAMPOS_PERMITIDOS = [
   "estado_ticket",
   "olt",
   "avance_cmr",
   "fecha_apertura_cda",
-  "fecha_apertura_crm",
+  "fecha_apertura_cmr",
   "unidad_resolutoria",
   "oficina_id",
 ];
@@ -21,7 +21,7 @@ export async function onRequestPatch({ request, env, params }) {
   const body = await request.json();
 
   const ticket = await db
-    .prepare("SELECT * FROM tickets WHERE id = ? OR ticket_crm = ?")
+    .prepare("SELECT * FROM tickets WHERE id = ? OR ticket_cmr = ?")
     .bind(params.id, params.id)
     .first();
   if (!ticket) return notFound("Ticket no encontrado");
