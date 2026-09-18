@@ -65,4 +65,5 @@ INSERT INTO catalogo_estados_puerto (nombre, orden) VALUES
 ('EN CURSO (ASIGNADO)', 1),
 ('EN OBSERVACIÓN', 2),
 ('RESUELTO', 3),
-('DESCARTADO', 4);
+('DESCARTADO', 4),
+('CERRADO', 5);

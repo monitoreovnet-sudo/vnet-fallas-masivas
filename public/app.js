@@ -68,9 +68,7 @@ async function loadLookups() {
   fillSelect(document.getElementById("c_comentario"), LOOKUPS.comentarios, { valueKey: "nombre" });
   fillSelect(document.getElementById("add_oficina_select"), LOOKUPS.oficinas, { valueKey: "id" });
 
-  fillSelect(document.getElementById("m_estado_ticket"), LOOKUPS.estados_ticket, { valueKey: "nombre" });
-  fillSelect(document.getElementById("m_unidad_resolutoria"), LOOKUPS.unidades_resolutorias, { valueKey: "nombre" });
-  fillSelect(document.getElementById("m_oficina"), LOOKUPS.oficinas, { valueKey: "id" });
+  fillSelect(document.getElementById("mc_estado"), LOOKUPS.estados_ticket, { valueKey: "nombre" });
 
   actualizarVisibilidadOficinas();
 }
@@ -448,134 +446,212 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
 });
 
 // ---------------------------------------------------------------
-// MODIFICAR TODO EL TICKET (MASIVO)
+// MODIFICAR / CERRAR TICKET (UNIFICADA) — 4 escenarios:
+//   estado === "CERRADO"  ×  alcance === "MASIVO"
 // ---------------------------------------------------------------
-let masivoTicket = null;
+let mcTicket = null;
+let mcPuertos = [];
+let mcEscenario = null; // 1, 2, 3 o 4
 
-document.getElementById("m_buscar_btn").addEventListener("click", async () => {
-  const msg = document.getElementById("masivo_msg");
-  const crm = document.getElementById("m_buscar").value.trim();
-  msg.textContent = "";
+function mcOcultarEscenarios() {
+  [1, 2, 3, 4].forEach((n) => document.getElementById(`mc_escenario_${n}`).classList.add("hidden"));
+}
+
+async function mcBuscarYMostrar(alcance) {
+  const msg = document.getElementById("mc_msg_busqueda");
+  const resultMsg = document.getElementById("mc_msg");
+  resultMsg.textContent = "";
+  mcOcultarEscenarios();
+
+  const crm = document.getElementById("mc_ticket").value.trim();
+  const estado = document.getElementById("mc_estado").value;
+  if (!crm) { showMsg(msg, "Ingrese el número de ticket.", false); return; }
+  if (!estado) { showMsg(msg, "Seleccione el nuevo estado del ticket.", false); return; }
+
   try {
     const data = await apiGet(`/tickets/${encodeURIComponent(crm)}`);
-    masivoTicket = data.ticket;
-    document.getElementById("m_estado_ticket").value = masivoTicket.estado_ticket || "";
-    document.getElementById("m_olt").value = "";
-    document.getElementById("m_unidad_resolutoria").value = masivoTicket.unidad_resolutoria || "";
-    document.getElementById("m_oficina").value = masivoTicket.oficina_id || "";
-    document.getElementById("m_fecha_cda").value = toLocalInputValue(masivoTicket.fecha_apertura_cda);
-    document.getElementById("m_fecha_crm").value = toLocalInputValue(masivoTicket.fecha_apertura_crm);
-    document.getElementById("m_avance").value = masivoTicket.avance_cmr || "";
-    document.getElementById("m_form").classList.remove("hidden");
+    mcTicket = data.ticket;
+    mcPuertos = data.puertos;
+    msg.textContent = "";
+
+    const esCerrado = estado === "CERRADO";
+    mcEscenario = esCerrado ? (alcance === "MASIVO" ? 3 : 4) : (alcance === "MASIVO" ? 1 : 2);
+
+    if (mcEscenario === 1) mcRenderEscenario1();
+    else if (mcEscenario === 2) mcRenderEscenario2();
+    else if (mcEscenario === 3) mcRenderEscenario3();
+    else mcRenderEscenario4();
   } catch (err) {
-    document.getElementById("m_form").classList.add("hidden");
     showMsg(msg, err.message, false);
   }
-});
+}
 
-document.getElementById("btn_guardar_masivo").addEventListener("click", async () => {
-  const msg = document.getElementById("masivo_msg");
-  if (!masivoTicket) return;
+document.getElementById("mc_btn_masivo").addEventListener("click", () => mcBuscarYMostrar("MASIVO"));
+document.getElementById("mc_btn_puertos").addEventListener("click", () => mcBuscarYMostrar("PUERTOS"));
+
+// --- Escenario 1: <> Cerrado + Masivo ---
+function mcRenderEscenario1() {
+  fillSelect(document.getElementById("e1_unidad_resolutoria"), LOOKUPS.unidades_resolutorias, { valueKey: "nombre", placeholder: "No modificar" });
+  document.getElementById("e1_fecha_crm").value = "";
+  document.getElementById("e1_fecha_cda").value = "";
+  document.getElementById("e1_unidad_resolutoria").value = "";
+  document.getElementById("e1_avance").value = "";
+  document.getElementById("mc_escenario_1").classList.remove("hidden");
+}
+
+document.getElementById("e1_btn_guardar").addEventListener("click", async () => {
+  const msg = document.getElementById("mc_msg");
   try {
-    const body = {
-      estado_ticket: document.getElementById("m_estado_ticket").value,
-      unidad_resolutoria: document.getElementById("m_unidad_resolutoria").value,
-      oficina_id: document.getElementById("m_oficina").value || null,
-      fecha_apertura_cda: document.getElementById("m_fecha_cda").value,
-      fecha_apertura_crm: document.getElementById("m_fecha_crm").value,
-      avance_cmr: document.getElementById("m_avance").value,
-    };
-    const olt = document.getElementById("m_olt").value.trim();
-    if (olt) body.olt = olt;
-    await apiSend(`/tickets/${masivoTicket.id}/masivo`, "PATCH", body);
-    showMsg(msg, "Ticket actualizado correctamente.", true);
+    const body = { estado_ticket: document.getElementById("mc_estado").value };
+    const fechaCrm = document.getElementById("e1_fecha_crm").value;
+    const fechaCda = document.getElementById("e1_fecha_cda").value;
+    const unidad = document.getElementById("e1_unidad_resolutoria").value;
+    const avance = document.getElementById("e1_avance").value.trim();
+    if (fechaCrm) body.fecha_apertura_crm = fechaCrm;
+    if (fechaCda) body.fecha_apertura_cda = fechaCda;
+    if (unidad) body.unidad_resolutoria = unidad;
+    if (avance) body.avance_cmr = avance;
+
+    await apiSend(`/tickets/${mcTicket.id}/masivo`, "PATCH", body);
+    showMsg(msg, `Ticket ${mcTicket.ticket_crm} actualizado correctamente (modificación masiva).`, true);
   } catch (err) {
     showMsg(msg, err.message, false);
   }
 });
 
-// ---------------------------------------------------------------
-// CAMBIAR PUERTOS SELECCIONADOS (INDIVIDUAL)
-// ---------------------------------------------------------------
-let individualTicket = null;
-let individualPuertos = [];
-
-document.getElementById("i_buscar_btn").addEventListener("click", async () => {
-  const msg = document.getElementById("individual_msg");
-  const crm = document.getElementById("i_buscar").value.trim();
-  msg.textContent = "";
-  try {
-    const data = await apiGet(`/tickets/${encodeURIComponent(crm)}`);
-    individualTicket = data.ticket;
-    individualPuertos = data.puertos;
-    renderIndividualTable();
-    document.getElementById("btn_guardar_individual").classList.remove("hidden");
-  } catch (err) {
-    document.getElementById("btn_guardar_individual").classList.add("hidden");
-    document.querySelector("#i_table tbody").innerHTML = "";
-    showMsg(msg, err.message, false);
-  }
-});
-
-function renderIndividualTable() {
-  const tbody = document.querySelector("#i_table tbody");
+// --- Escenario 2: <> Cerrado + Por Puertos ---
+function mcRenderEscenario2() {
+  const tbody = document.querySelector("#e2_table tbody");
   tbody.innerHTML = "";
   const estados = LOOKUPS.estados_puerto.map((e) => e.nombre);
-  individualPuertos.forEach((p, idx) => {
+  const oficinas = LOOKUPS.oficinas;
+
+  mcPuertos.forEach((p, idx) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><input type="checkbox" class="i-check" data-idx="${idx}" /> ${individualTicket.ticket_crm}</td>
-      <td>${p.olt}</td>
-      <td><input class="i-tarjeta" data-idx="${idx}" value="${p.tarjeta}" /></td>
-      <td><input class="i-puerto" data-idx="${idx}" value="${p.puerto}" /></td>
       <td>
-        <select class="i-estado" data-idx="${idx}">
+        <div class="hint">${p.oficina_nombre || "-"}</div>
+        <select class="e2-oficina" data-idx="${idx}">
+          <option value="${p.oficina_id || ""}" selected>${p.oficina_nombre || "Sin oficina"}</option>
+          ${oficinas.filter((o) => o.id !== p.oficina_id).map((o) => `<option value="${o.id}">${o.nombre}</option>`).join("")}
+        </select>
+      </td>
+      <td><div class="hint">${p.olt}</div><input class="e2-olt" data-idx="${idx}" value="${p.olt}" /></td>
+      <td><div class="hint">${p.tarjeta}</div><input class="e2-tarjeta" data-idx="${idx}" value="${p.tarjeta}" /></td>
+      <td><div class="hint">${p.puerto}</div><input class="e2-puerto" data-idx="${idx}" value="${p.puerto}" /></td>
+      <td>
+        <div class="hint">${p.estado_puerto}</div>
+        <select class="e2-estado" data-idx="${idx}">
           ${estados.map((e) => `<option value="${e}" ${e === p.estado_puerto ? "selected" : ""}>${e}</option>`).join("")}
         </select>
       </td>
     `;
     tbody.appendChild(tr);
   });
+  document.getElementById("mc_escenario_2").classList.remove("hidden");
 }
 
-document.getElementById("btn_guardar_individual").addEventListener("click", async () => {
-  const msg = document.getElementById("individual_msg");
-  const tbody = document.querySelector("#i_table tbody");
+document.getElementById("e2_btn_guardar").addEventListener("click", async () => {
+  const msg = document.getElementById("mc_msg");
+  const tbody = document.querySelector("#e2_table tbody");
   const cambios = [];
-  tbody.querySelectorAll(".i-check").forEach((chk) => {
-    if (!chk.checked) return;
-    const idx = Number(chk.dataset.idx);
-    const p = individualPuertos[idx];
-    const tarjeta = tbody.querySelector(`.i-tarjeta[data-idx="${idx}"]`).value;
-    const puerto = tbody.querySelector(`.i-puerto[data-idx="${idx}"]`).value;
-    const estado_puerto = tbody.querySelector(`.i-estado[data-idx="${idx}"]`).value;
-    cambios.push({ id: p.id, tarjeta, puerto, estado_puerto });
+
+  mcPuertos.forEach((p, idx) => {
+    const oficina_id = tbody.querySelector(`.e2-oficina[data-idx="${idx}"]`).value || null;
+    const olt = tbody.querySelector(`.e2-olt[data-idx="${idx}"]`).value;
+    const tarjeta = tbody.querySelector(`.e2-tarjeta[data-idx="${idx}"]`).value;
+    const puerto = tbody.querySelector(`.e2-puerto[data-idx="${idx}"]`).value;
+    const estado_puerto = tbody.querySelector(`.e2-estado[data-idx="${idx}"]`).value;
+
+    const cambio = {};
+    if (String(oficina_id || "") !== String(p.oficina_id || "")) cambio.oficina_id = oficina_id;
+    if (olt !== p.olt) cambio.olt = olt;
+    if (tarjeta !== p.tarjeta) cambio.tarjeta = tarjeta;
+    if (puerto !== p.puerto) cambio.puerto = puerto;
+    if (estado_puerto !== p.estado_puerto) cambio.estado_puerto = estado_puerto;
+
+    if (Object.keys(cambio).length > 0) cambios.push({ id: p.id, ...cambio });
   });
+
   if (cambios.length === 0) {
-    showMsg(msg, "Seleccione al menos un puerto (casilla a la izquierda).", false);
+    showMsg(msg, "No hay cambios para guardar: modifica al menos un registro.", false);
     return;
   }
   try {
-    await apiSend(`/tickets/${individualTicket.id}/puertos`, "PATCH", { puertos: cambios });
-    showMsg(msg, `${cambios.length} puerto(s) actualizados correctamente.`, true);
+    await apiSend(`/tickets/${mcTicket.id}/puertos`, "PATCH", { puertos: cambios });
+    showMsg(msg, `${cambios.length} registro(s) actualizados correctamente.`, true);
   } catch (err) {
     showMsg(msg, err.message, false);
   }
 });
 
-// ---------------------------------------------------------------
-// CERRAR TICKET
-// ---------------------------------------------------------------
-document.getElementById("btn_cerrar_ticket").addEventListener("click", async () => {
-  const msg = document.getElementById("cerrar_msg");
-  const crm = document.getElementById("z_buscar").value.trim();
+// --- Escenario 3: Cerrado + Masivo ---
+function mcRenderEscenario3() {
+  document.getElementById("e3_fecha_crm").value = "";
+  document.getElementById("e3_fecha_cda").value = "";
+  document.getElementById("mc_escenario_3").classList.remove("hidden");
+}
+
+document.getElementById("e3_btn_guardar").addEventListener("click", async () => {
+  const msg = document.getElementById("mc_msg");
   try {
-    if (!crm) throw new Error("Ingrese el número de ticket a cerrar.");
-    await apiSend(`/tickets/${encodeURIComponent(crm)}/cerrar`, "POST", {
-      fecha_solucion_crm: document.getElementById("z_fecha_crm").value,
-      fecha_solucion_cda: document.getElementById("z_fecha_cda").value,
+    const fecha_solucion_crm = document.getElementById("e3_fecha_crm").value;
+    const fecha_solucion_cda = document.getElementById("e3_fecha_cda").value;
+    if (!fecha_solucion_crm || !fecha_solucion_cda) {
+      throw new Error("Indica ambas fechas de cierre (CRM y CDA).");
+    }
+    await apiSend(`/tickets/${mcTicket.id}/cerrar`, "POST", { fecha_solucion_crm, fecha_solucion_cda });
+    showMsg(msg, `Ticket ${mcTicket.ticket_crm} cerrado correctamente (cierre masivo).`, true);
+  } catch (err) {
+    showMsg(msg, err.message, false);
+  }
+});
+
+// --- Escenario 4: Cerrado + Por Puertos ---
+function mcRenderEscenario4() {
+  document.getElementById("e4_fecha_crm").value = "";
+  document.getElementById("e4_fecha_cda").value = "";
+  const tbody = document.querySelector("#e4_table tbody");
+  tbody.innerHTML = "";
+  mcPuertos.forEach((p, idx) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><input type="checkbox" class="e4-check" data-idx="${idx}" /></td>
+      <td>${p.oficina_nombre || "-"}</td>
+      <td>${p.olt}</td>
+      <td>${p.tarjeta}</td>
+      <td>${p.puerto}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById("mc_escenario_4").classList.remove("hidden");
+}
+
+document.getElementById("e4_btn_guardar").addEventListener("click", async () => {
+  const msg = document.getElementById("mc_msg");
+  try {
+    const fecha_cierre_crm = document.getElementById("e4_fecha_crm").value;
+    const fecha_cierre_cda = document.getElementById("e4_fecha_cda").value;
+    if (!fecha_cierre_crm || !fecha_cierre_cda) {
+      throw new Error("Indica ambas fechas de cierre (CRM y CDA).");
+    }
+    const tbody = document.querySelector("#e4_table tbody");
+    const seleccionados = [];
+    tbody.querySelectorAll(".e4-check").forEach((chk) => {
+      if (!chk.checked) return;
+      const idx = Number(chk.dataset.idx);
+      seleccionados.push({
+        id: mcPuertos[idx].id,
+        estado_puerto: "CERRADO",
+        fecha_cierre_crm,
+        fecha_cierre_cda,
+      });
     });
-    showMsg(msg, `Ticket ${crm} cerrado correctamente.`, true);
+    if (seleccionados.length === 0) {
+      throw new Error("Marca al menos un registro para cerrar.");
+    }
+    await apiSend(`/tickets/${mcTicket.id}/puertos`, "PATCH", { puertos: seleccionados });
+    showMsg(msg, `${seleccionados.length} registro(s) cerrados correctamente.`, true);
   } catch (err) {
     showMsg(msg, err.message, false);
   }

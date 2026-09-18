@@ -16,9 +16,7 @@
 
   <nav class="tabs">
     <button class="tab-btn active" data-tab="crear">Crear Ticket</button>
-    <button class="tab-btn" data-tab="masivo">Modificar Todo el Ticket</button>
-    <button class="tab-btn" data-tab="individual">Cambiar Puertos Seleccionados</button>
-    <button class="tab-btn" data-tab="cerrar">Cerrar Ticket</button>
+    <button class="tab-btn" data-tab="modificar">Modificar / Cerrar Ticket</button>
     <button class="tab-btn" data-tab="consultar">Consultar / Log</button>
   </nav>
 
@@ -99,94 +97,111 @@
     <div id="crear_msg" class="msg"></div>
   </section>
 
-  <!-- ===================== MODIFICAR TODO EL TICKET (MASIVO) ===================== -->
-  <section id="tab-masivo" class="tab-panel">
-    <h2>Cambiar Todo el Ticket</h2>
-    <div class="field">
-      <label>Ingreso del ticket a buscar</label>
-      <div class="search-row">
-        <input id="m_buscar" placeholder="Ingrese el número de ticket" />
-        <button id="m_buscar_btn" class="btn-secondary" type="button">Buscar</button>
+  <!-- ===================== MODIFICAR / CERRAR TICKET (UNIFICADA) ===================== -->
+  <section id="tab-modificar" class="tab-panel">
+    <h2>Modificar / Cerrar Ticket</h2>
+
+    <div class="grid-3">
+      <div class="field">
+        <label>Número de Ticket</label>
+        <input id="mc_ticket" placeholder="Ingrese el número de ticket" />
+      </div>
+      <div class="field">
+        <label>Nuevo Estado del Ticket</label>
+        <select id="mc_estado"></select>
+      </div>
+      <div class="field field-btn">
+        <div class="search-row">
+          <button id="mc_btn_masivo" class="btn-secondary" type="button">MASIVO</button>
+          <button id="mc_btn_puertos" class="btn-secondary" type="button">POR PUERTOS</button>
+        </div>
       </div>
     </div>
+    <div id="mc_msg_busqueda" class="msg"></div>
 
-    <div id="m_form" class="hidden">
+    <!-- Escenario 1: <> Cerrado + Masivo -->
+    <div id="mc_escenario_1" class="hidden">
+      <hr />
+      <h3>Modificación Masiva</h3>
+      <p class="hint">Solo se envían los campos que llenes; los que dejes vacíos no se modifican.</p>
       <div class="grid-2">
         <div class="field">
-          <label>Estado del Ticket</label>
-          <select id="m_estado_ticket"></select>
-        </div>
-        <div class="field">
-          <label>OLT <small>(cambia el OLT en TODOS los puertos del ticket)</small></label>
-          <input id="m_olt" placeholder="Nuevo OLT" />
-        </div>
-        <div class="field">
-          <label>Unidad Resolutoria</label>
-          <select id="m_unidad_resolutoria"></select>
-        </div>
-        <div class="field">
-          <label>Oficina</label>
-          <select id="m_oficina"></select>
+          <label>Fecha Apertura CRM</label>
+          <input id="e1_fecha_crm" type="datetime-local" />
         </div>
         <div class="field">
           <label>Fecha Apertura CDA</label>
-          <input id="m_fecha_cda" type="datetime-local" />
+          <input id="e1_fecha_cda" type="datetime-local" />
         </div>
         <div class="field">
-          <label>Fecha Apertura CRM</label>
-          <input id="m_fecha_crm" type="datetime-local" />
+          <label>Unidad Resolutoria</label>
+          <select id="e1_unidad_resolutoria"><option value="">No modificar</option></select>
         </div>
       </div>
       <div class="field">
         <label>Avance del CRM</label>
-        <textarea id="m_avance" rows="2" placeholder="Avance..."></textarea>
+        <textarea id="e1_avance" rows="2" placeholder="Avance..."></textarea>
       </div>
-      <button id="btn_guardar_masivo" class="btn-primary">Cambiar Todo el Ticket</button>
-      <div id="masivo_msg" class="msg"></div>
-    </div>
-  </section>
-
-  <!-- ===================== CAMBIAR PUERTOS SELECCIONADOS ===================== -->
-  <section id="tab-individual" class="tab-panel">
-    <h2>Cambiar Puertos Seleccionados</h2>
-    <div class="field">
-      <label>Ingreso del ticket a buscar</label>
-      <div class="search-row">
-        <input id="i_buscar" placeholder="Ingrese el número de ticket" />
-        <button id="i_buscar_btn" class="btn-secondary" type="button">Buscar</button>
-      </div>
+      <button id="e1_btn_guardar" class="btn-primary">Aplicar a Todo el Ticket</button>
     </div>
 
-    <table class="rows-table" id="i_table">
-      <thead>
-        <tr><th>Ticket</th><th>OLT</th><th>Tarjeta</th><th>Puerto</th><th>Estado</th></tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-
-    <button id="btn_guardar_individual" class="btn-primary hidden">Cambiar Puertos Seleccionados</button>
-    <div id="individual_msg" class="msg"></div>
-  </section>
-
-  <!-- ===================== CERRAR TICKET ===================== -->
-  <section id="tab-cerrar" class="tab-panel">
-    <h2>Cerrar este Ticket</h2>
-    <div class="field">
-      <label>Ingreso del ticket a buscar</label>
-      <input id="z_buscar" placeholder="Ingrese el número de ticket" />
+    <!-- Escenario 2: <> Cerrado + Por Puertos -->
+    <div id="mc_escenario_2" class="hidden">
+      <hr />
+      <h3>Modificación por Puertos</h3>
+      <p class="hint">Edita solo las filas que necesites. Se enviarán únicamente los registros que modifiques.</p>
+      <table class="rows-table" id="e2_table">
+        <thead>
+          <tr><th>Oficina</th><th>OLT</th><th>Tarjeta</th><th>Puerto</th><th>Estado</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <button id="e2_btn_guardar" class="btn-primary">Guardar Cambios por Puerto</button>
     </div>
-    <div class="grid-2">
-      <div class="field">
-        <label>Fecha en que cerró el CRM</label>
-        <input id="z_fecha_crm" type="datetime-local" />
+
+    <!-- Escenario 3: Cerrado + Masivo -->
+    <div id="mc_escenario_3" class="hidden">
+      <hr />
+      <h3>Cierre Masivo</h3>
+      <p class="hint">Se cerrarán TODOS los registros asociados a este ticket.</p>
+      <div class="grid-2">
+        <div class="field">
+          <label>Fecha de Cierre CRM</label>
+          <input id="e3_fecha_crm" type="datetime-local" />
+        </div>
+        <div class="field">
+          <label>Fecha de Cierre CDA</label>
+          <input id="e3_fecha_cda" type="datetime-local" />
+        </div>
       </div>
-      <div class="field">
-        <label>Fecha en que cerró el CDA</label>
-        <input id="z_fecha_cda" type="datetime-local" />
-      </div>
+      <button id="e3_btn_guardar" class="btn-primary">Cerrar Todo el Ticket</button>
     </div>
-    <button id="btn_cerrar_ticket" class="btn-primary">Cerrar este Ticket</button>
-    <div id="cerrar_msg" class="msg"></div>
+
+    <!-- Escenario 4: Cerrado + Por Puertos -->
+    <div id="mc_escenario_4" class="hidden">
+      <hr />
+      <h3>Cierre por Puertos</h3>
+      <div class="grid-2">
+        <div class="field">
+          <label>Fecha de Cierre CRM</label>
+          <input id="e4_fecha_crm" type="datetime-local" />
+        </div>
+        <div class="field">
+          <label>Fecha de Cierre CDA</label>
+          <input id="e4_fecha_cda" type="datetime-local" />
+        </div>
+      </div>
+      <p class="hint">Marca solo los registros que se cerraron con esas fechas.</p>
+      <table class="rows-table" id="e4_table">
+        <thead>
+          <tr><th></th><th>Oficina</th><th>OLT</th><th>Tarjeta</th><th>Puerto</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <button id="e4_btn_guardar" class="btn-primary">Cerrar Puertos Marcados</button>
+    </div>
+
+    <div id="mc_msg" class="msg"></div>
   </section>
 
   <!-- ===================== CONSULTAR / LOG ===================== -->

@@ -114,6 +114,8 @@ CREATE TABLE IF NOT EXISTS ticket_puertos (
   no_clientes_reportaron INTEGER NOT NULL DEFAULT 0,
   nro_clientes_afectados INTEGER NOT NULL DEFAULT 0,
   estado_puerto TEXT NOT NULL DEFAULT 'EN CURSO (ASIGNADO)',
+  fecha_cierre_crm TEXT,
+  fecha_cierre_cda TEXT,
   creado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   actualizado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
