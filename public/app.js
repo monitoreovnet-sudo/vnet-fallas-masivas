@@ -739,6 +739,28 @@ document.getElementById("q_buscar_btn").addEventListener("click", async () => {
 });
 
 // ---------------------------------------------------------------
+// Rol del usuario actual: oculta pestañas que no le correspondan
+// ---------------------------------------------------------------
+let currentUser = null;
+
+async function loadCurrentUser() {
+  try {
+    currentUser = await apiGet("/me");
+  } catch (e) {
+    currentUser = { email: null, rol: "consultor", registrado: false };
+  }
+  if (currentUser.rol === "consultor") {
+    ["crear", "modificar"].forEach((tab) => {
+      document.querySelector(`.tab-btn[data-tab="${tab}"]`)?.classList.add("hidden");
+    });
+    if (document.querySelector(".tab-btn.active")?.classList.contains("hidden")) {
+      document.querySelector('.tab-btn[data-tab="consultar"]')?.click();
+    }
+  }
+}
+
+// ---------------------------------------------------------------
 // Arranque
 // ---------------------------------------------------------------
 loadLookups().catch((err) => console.error("Error cargando catálogos:", err));
+loadCurrentUser();
