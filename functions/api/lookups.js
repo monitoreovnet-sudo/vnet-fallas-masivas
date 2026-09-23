@@ -3,7 +3,7 @@ import { json } from "../_lib/helpers.js";
 export async function onRequestGet({ env }) {
   const db = env.DB;
 
-  const [oficinas, categorias, afectaciones, comentarios, unidades, estadosTicket, estadosPuerto] =
+  const [oficinas, categorias, afectaciones, comentarios, unidades, estadosTicket, estadosPuerto, olts] =
     await Promise.all([
       db.prepare("SELECT id, codigo, nombre, estado, localidad FROM oficinas WHERE activo = 1 ORDER BY nombre").all(),
       db.prepare("SELECT id, nombre FROM catalogo_categorias ORDER BY orden, nombre").all(),
@@ -12,6 +12,7 @@ export async function onRequestGet({ env }) {
       db.prepare("SELECT id, nombre FROM catalogo_unidades_resolutorias ORDER BY orden, nombre").all(),
       db.prepare("SELECT id, nombre FROM catalogo_estados_ticket ORDER BY orden, nombre").all(),
       db.prepare("SELECT id, nombre FROM catalogo_estados_puerto ORDER BY orden, nombre").all(),
+      db.prepare("SELECT id, codigo FROM olts WHERE activo = 1 ORDER BY codigo").all(),
     ]);
 
   return json({
@@ -22,6 +23,7 @@ export async function onRequestGet({ env }) {
     unidades_resolutorias: unidades.results,
     estados_ticket: estadosTicket.results,
     estados_puerto: estadosPuerto.results,
+    olts: olts.results,
   });
 }
 

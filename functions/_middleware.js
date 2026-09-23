@@ -15,6 +15,12 @@ export async function onRequest(context) {
   try {
     return await next();
   } catch (err) {
+    if (err && typeof err.status === "number" && err.body) {
+      return new Response(JSON.stringify(err.body), {
+        status: err.status,
+        headers: { "content-type": "application/json;charset=UTF-8" },
+      });
+    }
     return new Response(
       JSON.stringify({ error: "Error interno", detalle: String(err && err.message ? err.message : err) }),
       { status: 500, headers: { "content-type": "application/json;charset=UTF-8" } }

@@ -18,6 +18,7 @@
     <button class="tab-btn active" data-tab="crear">Crear Ticket</button>
     <button class="tab-btn" data-tab="modificar">Modificar / Cerrar Ticket</button>
     <button class="tab-btn" data-tab="consultar">Consultar / Log</button>
+    <button class="tab-btn hidden" data-tab="admin" id="nav_admin">Administración</button>
   </nav>
 
   <main id="app">
@@ -206,15 +207,100 @@
 
   <!-- ===================== CONSULTAR / LOG ===================== -->
   <section id="tab-consultar" class="tab-panel">
-    <h2>Consultar Ticket y Log de Cambios</h2>
-    <div class="field">
-      <label>Ingreso del ticket a buscar</label>
-      <div class="search-row">
-        <input id="q_buscar" placeholder="Ingrese el número de ticket" />
-        <button id="q_buscar_btn" class="btn-secondary" type="button">Buscar</button>
+    <h2>Consultar / Log</h2>
+
+    <div id="cl_vista_tabla">
+      <div id="cl_filtros" class="filtros-grid">
+      <div class="field"><label>Ticket CMR-COR</label><input id="cl_ticket_cmr" inputmode="numeric" placeholder="Número" /></div>
+      <div class="field"><label>Tickets Vinculados</label><input id="cl_tickets_vinculados" inputmode="numeric" placeholder="Número" /></div>
+
+      <div class="field"><label>Día Apert. CMR</label><select id="cl_dia_apertura"></select></div>
+      <div class="field"><label>Mes Apert. CMR</label><select id="cl_mes_apertura"></select></div>
+      <div class="field"><label>Año Apert. CMR</label><select id="cl_anio_apertura"></select></div>
+
+      <div class="field"><label>Día Cierre CMR</label><select id="cl_dia_cierre"></select></div>
+      <div class="field"><label>Mes Cierre CMR</label><select id="cl_mes_cierre"></select></div>
+      <div class="field"><label>Año Cierre CMR</label><select id="cl_anio_cierre"></select></div>
+
+      <div class="field"><label>Categoría de la Afectación</label><select id="cl_categoria"></select></div>
+      <div class="field"><label>Afectación</label><select id="cl_afectacion"></select></div>
+      <div class="field"><label>Grupo Horario</label><select id="cl_grupo_horario"></select></div>
+      <div class="field"><label>Semáforo</label><select id="cl_semaforo"></select></div>
+      <div class="field"><label>Estado del Ticket</label><select id="cl_estado"></select></div>
+      <div class="field"><label>Unidad Resolutoria</label><select id="cl_unidad"></select></div>
+      <div class="field"><label>Oficina</label><select id="cl_oficina"></select></div>
+      <div class="field"><label>OLT</label><select id="cl_olt"></select></div>
+
+      <div class="field field-btn"><button id="cl_btn_filtrar" class="btn-primary" type="button">Filtrar</button></div>
+    </div>
+
+    <div class="table-scroll">
+      <table class="rows-table" id="cl_table">
+        <thead>
+          <tr>
+            <th>Ticket</th><th>Vinculados</th><th>Apert. CDA</th><th>Apert. CMR</th><th>Estado</th>
+            <th>Unidad Res.</th><th>Categoría</th><th>Afectación</th><th>Comentario</th><th>Descripción</th>
+            <th>Nro Afect.</th><th>Nro Report.</th><th>Oficina</th><th>OLT</th><th>Sector</th>
+            <th>Edificio</th><th>Tarjeta</th><th>Puerto</th><th>Semáforo</th><th>Tiempo Cierre (h)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="hint" id="cl_contador"></p>
+    </div>
+
+    <button id="q_btn_volver" class="btn-secondary hidden" type="button">← Volver a la tabla</button>
+    <div id="q_resultado" class="hidden"></div>
+  </section>
+
+  <!-- ===================== ADMINISTRACIÓN (solo administrador) ===================== -->
+  <section id="tab-admin" class="tab-panel">
+    <h2>Administración de Usuarios</h2>
+
+    <div class="grid-3">
+      <div class="field">
+        <label>Correo</label>
+        <input id="adm_email" placeholder="nombre@vnet.com.ve" />
+      </div>
+      <div class="field">
+        <label>Nombre</label>
+        <input id="adm_nombre" placeholder="Nombre completo" />
+      </div>
+      <div class="field">
+        <label>Rol</label>
+        <select id="adm_rol">
+          <option value="consultor">consultor</option>
+          <option value="supervisor">supervisor</option>
+          <option value="administrador">administrador</option>
+        </select>
       </div>
     </div>
-    <div id="q_resultado"></div>
+    <button id="adm_btn_crear" class="btn-primary">+ Agregar Usuario</button>
+    <div id="adm_msg" class="msg"></div>
+
+    <table class="rows-table" id="adm_table">
+      <thead>
+        <tr><th>Correo</th><th>Nombre</th><th>Rol</th><th>Activo</th><th></th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <hr />
+    <h2>Catálogos</h2>
+    <div class="field">
+      <label>Catálogo a editar</label>
+      <select id="cat_select"></select>
+    </div>
+
+    <div id="cat_add_row" class="grid-6"></div>
+    <button id="cat_btn_agregar" class="btn-primary">+ Agregar</button>
+    <div id="cat_msg" class="msg"></div>
+
+    <table class="rows-table" id="cat_table">
+      <thead><tr id="cat_thead_row"></tr></thead>
+      <tbody></tbody>
+    </table>
   </section>
 
   </main>

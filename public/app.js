@@ -88,6 +88,8 @@ async function loadLookups() {
   fillSelect(document.getElementById("mc_estado"), LOOKUPS.estados_ticket, { valueKey: "nombre" });
 
   actualizarVisibilidadOficinas();
+  initFiltrosConsulta();
+  cargarConsulta();
 }
 
 document.getElementById("c_categoria").addEventListener("change", (e) => {
@@ -677,15 +679,18 @@ document.getElementById("e4_btn_guardar").addEventListener("click", async () => 
 // ---------------------------------------------------------------
 // CONSULTAR / LOG
 // ---------------------------------------------------------------
-document.getElementById("q_buscar_btn").addEventListener("click", async () => {
+async function mostrarDetalleTicket(cmr) {
+  document.getElementById("cl_vista_tabla").classList.add("hidden");
+  document.getElementById("q_btn_volver").classList.remove("hidden");
   const cont = document.getElementById("q_resultado");
-  const cmr = document.getElementById("q_buscar").value.trim();
-  cont.innerHTML = "";
+  cont.classList.remove("hidden");
+  cont.innerHTML = "Cargando...";
   try {
     const [detalle, logData] = await Promise.all([
       apiGet(`/tickets/${encodeURIComponent(cmr)}`),
       apiGet(`/tickets/${encodeURIComponent(cmr)}/log`),
     ]);
+    cont.innerHTML = "";
     const t = detalle.ticket;
     const card = document.createElement("div");
     card.className = "ticket-card";
@@ -736,6 +741,106 @@ document.getElementById("q_buscar_btn").addEventListener("click", async () => {
   } catch (err) {
     cont.innerHTML = `<div class="msg error">${err.message}</div>`;
   }
+}
+
+// --- Filtros y tabla principal ---
+const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+function llenarSelectSimple(id, opciones, placeholder) {
+  const el = document.getElementById(id);
+  el.innerHTML = `<option value="">${placeholder}</option>` + opciones.map((o) => `<option value="${o.value}">${o.label}</option>`).join("");
+}
+
+function initFiltrosConsulta() {
+  llenarSelectSimple("cl_dia_apertura", Array.from({length:31},(_,i)=>({value:i+1,label:i+1})), "Día");
+  llenarSelectSimple("cl_dia_cierre", Array.from({length:31},(_,i)=>({value:i+1,label:i+1})), "Día");
+  llenarSelectSimple("cl_mes_apertura", MESES.map((m,i)=>({value:i+1,label:m})), "Mes");
+  llenarSelectSimple("cl_mes_cierre", MESES.map((m,i)=>({value:i+1,label:m})), "Mes");
+  const anioActual = new Date().getFullYear();
+  const anios = Array.from({length:6},(_,i)=>({value:anioActual-4+i,label:anioActual-4+i}));
+  llenarSelectSimple("cl_anio_apertura", anios, "Año");
+  llenarSelectSimple("cl_anio_cierre", anios, "Año");
+
+  llenarSelectSimple("cl_categoria", LOOKUPS.categorias.map((c)=>({value:c.nombre,label:c.nombre})), "Todas");
+  llenarSelectSimple("cl_afectacion", LOOKUPS.afectaciones.map((a)=>({value:a.nombre,label:a.nombre})), "Todas");
+  llenarSelectSimple("cl_grupo_horario", ["MAÑANA","TARDE","NOCHE"].map((g)=>({value:g,label:g})), "Todos");
+  llenarSelectSimple("cl_semaforo", ["VERDE","AMARILLO","NARANJA","ROJO"].map((s)=>({value:s,label:s})), "Todos");
+  llenarSelectSimple("cl_unidad", LOOKUPS.unidades_resolutorias.map((u)=>({value:u.nombre,label:u.nombre})), "Todas");
+  llenarSelectSimple("cl_oficina", LOOKUPS.oficinas.map((o)=>({value:o.id,label:o.nombre})), "Todas");
+  llenarSelectSimple("cl_olt", LOOKUPS.olts.map((o)=>({value:o.codigo,label:o.codigo})), "Todos");
+
+  const estadoEl = document.getElementById("cl_estado");
+  estadoEl.innerHTML = `<option value="">Todos</option><option value="__ABIERTOS__" selected>Distinto de Cerrado</option>` +
+    LOOKUPS.estados_ticket.map((e)=>`<option value="${e.nombre}">${e.nombre}</option>`).join("");
+}
+
+function construirQueryConsulta() {
+  const params = new URLSearchParams();
+  const campos = {
+    ticket_cmr: "cl_ticket_cmr", tickets_vinculados: "cl_tickets_vinculados",
+    dia_apertura: "cl_dia_apertura", mes_apertura: "cl_mes_apertura", anio_apertura: "cl_anio_apertura",
+    dia_cierre: "cl_dia_cierre", mes_cierre: "cl_mes_cierre", anio_cierre: "cl_anio_cierre",
+    categoria_afectacion: "cl_categoria", afectacion: "cl_afectacion",
+    grupo_horario: "cl_grupo_horario", semaforo: "cl_semaforo",
+    estado_ticket: "cl_estado", unidad_resolutoria: "cl_unidad",
+    oficina_id: "cl_oficina", olt: "cl_olt",
+  };
+  for (const [param, id] of Object.entries(campos)) {
+    const v = document.getElementById(id).value;
+    if (v) params.set(param, v);
+  }
+  return params.toString();
+}
+
+async function cargarConsulta() {
+  const tbody = document.querySelector("#cl_table tbody");
+  const contador = document.getElementById("cl_contador");
+  tbody.innerHTML = `<tr><td colspan="20">Cargando...</td></tr>`;
+  try {
+    const data = await apiGet(`/consulta?${construirQueryConsulta()}`);
+    tbody.innerHTML = "";
+    data.filas.forEach((f) => {
+      const tr = document.createElement("tr");
+      tr.className = f.semaforo ? `sem-${f.semaforo}` : "";
+      tr.style.cursor = "pointer";
+      tr.title = "Doble click para ver el log";
+      tr.innerHTML = `
+        <td><strong>${formatearTicket(f.ticket_cmr)}</strong></td>
+        <td>${f.tickets_vinculados ? formatearTicket(f.tickets_vinculados) : "-"}</td>
+        <td>${f.fecha_apertura_cda || "-"}</td>
+        <td>${f.fecha_apertura_cmr || "-"}</td>
+        <td>${f.estado_ticket}</td>
+        <td>${f.unidad_resolutoria || "-"}</td>
+        <td>${f.categoria_afectacion || "-"}</td>
+        <td>${f.afectacion || "-"}</td>
+        <td>${f.comentario || "-"}</td>
+        <td>${f.descripcion || "-"}</td>
+        <td>${f.nro_clientes_afectados}</td>
+        <td>${f.no_clientes_reportaron}</td>
+        <td>${f.oficina_nombre || "-"}</td>
+        <td>${f.olt}</td>
+        <td>${f.sector}</td>
+        <td>${f.edificio}</td>
+        <td>${f.tarjeta}</td>
+        <td>${f.puerto}</td>
+        <td>${f.semaforo || "-"}</td>
+        <td>${f.tiempo_cierre_horas !== null ? f.tiempo_cierre_horas.toFixed(1) : "-"}</td>
+      `;
+      tr.addEventListener("dblclick", () => mostrarDetalleTicket(f.ticket_cmr));
+      tbody.appendChild(tr);
+    });
+    contador.textContent = `${data.filas.length} registro(s) encontrados.`;
+  } catch (err) {
+    tbody.innerHTML = `<tr><td colspan="20" class="msg error">${err.message}</td></tr>`;
+  }
+}
+
+document.getElementById("cl_btn_filtrar").addEventListener("click", cargarConsulta);
+
+document.getElementById("q_btn_volver").addEventListener("click", () => {
+  document.getElementById("q_resultado").classList.add("hidden");
+  document.getElementById("q_btn_volver").classList.add("hidden");
+  document.getElementById("cl_vista_tabla").classList.remove("hidden");
 });
 
 // ---------------------------------------------------------------
@@ -757,6 +862,192 @@ async function loadCurrentUser() {
       document.querySelector('.tab-btn[data-tab="consultar"]')?.click();
     }
   }
+  if (currentUser.rol === "administrador") {
+    document.getElementById("nav_admin").classList.remove("hidden");
+    cargarUsuarios();
+    initCatalogosUI();
+  }
+}
+
+// ---------------------------------------------------------------
+// ADMINISTRACIÓN: CRUD de usuarios
+// ---------------------------------------------------------------
+async function cargarUsuarios() {
+  const tbody = document.querySelector("#adm_table tbody");
+  try {
+    const data = await apiGet("/admin/usuarios");
+    tbody.innerHTML = "";
+    data.usuarios.forEach((u) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${u.email}</td>
+        <td><input class="adm-nombre" value="${u.nombre || ""}" /></td>
+        <td>
+          <select class="adm-rol-sel">
+            <option value="consultor" ${u.rol === "consultor" ? "selected" : ""}>consultor</option>
+            <option value="supervisor" ${u.rol === "supervisor" ? "selected" : ""}>supervisor</option>
+            <option value="administrador" ${u.rol === "administrador" ? "selected" : ""}>administrador</option>
+          </select>
+        </td>
+        <td><input type="checkbox" class="adm-activo" ${u.activo ? "checked" : ""} /></td>
+        <td>
+          <button type="button" class="btn-secondary adm-guardar">Guardar</button>
+          <button type="button" class="btn-secondary adm-eliminar">Eliminar</button>
+        </td>
+      `;
+      tr.querySelector(".adm-guardar").addEventListener("click", async () => {
+        try {
+          await apiSend(`/admin/usuarios/${u.id}`, "PATCH", {
+            nombre: tr.querySelector(".adm-nombre").value,
+            rol: tr.querySelector(".adm-rol-sel").value,
+            activo: tr.querySelector(".adm-activo").checked,
+          });
+          showMsg(document.getElementById("adm_msg"), `Usuario ${u.email} actualizado.`, true);
+        } catch (err) {
+          showMsg(document.getElementById("adm_msg"), err.message, false);
+        }
+      });
+      tr.querySelector(".adm-eliminar").addEventListener("click", async () => {
+        if (!confirm(`¿Eliminar a ${u.email}?`)) return;
+        try {
+          await apiSend(`/admin/usuarios/${u.id}`, "DELETE");
+          cargarUsuarios();
+        } catch (err) {
+          showMsg(document.getElementById("adm_msg"), err.message, false);
+        }
+      });
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    showMsg(document.getElementById("adm_msg"), err.message, false);
+  }
+}
+
+document.getElementById("adm_btn_crear").addEventListener("click", async () => {
+  const msg = document.getElementById("adm_msg");
+  try {
+    await apiSend("/admin/usuarios", "POST", {
+      email: document.getElementById("adm_email").value.trim(),
+      nombre: document.getElementById("adm_nombre").value.trim(),
+      rol: document.getElementById("adm_rol").value,
+    });
+    document.getElementById("adm_email").value = "";
+    document.getElementById("adm_nombre").value = "";
+    showMsg(msg, "Usuario agregado correctamente.", true);
+    cargarUsuarios();
+  } catch (err) {
+    showMsg(msg, err.message, false);
+  }
+});
+
+// ---------------------------------------------------------------
+// ADMINISTRACIÓN: editor genérico de catálogos
+// ---------------------------------------------------------------
+const CATALOGOS_UI = {
+  oficinas: { label: "Oficinas", campos: [
+    { key: "codigo", tipo: "text" }, { key: "nombre", tipo: "text" },
+    { key: "estado", tipo: "text" }, { key: "localidad", tipo: "text" }, { key: "activo", tipo: "bool" },
+  ]},
+  olts: { label: "OLTs", campos: [
+    { key: "oficina_id", tipo: "number" }, { key: "codigo", tipo: "text" },
+    { key: "num_tarjetas", tipo: "number" }, { key: "puertos_por_tarjeta", tipo: "number" }, { key: "activo", tipo: "bool" },
+  ]},
+  catalogo_categorias: { label: "Categorías de Afectación", campos: [
+    { key: "nombre", tipo: "text" }, { key: "orden", tipo: "number" },
+  ]},
+  catalogo_afectaciones: { label: "Afectaciones", campos: [
+    { key: "categoria_id", tipo: "number" }, { key: "nombre", tipo: "text" }, { key: "orden", tipo: "number" },
+  ]},
+  catalogo_comentarios: { label: "Comentarios", campos: [
+    { key: "nombre", tipo: "text" }, { key: "orden", tipo: "number" },
+  ]},
+  catalogo_unidades_resolutorias: { label: "Unidades Resolutorias", campos: [
+    { key: "nombre", tipo: "text" }, { key: "orden", tipo: "number" },
+  ]},
+  catalogo_estados_ticket: { label: "Estados de Ticket", campos: [
+    { key: "nombre", tipo: "text" }, { key: "orden", tipo: "number" },
+  ]},
+  catalogo_estados_puerto: { label: "Estados de Puerto", campos: [
+    { key: "nombre", tipo: "text" }, { key: "orden", tipo: "number" },
+  ]},
+};
+
+function catInputHtml(campo, valor) {
+  if (campo.tipo === "bool") {
+    return `<input type="checkbox" class="cat-f" data-key="${campo.key}" ${valor ? "checked" : ""} />`;
+  }
+  if (campo.tipo === "number") {
+    return `<input type="number" class="cat-f" data-key="${campo.key}" value="${valor ?? ""}" />`;
+  }
+  return `<input type="text" class="cat-f" data-key="${campo.key}" value="${valor ?? ""}" />`;
+}
+
+function catLeerValores(fila) {
+  const valores = {};
+  fila.querySelectorAll(".cat-f").forEach((el) => {
+    valores[el.dataset.key] = el.type === "checkbox" ? (el.checked ? 1 : 0) : el.value;
+  });
+  return valores;
+}
+
+async function cargarCatalogo(tabla) {
+  const config = CATALOGOS_UI[tabla];
+  const thead = document.getElementById("cat_thead_row");
+  const addRow = document.getElementById("cat_add_row");
+  thead.innerHTML = config.campos.map((c) => `<th>${c.key}</th>`).join("") + "<th></th>";
+  addRow.innerHTML = config.campos.map((c) => `<div class="field"><label>${c.key}</label>${catInputHtml(c, "")}</div>`).join("");
+
+  const tbody = document.querySelector("#cat_table tbody");
+  tbody.innerHTML = "";
+  try {
+    const data = await apiGet(`/admin/catalogos/${tabla}`);
+    data.filas.forEach((fila) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = config.campos.map((c) => `<td>${catInputHtml(c, fila[c.key])}</td>`).join("") +
+        `<td><button type="button" class="btn-secondary cat-guardar">Guardar</button>
+         <button type="button" class="btn-secondary cat-eliminar">Eliminar</button></td>`;
+      tr.querySelector(".cat-guardar").addEventListener("click", async () => {
+        try {
+          await apiSend(`/admin/catalogos/${tabla}/${fila.id}`, "PATCH", catLeerValores(tr));
+          showMsg(document.getElementById("cat_msg"), "Guardado.", true);
+        } catch (err) {
+          showMsg(document.getElementById("cat_msg"), err.message, false);
+        }
+      });
+      tr.querySelector(".cat-eliminar").addEventListener("click", async () => {
+        if (!confirm("¿Eliminar este registro?")) return;
+        try {
+          await apiSend(`/admin/catalogos/${tabla}/${fila.id}`, "DELETE");
+          cargarCatalogo(tabla);
+        } catch (err) {
+          showMsg(document.getElementById("cat_msg"), err.message, false);
+        }
+      });
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    showMsg(document.getElementById("cat_msg"), err.message, false);
+  }
+}
+
+document.getElementById("cat_select").addEventListener("change", (e) => cargarCatalogo(e.target.value));
+
+document.getElementById("cat_btn_agregar").addEventListener("click", async () => {
+  const tabla = document.getElementById("cat_select").value;
+  const msg = document.getElementById("cat_msg");
+  try {
+    await apiSend(`/admin/catalogos/${tabla}`, "POST", catLeerValores(document.getElementById("cat_add_row")));
+    showMsg(msg, "Agregado correctamente.", true);
+    cargarCatalogo(tabla);
+  } catch (err) {
+    showMsg(msg, err.message, false);
+  }
+});
+
+function initCatalogosUI() {
+  const select = document.getElementById("cat_select");
+  select.innerHTML = Object.entries(CATALOGOS_UI).map(([key, c]) => `<option value="${key}">${c.label}</option>`).join("");
+  cargarCatalogo(select.value);
 }
 
 // ---------------------------------------------------------------
