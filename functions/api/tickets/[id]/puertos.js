@@ -2,11 +2,11 @@ import { json, badRequest, notFound, currentUserEmail, logCambio, nowIso } from 
 
 // PATCH /api/tickets/:id/puertos
 // Body: { puertos: [{ id, oficina_id, olt, tarjeta, puerto, estado_puerto,
-//                      fecha_cierre_cmr, fecha_cierre_cda }, ...] }
+//                      fecha_cierre_cmr, fecha_cierre_cda,
+//                      sector, edificio, no_clientes_reportaron, nro_clientes_afectados }, ...] }
 // Único endpoint autorizado a tocar estos campos a nivel de puerto individual.
-// Cubre dos escenarios de la pantalla unificada "Modificar / Cerrar Ticket":
-//  - Modificación por Puertos: oficina_id, olt, tarjeta, puerto, estado_puerto
-//  - Cierre por Puertos: estado_puerto = 'CERRADO' + fecha_cierre_cmr/cda
+// Cubre tres escenarios: Modificación por Puertos, Cierre por Puertos, y el
+// modo "Edición" de Consultar/Log (todos los campos del puerto).
 const CAMPOS_PERMITIDOS = [
   "oficina_id",
   "olt",
@@ -15,6 +15,10 @@ const CAMPOS_PERMITIDOS = [
   "estado_puerto",
   "fecha_cierre_cmr",
   "fecha_cierre_cda",
+  "sector",
+  "edificio",
+  "no_clientes_reportaron",
+  "nro_clientes_afectados",
 ];
 
 export async function onRequestPatch({ request, env, params }) {

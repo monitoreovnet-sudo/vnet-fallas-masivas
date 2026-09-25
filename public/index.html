@@ -17,6 +17,7 @@
   <nav class="tabs">
     <button class="tab-btn active" data-tab="crear">Crear Ticket</button>
     <button class="tab-btn" data-tab="modificar">Modificar / Cerrar Ticket</button>
+    <button class="tab-btn" data-tab="pizarra">Pizarra de Monitoreo</button>
     <button class="tab-btn" data-tab="consultar">Consultar / Log</button>
     <button class="tab-btn hidden" data-tab="admin" id="nav_admin">Administración</button>
   </nav>
@@ -206,6 +207,59 @@
   </section>
 
   <!-- ===================== CONSULTAR / LOG ===================== -->
+  <!-- ===================== PIZARRA DE MONITOREO ===================== -->
+  <section id="tab-pizarra" class="tab-panel">
+    <div class="pizarra-header">
+      <div class="pizarra-kpis">
+        <div class="pizarra-kpi"><div class="valor" id="piz_kpi_curso">-</div><div class="label">En Curso Asignado</div></div>
+        <div class="pizarra-kpi"><div class="valor" id="piz_kpi_observacion">-</div><div class="label">En Observación</div></div>
+        <div class="pizarra-kpi"><div class="valor" id="piz_kpi_ventana">-</div><div class="label">Ventana de Mantenimiento</div></div>
+        <div class="pizarra-kpi"><div class="valor" id="piz_kpi_cerrados">-</div><div class="label">Cerrados (30 días)</div></div>
+        <div class="pizarra-kpi"><div class="valor" id="piz_kpi_total">-</div><div class="label">Total Abiertos</div></div>
+      </div>
+      <button id="piz_btn_actualizar" class="btn-secondary" type="button">⟳ Actualizar</button>
+    </div>
+
+    <div id="piz_filtros" class="filtros-grid">
+      <div class="field"><label>N° Ticket</label><input id="piz_ticket" inputmode="numeric" placeholder="Número" /></div>
+      <div class="field"><label>Mes</label><select id="piz_mes"></select></div>
+      <div class="field"><label>Grupo Horario</label><select id="piz_grupo_horario"></select></div>
+      <div class="field"><label>Estado del Ticket</label><select id="piz_estado_ticket"></select></div>
+      <div class="field"><label>Afectación</label><select id="piz_afectacion"></select></div>
+      <div class="field"><label>Tipo Falla</label><select id="piz_tipo_falla"></select></div>
+      <div class="field"><label>Unidad Resolutoria</label><select id="piz_unidad"></select></div>
+      <div class="field"><label>Oficina</label><select id="piz_oficina"></select></div>
+      <div class="field"><label>Estado</label><select id="piz_region"></select></div>
+      <div class="field"><label>Semáforo</label><select id="piz_semaforo"></select></div>
+    </div>
+
+    <div id="piz_semaforo_bar" class="semaforo-bar"></div>
+
+    <div class="charts-row">
+      <div class="chart-box">
+        <h4>Fallas únicas por Unidad Resolutoria</h4>
+        <div id="piz_chart_unidad" class="treemap-row"></div>
+      </div>
+      <div class="chart-box">
+        <h4>Fallas únicas por Oficina</h4>
+        <div id="piz_chart_oficina" class="bar-chart"></div>
+      </div>
+    </div>
+
+    <div class="table-scroll" style="max-height:440px; overflow-y:auto;">
+      <table class="rows-table" id="piz_table">
+        <thead>
+          <tr>
+            <th>Fila</th><th>Title</th><th>Oficina</th><th>OLT</th><th>Tarjeta</th><th>Puerto</th>
+            <th>Apertura CMR</th><th>Tiempo Abierto CMR</th><th>Estado del Ticket</th><th>Afectación</th>
+            <th>N° Cltes Afectados</th><th>N° Cltes Reportaron</th><th>Unidad Resolutoria</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <section id="tab-consultar" class="tab-panel">
     <h2>Consultar / Log</h2>
 

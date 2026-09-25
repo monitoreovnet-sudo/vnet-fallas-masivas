@@ -29,7 +29,7 @@ function partesFecha(fechaIso) {
 // dia_apertura, mes_apertura, anio_apertura, dia_cierre, mes_cierre, anio_cierre,
 // categoria_afectacion, afectacion, grupo_horario, semaforo, estado_ticket
 // (valor especial "__ABIERTOS__" = distinto de CERRADO), unidad_resolutoria,
-// oficina_id, olt.
+// oficina_id, region (Estado/provincia de la oficina), olt.
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const p = (nombre) => url.searchParams.get(nombre) || "";
@@ -40,7 +40,7 @@ export async function onRequestGet({ request, env }) {
       t.fecha_apertura_cda, t.fecha_apertura_cmr,
       t.fecha_solucion_cmr, t.estado_ticket, t.unidad_resolutoria,
       t.categoria_afectacion, t.afectacion, t.comentario, t.descripcion, t.avance_cmr,
-      p.id AS puerto_id, p.oficina_id, o.nombre AS oficina_nombre,
+      p.id AS puerto_id, p.oficina_id, o.nombre AS oficina_nombre, o.estado AS region, o.localidad,
       p.olt, p.sector, p.edificio, p.tarjeta, p.puerto,
       p.no_clientes_reportaron, p.nro_clientes_afectados, p.estado_puerto
     FROM ticket_puertos p
@@ -56,6 +56,7 @@ export async function onRequestGet({ request, env }) {
   if (p("afectacion")) { sql += " AND t.afectacion = ?"; binds.push(p("afectacion")); }
   if (p("unidad_resolutoria")) { sql += " AND t.unidad_resolutoria = ?"; binds.push(p("unidad_resolutoria")); }
   if (p("oficina_id")) { sql += " AND p.oficina_id = ?"; binds.push(p("oficina_id")); }
+  if (p("region")) { sql += " AND o.estado = ?"; binds.push(p("region")); }
   if (p("olt")) { sql += " AND p.olt = ?"; binds.push(p("olt")); }
 
   const estadoTicket = p("estado_ticket");

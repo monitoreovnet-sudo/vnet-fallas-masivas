@@ -68,6 +68,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "pizarra" && pizarraDatos.length === 0) cargarPizarra();
   });
 });
 
@@ -89,6 +90,7 @@ async function loadLookups() {
 
   actualizarVisibilidadOficinas();
   initFiltrosConsulta();
+  initFiltrosPizarra();
   cargarConsulta();
 }
 
@@ -679,6 +681,9 @@ document.getElementById("e4_btn_guardar").addEventListener("click", async () => 
 // ---------------------------------------------------------------
 // CONSULTAR / LOG
 // ---------------------------------------------------------------
+let detTicket = null;
+let detPuertos = [];
+
 async function mostrarDetalleTicket(cmr) {
   document.getElementById("cl_vista_tabla").classList.add("hidden");
   document.getElementById("q_btn_volver").classList.remove("hidden");
@@ -690,58 +695,197 @@ async function mostrarDetalleTicket(cmr) {
       apiGet(`/tickets/${encodeURIComponent(cmr)}`),
       apiGet(`/tickets/${encodeURIComponent(cmr)}/log`),
     ]);
-    cont.innerHTML = "";
-    const t = detalle.ticket;
-    const card = document.createElement("div");
-    card.className = "ticket-card";
-    card.innerHTML = `
-      <h3>Ticket ${formatearTicket(t.ticket_cmr)} <span class="badge">${t.estado_ticket}</span></h3>
-      <div class="kv">
-        <div><span>Oficina:</span> ${t.oficina_nombre || "-"}</div>
-        <div><span>Unidad Resolutoria:</span> ${t.unidad_resolutoria || "-"}</div>
-        <div><span>Categoría:</span> ${t.categoria_afectacion || "-"}</div>
-        <div><span>Afectación:</span> ${t.afectacion || "-"}</div>
-        <div><span>Apertura CDA:</span> ${t.fecha_apertura_cda || "-"}</div>
-        <div><span>Apertura CMR:</span> ${t.fecha_apertura_cmr || "-"}</div>
-        <div><span>Solución CDA:</span> ${t.fecha_solucion_cda || "-"}</div>
-        <div><span>Solución CMR:</span> ${t.fecha_solucion_cmr || "-"}</div>
-      </div>
-      <p><strong>Descripción:</strong> ${t.descripcion || "-"}</p>
-      <p><strong>Avance del CMR:</strong> ${t.avance_cmr || "-"}</p>
-    `;
-    cont.appendChild(card);
-
-    const tbl = document.createElement("table");
-    tbl.className = "rows-table";
-    tbl.innerHTML = `
-      <thead><tr><th>OLT</th><th>Tarjeta</th><th>Puerto</th><th>Sector</th><th>Edificio</th>
-      <th>No. Reportaron</th><th>Nro. Afectados</th><th>Estado</th></tr></thead>
-      <tbody>${detalle.puertos.map((p) => `
-        <tr><td>${p.olt}</td><td>${p.tarjeta}</td><td>${p.puerto}</td><td>${p.sector}</td>
-        <td>${p.edificio}</td><td>${p.no_clientes_reportaron}</td><td>${p.nro_clientes_afectados}</td>
-        <td>${p.estado_puerto}</td></tr>`).join("")}
-      </tbody>
-    `;
-    cont.appendChild(tbl);
-
-    const logTitle = document.createElement("h3");
-    logTitle.textContent = "Log de cambios";
-    cont.appendChild(logTitle);
-
-    logData.log.forEach((l) => {
-      const div = document.createElement("div");
-      div.className = "log-entry";
-      const detalleCampo = l.ticket_puerto_id ? `[${l.olt} | ${l.tarjeta} | ${l.puerto}] ` : "";
-      div.innerHTML = `
-        <div>${detalleCampo}<strong>${l.campo}</strong>: ${l.valor_anterior ?? "-"} → ${l.valor_nuevo ?? "-"}</div>
-        <div class="meta">${l.tipo_cambio} · ${l.usuario_email} · ${l.fecha}</div>
-      `;
-      cont.appendChild(div);
-    });
+    detTicket = detalle.ticket;
+    detPuertos = detalle.puertos;
+    renderDetalle(false, logData.log);
   } catch (err) {
     cont.innerHTML = `<div class="msg error">${err.message}</div>`;
   }
 }
+
+function campoTexto(label, valor) {
+  return `<div><span>${label}:</span> ${valor || "-"}</div>`;
+}
+function campoInput(id, valor, tipo = "text") {
+  return `<input id="${id}" type="${tipo}" value="${valor ?? ""}" />`;
+}
+function campoSelect(id, opciones, valorActual) {
+  return `<select id="${id}"><option value="">-</option>${opciones
+    .map((o) => `<option value="${o}" ${o === valorActual ? "selected" : ""}>${o}</option>`).join("")}</select>`;
+}
+
+function renderDetalle(editable, log) {
+  const cont = document.getElementById("q_resultado");
+  cont.innerHTML = "";
+  const t = detTicket;
+
+  const card = document.createElement("div");
+  card.className = "ticket-card";
+
+  if (!editable) {
+    card.innerHTML = `
+      <div class="tree-header">
+        <h3>Ticket ${formatearTicket(t.ticket_cmr)} <span class="badge">${t.estado_ticket}</span></h3>
+        <label><input type="checkbox" id="det_edicion" /> Edición</label>
+      </div>
+      <div class="kv">
+        ${campoTexto("Vinculados", t.tickets_vinculados)}
+        ${campoTexto("Oficina", t.oficina_nombre)}
+        ${campoTexto("Unidad Resolutoria", t.unidad_resolutoria)}
+        ${campoTexto("Categoría", t.categoria_afectacion)}
+        ${campoTexto("Afectación", t.afectacion)}
+        ${campoTexto("Comentario", t.comentario)}
+        ${campoTexto("Apertura CDA", t.fecha_apertura_cda)}
+        ${campoTexto("Apertura CMR", t.fecha_apertura_cmr)}
+        ${campoTexto("Solución CDA", t.fecha_solucion_cda)}
+        ${campoTexto("Solución CMR", t.fecha_solucion_cmr)}
+      </div>
+      <p><strong>Descripción:</strong> ${t.descripcion || "-"}</p>
+      <p><strong>Avance del CMR:</strong> ${t.avance_cmr || "-"}</p>
+    `;
+  } else {
+    card.innerHTML = `
+      <div class="tree-header">
+        <h3>Ticket <span class="badge">EDITANDO</span></h3>
+        <label><input type="checkbox" id="det_edicion" checked /> Edición</label>
+      </div>
+      <div class="grid-3">
+        <div class="field"><label>Ticket CMR-COR</label>${campoInput("d_ticket_cmr", t.ticket_cmr)}</div>
+        <div class="field"><label>Tickets Vinculados</label>${campoInput("d_vinculados", t.tickets_vinculados)}</div>
+        <div class="field"><label>Estado del Ticket</label>${campoSelect("d_estado", LOOKUPS.estados_ticket.map(e=>e.nombre), t.estado_ticket)}</div>
+        <div class="field"><label>Unidad Resolutoria</label>${campoSelect("d_unidad", LOOKUPS.unidades_resolutorias.map(u=>u.nombre), t.unidad_resolutoria)}</div>
+        <div class="field"><label>Categoría de la Afectación</label>${campoSelect("d_categoria", LOOKUPS.categorias.map(c=>c.nombre), t.categoria_afectacion)}</div>
+        <div class="field"><label>Afectación</label>${campoSelect("d_afectacion", LOOKUPS.afectaciones.map(a=>a.nombre), t.afectacion)}</div>
+        <div class="field"><label>Comentario</label>${campoSelect("d_comentario", LOOKUPS.comentarios.map(c=>c.nombre), t.comentario)}</div>
+        <div class="field"><label>Apertura CDA</label>${campoInput("d_fecha_apertura_cda", toLocalInputValue(t.fecha_apertura_cda), "datetime-local")}</div>
+        <div class="field"><label>Apertura CMR</label>${campoInput("d_fecha_apertura_cmr", toLocalInputValue(t.fecha_apertura_cmr), "datetime-local")}</div>
+        <div class="field"><label>Solución CDA</label>${campoInput("d_fecha_solucion_cda", toLocalInputValue(t.fecha_solucion_cda), "datetime-local")}</div>
+        <div class="field"><label>Solución CMR</label>${campoInput("d_fecha_solucion_cmr", toLocalInputValue(t.fecha_solucion_cmr), "datetime-local")}</div>
+      </div>
+      <div class="field"><label>Descripción</label><textarea id="d_descripcion" rows="2">${t.descripcion || ""}</textarea></div>
+      <div class="field"><label>Avance del CMR</label><textarea id="d_avance" rows="2">${t.avance_cmr || ""}</textarea></div>
+    `;
+  }
+  cont.appendChild(card);
+
+  // --- Tabla de puertos ---
+  const estadosPuerto = LOOKUPS.estados_puerto.map((e) => e.nombre);
+  const tbl = document.createElement("table");
+  tbl.className = "rows-table";
+  tbl.innerHTML = `
+    <thead><tr><th>Oficina</th><th>OLT</th><th>Sector</th><th>Edificio</th><th>Tarjeta</th><th>Puerto</th>
+    <th>No. Reportaron</th><th>Nro. Afectados</th><th>Estado</th></tr></thead>
+    <tbody>${detPuertos.map((p, idx) => editable ? `
+      <tr>
+        <td>${campoSelect(`p_oficina_${idx}`, LOOKUPS.oficinas.map(o=>o.nombre), p.oficina_nombre)}</td>
+        <td>${campoInput(`p_olt_${idx}`, p.olt)}</td>
+        <td>${campoInput(`p_sector_${idx}`, p.sector)}</td>
+        <td>${campoInput(`p_edificio_${idx}`, p.edificio)}</td>
+        <td>${campoInput(`p_tarjeta_${idx}`, p.tarjeta)}</td>
+        <td>${campoInput(`p_puerto_${idx}`, p.puerto)}</td>
+        <td>${campoInput(`p_reportaron_${idx}`, p.no_clientes_reportaron, "number")}</td>
+        <td>${campoInput(`p_afectados_${idx}`, p.nro_clientes_afectados, "number")}</td>
+        <td>${campoSelect(`p_estado_${idx}`, estadosPuerto, p.estado_puerto)}</td>
+      </tr>` : `
+      <tr><td>${p.oficina_nombre || "-"}</td><td>${p.olt}</td><td>${p.sector}</td><td>${p.edificio}</td>
+      <td>${p.tarjeta}</td><td>${p.puerto}</td><td>${p.no_clientes_reportaron}</td>
+      <td>${p.nro_clientes_afectados}</td><td>${p.estado_puerto}</td></tr>`
+    ).join("")}</tbody>
+  `;
+  cont.appendChild(tbl);
+
+  if (editable) {
+    const btnGuardar = document.createElement("button");
+    btnGuardar.className = "btn-primary";
+    btnGuardar.textContent = "Guardar Cambios";
+    btnGuardar.addEventListener("click", guardarEdicionDetalle);
+    cont.appendChild(btnGuardar);
+    const msg = document.createElement("div");
+    msg.id = "det_msg";
+    msg.className = "msg";
+    cont.appendChild(msg);
+  }
+
+  // --- Log (siempre visible, no editable) ---
+  const logTitle = document.createElement("h3");
+  logTitle.textContent = "Log de cambios";
+  cont.appendChild(logTitle);
+  (log || []).forEach((l) => {
+    const div = document.createElement("div");
+    div.className = "log-entry";
+    const detalleCampo = l.ticket_puerto_id ? `[${l.olt} | ${l.tarjeta} | ${l.puerto}] ` : "";
+    div.innerHTML = `
+      <div>${detalleCampo}<strong>${l.campo}</strong>: ${l.valor_anterior ?? "-"} → ${l.valor_nuevo ?? "-"}</div>
+      <div class="meta">${l.tipo_cambio} · ${l.usuario_email} · ${l.fecha}</div>
+    `;
+    cont.appendChild(div);
+  });
+
+  document.getElementById("det_edicion").addEventListener("change", (e) => {
+    renderDetalle(e.target.checked, log);
+  });
+}
+
+async function guardarEdicionDetalle() {
+  const msg = document.getElementById("det_msg");
+  const t = detTicket;
+  try {
+    const cambiosTicket = {};
+    const val = (id) => document.getElementById(id).value;
+    const posibles = {
+      ticket_cmr: "d_ticket_cmr", tickets_vinculados: "d_vinculados",
+      estado_ticket: "d_estado", unidad_resolutoria: "d_unidad",
+      categoria_afectacion: "d_categoria", afectacion: "d_afectacion", comentario: "d_comentario",
+      fecha_apertura_cda: "d_fecha_apertura_cda", fecha_apertura_cmr: "d_fecha_apertura_cmr",
+      fecha_solucion_cda: "d_fecha_solucion_cda", fecha_solucion_cmr: "d_fecha_solucion_cmr",
+      descripcion: "d_descripcion", avance_cmr: "d_avance",
+    };
+    for (const [campo, id] of Object.entries(posibles)) {
+      const nuevo = val(id);
+      const anterior = t[campo] ?? "";
+      if (String(nuevo) !== String(anterior) && !(nuevo === "" && anterior === null)) {
+        cambiosTicket[campo] = nuevo;
+      }
+    }
+    if (Object.keys(cambiosTicket).length > 0) {
+      await apiSend(`/tickets/${t.id}/editar`, "PATCH", cambiosTicket);
+    }
+
+    const cambiosPuertos = [];
+    detPuertos.forEach((p, idx) => {
+      const oficinaNombre = document.getElementById(`p_oficina_${idx}`).value;
+      const oficina = LOOKUPS.oficinas.find((o) => o.nombre === oficinaNombre);
+      const cambio = { id: p.id };
+      let hayCambio = false;
+      const check = (campo, nuevoVal, anteriorVal) => {
+        if (String(nuevoVal ?? "") !== String(anteriorVal ?? "")) { cambio[campo] = nuevoVal; hayCambio = true; }
+      };
+      check("oficina_id", oficina ? oficina.id : null, p.oficina_id);
+      check("olt", document.getElementById(`p_olt_${idx}`).value, p.olt);
+      check("sector", document.getElementById(`p_sector_${idx}`).value, p.sector);
+      check("edificio", document.getElementById(`p_edificio_${idx}`).value, p.edificio);
+      check("tarjeta", document.getElementById(`p_tarjeta_${idx}`).value, p.tarjeta);
+      check("puerto", document.getElementById(`p_puerto_${idx}`).value, p.puerto);
+      check("no_clientes_reportaron", Number(document.getElementById(`p_reportaron_${idx}`).value), p.no_clientes_reportaron);
+      check("nro_clientes_afectados", Number(document.getElementById(`p_afectados_${idx}`).value), p.nro_clientes_afectados);
+      check("estado_puerto", document.getElementById(`p_estado_${idx}`).value, p.estado_puerto);
+      if (hayCambio) cambiosPuertos.push(cambio);
+    });
+    if (cambiosPuertos.length > 0) {
+      await apiSend(`/tickets/${t.id}/puertos`, "PATCH", { puertos: cambiosPuertos });
+    }
+
+    if (Object.keys(cambiosTicket).length === 0 && cambiosPuertos.length === 0) {
+      showMsg(msg, "No hay cambios para guardar.", false);
+      return;
+    }
+    showMsg(msg, "Guardado correctamente.", true);
+    mostrarDetalleTicket(document.getElementById("d_ticket_cmr") ? document.getElementById("d_ticket_cmr").value : t.ticket_cmr);
+  } catch (err) {
+    showMsg(msg, err.message, false);
+  }
+}
+
 
 // --- Filtros y tabla principal ---
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
@@ -1049,6 +1193,173 @@ function initCatalogosUI() {
   select.innerHTML = Object.entries(CATALOGOS_UI).map(([key, c]) => `<option value="${key}">${c.label}</option>`).join("");
   cargarCatalogo(select.value);
 }
+
+// ---------------------------------------------------------------
+// PIZARRA DE MONITOREO
+// ---------------------------------------------------------------
+let pizarraDatos = [];
+
+function initFiltrosPizarra() {
+  llenarSelectSimple("piz_mes", MESES.map((m,i)=>({value:i+1,label:m})), "Todos");
+  llenarSelectSimple("piz_grupo_horario", ["MAÑANA","TARDE","NOCHE"].map((g)=>({value:g,label:g})), "Todos");
+  llenarSelectSimple("piz_estado_ticket", LOOKUPS.estados_ticket.map((e)=>({value:e.nombre,label:e.nombre})), "Todos");
+  llenarSelectSimple("piz_afectacion", LOOKUPS.afectaciones.map((a)=>({value:a.nombre,label:a.nombre})), "Todas");
+  llenarSelectSimple("piz_tipo_falla", LOOKUPS.categorias.map((c)=>({value:c.nombre,label:c.nombre})), "Todos");
+  llenarSelectSimple("piz_unidad", LOOKUPS.unidades_resolutorias.map((u)=>({value:u.nombre,label:u.nombre})), "Todas");
+  llenarSelectSimple("piz_oficina", LOOKUPS.oficinas.map((o)=>({value:o.id,label:o.nombre})), "Todas");
+  llenarSelectSimple("piz_semaforo", ["VERDE","AMARILLO","NARANJA","ROJO"].map((s)=>({value:s,label:s})), "Todos");
+  const regiones = Array.from(new Set(LOOKUPS.oficinas.map((o)=>o.estado).filter(Boolean))).sort();
+  llenarSelectSimple("piz_region", regiones.map((r)=>({value:r,label:r})), "Todos");
+}
+
+function construirQueryPizarra() {
+  const params = new URLSearchParams();
+  const campos = {
+    ticket_cmr: "piz_ticket", mes_apertura: "piz_mes", grupo_horario: "piz_grupo_horario",
+    estado_ticket: "piz_estado_ticket", afectacion: "piz_afectacion", categoria_afectacion: "piz_tipo_falla",
+    unidad_resolutoria: "piz_unidad", oficina_id: "piz_oficina", region: "piz_region", semaforo: "piz_semaforo",
+  };
+  for (const [param, id] of Object.entries(campos)) {
+    const v = document.getElementById(id).value;
+    if (v) params.set(param, v);
+  }
+  return params.toString();
+}
+
+function ticketsUnicos(filas) {
+  const mapa = new Map();
+  filas.forEach((f) => { if (!mapa.has(f.ticket_cmr)) mapa.set(f.ticket_cmr, f); });
+  return Array.from(mapa.values());
+}
+
+function renderKpisPizarra(filas) {
+  const unicos = ticketsUnicos(filas);
+  const hace30dias = Date.now() - 30 * 24 * 3600000;
+
+  const curso = unicos.filter((t) => t.estado_ticket === "EN CURSO (ASIGNADO)").length;
+  const observacion = unicos.filter((t) => t.estado_ticket === "EN OBSERVACIÓN").length;
+  const ventana = unicos.filter((t) => t.estado_ticket === "VENTANA DE MANTENIMIENTO").length;
+  const cerrados30 = unicos.filter((t) =>
+    t.estado_ticket === "CERRADO" && t.fecha_solucion_cmr && new Date(t.fecha_solucion_cmr).getTime() >= hace30dias
+  ).length;
+
+  document.getElementById("piz_kpi_curso").textContent = curso;
+  document.getElementById("piz_kpi_observacion").textContent = observacion;
+  document.getElementById("piz_kpi_ventana").textContent = ventana;
+  document.getElementById("piz_kpi_cerrados").textContent = cerrados30;
+  document.getElementById("piz_kpi_total").textContent = curso + observacion + ventana;
+}
+
+const COLORES_UNIDAD = {
+  "OLR": "#a9d6f5", "REPARACIONES": "#b7e4b7", "TECNOLOGÍA": "#f7c99e",
+  "CONTROL DE CAMBIOS": "#f5eaa0", "MIGURA": "#d3bce8",
+};
+const COLORES_BARRA = ["#a9d6f5","#b7e4b7","#f7c99e","#f5eaa0","#d3bce8","#f5b8c4","#b8e0d2","#e0c3fc","#ffd6a5","#caffbf"];
+
+function renderSemaforoBar(filas) {
+  const unicos = ticketsUnicos(filas);
+  const cont = document.getElementById("piz_semaforo_bar");
+  const orden = ["VERDE","AMARILLO","NARANJA","ROJO"];
+  cont.innerHTML = orden.map((color) => {
+    const n = unicos.filter((t) => t.semaforo === color).length;
+    return `<div class="seg seg-${color}">${color} (${n})</div>`;
+  }).join("");
+}
+
+function renderChartUnidad(filas) {
+  const unicos = ticketsUnicos(filas);
+  const conteo = {};
+  unicos.forEach((t) => {
+    const u = t.unidad_resolutoria || "SIN ASIGNAR";
+    conteo[u] = (conteo[u] || 0) + 1;
+  });
+  const cont = document.getElementById("piz_chart_unidad");
+  const entradas = Object.entries(conteo).filter(([,n]) => n > 0);
+  if (entradas.length === 0) { cont.innerHTML = '<p class="hint">Sin datos.</p>'; return; }
+  cont.innerHTML = entradas.map(([nombre, n]) => `
+    <div class="bloque" style="flex-grow:${n}; background:${COLORES_UNIDAD[nombre] || "#d9d9d9"};">
+      <div class="n">${n}</div><div>${nombre}</div>
+    </div>`).join("");
+}
+
+function renderChartOficina(filas) {
+  const unicos = ticketsUnicos(filas);
+  const conteo = {};
+  unicos.forEach((t) => {
+    const o = t.oficina_nombre || "SIN OFICINA";
+    conteo[o] = (conteo[o] || 0) + 1;
+  });
+  const entradas = Object.entries(conteo).sort((a,b) => b[1]-a[1]).slice(0, 12);
+  const cont = document.getElementById("piz_chart_oficina");
+  if (entradas.length === 0) { cont.innerHTML = '<p class="hint">Sin datos.</p>'; return; }
+  const max = Math.max(...entradas.map(([,n]) => n));
+  cont.innerHTML = entradas.map(([nombre, n], idx) => `
+    <div class="barra-col">
+      <div class="barra-valor">${n}</div>
+      <div class="barra" style="height:${(n/max*100).toFixed(0)}%; background:${COLORES_BARRA[idx % COLORES_BARRA.length]};"></div>
+      <div class="barra-label">${nombre}</div>
+    </div>`).join("");
+}
+
+function asignarFilaYColor(filas) {
+  const ordenadas = [...filas].sort((a, b) => Number(b.ticket_cmr) - Number(a.ticket_cmr));
+  const filaPorTicket = new Map();
+  let n = 0;
+  ordenadas.forEach((f) => {
+    if (!filaPorTicket.has(f.ticket_cmr)) { n += 1; filaPorTicket.set(f.ticket_cmr, n); }
+  });
+  return { ordenadas, filaPorTicket };
+}
+
+function colorPorNombreFactory(paleta) {
+  const mapa = new Map();
+  let i = 0;
+  return (nombre) => {
+    if (!nombre) return "#eee";
+    if (!mapa.has(nombre)) { mapa.set(nombre, paleta[i % paleta.length]); i += 1; }
+    return mapa.get(nombre);
+  };
+}
+
+function renderTablaPizarra(filas) {
+  const { ordenadas, filaPorTicket } = asignarFilaYColor(filas);
+  const colorUnidad = colorPorNombreFactory(COLORES_BARRA);
+  const tbody = document.querySelector("#piz_table tbody");
+  tbody.innerHTML = ordenadas.map((f) => `
+    <tr>
+      <td>${filaPorTicket.get(f.ticket_cmr)}</td>
+      <td><strong style="font-size:14px;">${formatearTicket(f.ticket_cmr)}</strong></td>
+      <td>${f.oficina_nombre || "-"}</td>
+      <td>${f.olt}</td>
+      <td>${f.tarjeta}</td>
+      <td>${f.puerto}</td>
+      <td>${f.fecha_apertura_cmr || "-"}</td>
+      <td class="${f.semaforo ? "sem-" + f.semaforo : ""}">${f.horas_abierta !== null ? f.horas_abierta.toFixed(1) + " h" : "-"}</td>
+      <td>${f.estado_ticket}</td>
+      <td>${f.afectacion || "-"}</td>
+      <td>${f.nro_clientes_afectados}</td>
+      <td>${f.no_clientes_reportaron}</td>
+      <td style="background:${colorUnidad(f.unidad_resolutoria)}66;">${f.unidad_resolutoria || "-"}</td>
+    </tr>
+  `).join("");
+}
+
+
+async function cargarPizarra() {
+  try {
+    const data = await apiGet(`/consulta?${construirQueryPizarra()}`);
+    pizarraDatos = data.filas;
+    renderKpisPizarra(pizarraDatos);
+    renderSemaforoBar(pizarraDatos);
+    renderChartUnidad(pizarraDatos);
+    renderChartOficina(pizarraDatos);
+    renderTablaPizarra(pizarraDatos);
+  } catch (err) {
+    console.error("Error cargando la pizarra:", err);
+  }
+}
+
+document.getElementById("piz_btn_actualizar").addEventListener("click", cargarPizarra);
 
 // ---------------------------------------------------------------
 // Arranque
