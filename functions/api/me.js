@@ -1,18 +1,17 @@
-import { json, currentUserEmail } from "../_lib/helpers.js";
+import { json } from "../_lib/helpers.js";
+import { usuarioDeSesion } from "../_lib/auth.js";
 
 // GET /api/me
 export async function onRequestGet({ request, env }) {
-  const db = env.DB;
-  const email = currentUserEmail(request);
+  const sesion = await usuarioDeSesion(request, env);
+  if (!sesion) return json({ registrado: false, rol: null }, 401);
 
-  const usuario = await db
+  const usuario = await env.DB
     .prepare("SELECT email, nombre, rol, activo FROM usuarios WHERE email = ?")
-    .bind(email)
+    .bind(sesion.email)
     .first();
 
-  if (!usuario || !usuario.activo) {
-    return json({ email, nombre: null, rol: "consultor", registrado: false });
-  }
+  if (!usuario || !usuario.activo) return json({ registrado: false, rol: null }, 401);
 
   return json({ email: usuario.email, nombre: usuario.nombre, rol: usuario.rol, registrado: true });
 }

@@ -69,6 +69,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     btn.classList.add("active");
     document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
     if (btn.dataset.tab === "pizarra" && pizarraDatos.length === 0) cargarPizarra();
+    if (btn.dataset.tab === "reporte" && reporteDatos.length === 0) cargarReporte();
   });
 });
 
@@ -91,6 +92,7 @@ async function loadLookups() {
   actualizarVisibilidadOficinas();
   initFiltrosConsulta();
   initFiltrosPizarra();
+  initFiltrosGenerico("rep");
   cargarConsulta();
 }
 
@@ -992,13 +994,9 @@ document.getElementById("q_btn_volver").addEventListener("click", () => {
 // ---------------------------------------------------------------
 let currentUser = null;
 
-async function loadCurrentUser() {
-  try {
-    currentUser = await apiGet("/me");
-  } catch (e) {
-    currentUser = { email: null, rol: "consultor", registrado: false };
-  }
-  if (currentUser.rol === "consultor") {
+function aplicarPermisosRol() {
+  document.getElementById("topbar_usuario_nombre").textContent = currentUser.nombre || currentUser.email || "";
+  if (currentUser.rol === "observador") {
     ["crear", "modificar"].forEach((tab) => {
       document.querySelector(`.tab-btn[data-tab="${tab}"]`)?.classList.add("hidden");
     });
@@ -1028,12 +1026,15 @@ async function cargarUsuarios() {
         <td><input class="adm-nombre" value="${u.nombre || ""}" /></td>
         <td>
           <select class="adm-rol-sel">
-            <option value="consultor" ${u.rol === "consultor" ? "selected" : ""}>consultor</option>
+            <option value="observador" ${u.rol === "observador" ? "selected" : ""}>observador</option>
             <option value="supervisor" ${u.rol === "supervisor" ? "selected" : ""}>supervisor</option>
             <option value="administrador" ${u.rol === "administrador" ? "selected" : ""}>administrador</option>
           </select>
         </td>
         <td><input type="checkbox" class="adm-activo" ${u.activo ? "checked" : ""} /></td>
+        <td>
+          <input type="password" class="adm-password" placeholder="${u.tiene_password ? "•••••• (sin cambios)" : "Sin contraseña asignada"}" />
+        </td>
         <td>
           <button type="button" class="btn-secondary adm-guardar">Guardar</button>
           <button type="button" class="btn-secondary adm-eliminar">Eliminar</button>
@@ -1041,12 +1042,16 @@ async function cargarUsuarios() {
       `;
       tr.querySelector(".adm-guardar").addEventListener("click", async () => {
         try {
-          await apiSend(`/admin/usuarios/${u.id}`, "PATCH", {
+          const password = tr.querySelector(".adm-password").value;
+          const body = {
             nombre: tr.querySelector(".adm-nombre").value,
             rol: tr.querySelector(".adm-rol-sel").value,
             activo: tr.querySelector(".adm-activo").checked,
-          });
+          };
+          if (password) body.password = password;
+          await apiSend(`/admin/usuarios/${u.id}`, "PATCH", body);
           showMsg(document.getElementById("adm_msg"), `Usuario ${u.email} actualizado.`, true);
+          cargarUsuarios();
         } catch (err) {
           showMsg(document.getElementById("adm_msg"), err.message, false);
         }
@@ -1074,9 +1079,11 @@ document.getElementById("adm_btn_crear").addEventListener("click", async () => {
       email: document.getElementById("adm_email").value.trim(),
       nombre: document.getElementById("adm_nombre").value.trim(),
       rol: document.getElementById("adm_rol").value,
+      password: document.getElementById("adm_password").value,
     });
     document.getElementById("adm_email").value = "";
     document.getElementById("adm_nombre").value = "";
+    document.getElementById("adm_password").value = "";
     showMsg(msg, "Usuario agregado correctamente.", true);
     cargarUsuarios();
   } catch (err) {
@@ -1198,26 +1205,28 @@ function initCatalogosUI() {
 // PIZARRA DE MONITOREO
 // ---------------------------------------------------------------
 let pizarraDatos = [];
+let reporteDatos = [];
 
-function initFiltrosPizarra() {
-  llenarSelectSimple("piz_mes", MESES.map((m,i)=>({value:i+1,label:m})), "Todos");
-  llenarSelectSimple("piz_grupo_horario", ["MAÑANA","TARDE","NOCHE"].map((g)=>({value:g,label:g})), "Todos");
-  llenarSelectSimple("piz_estado_ticket", LOOKUPS.estados_ticket.map((e)=>({value:e.nombre,label:e.nombre})), "Todos");
-  llenarSelectSimple("piz_afectacion", LOOKUPS.afectaciones.map((a)=>({value:a.nombre,label:a.nombre})), "Todas");
-  llenarSelectSimple("piz_tipo_falla", LOOKUPS.categorias.map((c)=>({value:c.nombre,label:c.nombre})), "Todos");
-  llenarSelectSimple("piz_unidad", LOOKUPS.unidades_resolutorias.map((u)=>({value:u.nombre,label:u.nombre})), "Todas");
-  llenarSelectSimple("piz_oficina", LOOKUPS.oficinas.map((o)=>({value:o.id,label:o.nombre})), "Todas");
-  llenarSelectSimple("piz_semaforo", ["VERDE","AMARILLO","NARANJA","ROJO"].map((s)=>({value:s,label:s})), "Todos");
+function initFiltrosGenerico(prefix) {
+  llenarSelectSimple(`${prefix}_mes`, MESES.map((m,i)=>({value:i+1,label:m})), "Todos");
+  llenarSelectSimple(`${prefix}_grupo_horario`, ["MAÑANA","TARDE","NOCHE"].map((g)=>({value:g,label:g})), "Todos");
+  llenarSelectSimple(`${prefix}_estado_ticket`, LOOKUPS.estados_ticket.map((e)=>({value:e.nombre,label:e.nombre})), "Todos");
+  llenarSelectSimple(`${prefix}_afectacion`, LOOKUPS.afectaciones.map((a)=>({value:a.nombre,label:a.nombre})), "Todas");
+  llenarSelectSimple(`${prefix}_tipo_falla`, LOOKUPS.categorias.map((c)=>({value:c.nombre,label:c.nombre})), "Todos");
+  llenarSelectSimple(`${prefix}_unidad`, LOOKUPS.unidades_resolutorias.map((u)=>({value:u.nombre,label:u.nombre})), "Todas");
+  llenarSelectSimple(`${prefix}_oficina`, LOOKUPS.oficinas.map((o)=>({value:o.id,label:o.nombre})), "Todas");
+  llenarSelectSimple(`${prefix}_semaforo`, ["VERDE","AMARILLO","NARANJA","ROJO"].map((s)=>({value:s,label:s})), "Todos");
   const regiones = Array.from(new Set(LOOKUPS.oficinas.map((o)=>o.estado).filter(Boolean))).sort();
-  llenarSelectSimple("piz_region", regiones.map((r)=>({value:r,label:r})), "Todos");
+  llenarSelectSimple(`${prefix}_region`, regiones.map((r)=>({value:r,label:r})), "Todos");
 }
+function initFiltrosPizarra() { initFiltrosGenerico("piz"); }
 
-function construirQueryPizarra() {
+function construirQueryGenerico(prefix) {
   const params = new URLSearchParams();
   const campos = {
-    ticket_cmr: "piz_ticket", mes_apertura: "piz_mes", grupo_horario: "piz_grupo_horario",
-    estado_ticket: "piz_estado_ticket", afectacion: "piz_afectacion", categoria_afectacion: "piz_tipo_falla",
-    unidad_resolutoria: "piz_unidad", oficina_id: "piz_oficina", region: "piz_region", semaforo: "piz_semaforo",
+    ticket_cmr: `${prefix}_ticket`, mes_apertura: `${prefix}_mes`, grupo_horario: `${prefix}_grupo_horario`,
+    estado_ticket: `${prefix}_estado_ticket`, afectacion: `${prefix}_afectacion`, categoria_afectacion: `${prefix}_tipo_falla`,
+    unidad_resolutoria: `${prefix}_unidad`, oficina_id: `${prefix}_oficina`, region: `${prefix}_region`, semaforo: `${prefix}_semaforo`,
   };
   for (const [param, id] of Object.entries(campos)) {
     const v = document.getElementById(id).value;
@@ -1225,6 +1234,7 @@ function construirQueryPizarra() {
   }
   return params.toString();
 }
+function construirQueryPizarra() { return construirQueryGenerico("piz"); }
 
 function ticketsUnicos(filas) {
   const mapa = new Map();
@@ -1232,7 +1242,7 @@ function ticketsUnicos(filas) {
   return Array.from(mapa.values());
 }
 
-function renderKpisPizarra(filas) {
+function renderKpisGenerico(filas, prefix) {
   const unicos = ticketsUnicos(filas);
   const hace30dias = Date.now() - 30 * 24 * 3600000;
 
@@ -1243,12 +1253,13 @@ function renderKpisPizarra(filas) {
     t.estado_ticket === "CERRADO" && t.fecha_solucion_cmr && new Date(t.fecha_solucion_cmr).getTime() >= hace30dias
   ).length;
 
-  document.getElementById("piz_kpi_curso").textContent = curso;
-  document.getElementById("piz_kpi_observacion").textContent = observacion;
-  document.getElementById("piz_kpi_ventana").textContent = ventana;
-  document.getElementById("piz_kpi_cerrados").textContent = cerrados30;
-  document.getElementById("piz_kpi_total").textContent = curso + observacion + ventana;
+  document.getElementById(`${prefix}_kpi_curso`).textContent = curso;
+  document.getElementById(`${prefix}_kpi_observacion`).textContent = observacion;
+  document.getElementById(`${prefix}_kpi_ventana`).textContent = ventana;
+  document.getElementById(`${prefix}_kpi_cerrados`).textContent = cerrados30;
+  document.getElementById(`${prefix}_kpi_total`).textContent = curso + observacion + ventana;
 }
+function renderKpisPizarra(filas) { renderKpisGenerico(filas, "piz"); }
 
 const COLORES_UNIDAD = {
   "OLR": "#a9d6f5", "REPARACIONES": "#b7e4b7", "TECNOLOGÍA": "#f7c99e",
@@ -1256,9 +1267,9 @@ const COLORES_UNIDAD = {
 };
 const COLORES_BARRA = ["#a9d6f5","#b7e4b7","#f7c99e","#f5eaa0","#d3bce8","#f5b8c4","#b8e0d2","#e0c3fc","#ffd6a5","#caffbf"];
 
-function renderSemaforoBar(filas) {
+function renderSemaforoBar(filas, contId = "piz_semaforo_bar") {
   const unicos = ticketsUnicos(filas);
-  const cont = document.getElementById("piz_semaforo_bar");
+  const cont = document.getElementById(contId);
   const orden = ["VERDE","AMARILLO","NARANJA","ROJO"];
   cont.innerHTML = orden.map((color) => {
     const n = unicos.filter((t) => t.semaforo === color).length;
@@ -1266,14 +1277,14 @@ function renderSemaforoBar(filas) {
   }).join("");
 }
 
-function renderChartUnidad(filas) {
+function renderChartUnidad(filas, contId = "piz_chart_unidad") {
   const unicos = ticketsUnicos(filas);
   const conteo = {};
   unicos.forEach((t) => {
     const u = t.unidad_resolutoria || "SIN ASIGNAR";
     conteo[u] = (conteo[u] || 0) + 1;
   });
-  const cont = document.getElementById("piz_chart_unidad");
+  const cont = document.getElementById(contId);
   const entradas = Object.entries(conteo).filter(([,n]) => n > 0);
   if (entradas.length === 0) { cont.innerHTML = '<p class="hint">Sin datos.</p>'; return; }
   cont.innerHTML = entradas.map(([nombre, n]) => `
@@ -1282,7 +1293,7 @@ function renderChartUnidad(filas) {
     </div>`).join("");
 }
 
-function renderChartOficina(filas) {
+function renderChartOficina(filas, contId = "piz_chart_oficina") {
   const unicos = ticketsUnicos(filas);
   const conteo = {};
   unicos.forEach((t) => {
@@ -1290,7 +1301,7 @@ function renderChartOficina(filas) {
     conteo[o] = (conteo[o] || 0) + 1;
   });
   const entradas = Object.entries(conteo).sort((a,b) => b[1]-a[1]).slice(0, 12);
-  const cont = document.getElementById("piz_chart_oficina");
+  const cont = document.getElementById(contId);
   if (entradas.length === 0) { cont.innerHTML = '<p class="hint">Sin datos.</p>'; return; }
   const max = Math.max(...entradas.map(([,n]) => n));
   cont.innerHTML = entradas.map(([nombre, n], idx) => `
@@ -1298,6 +1309,7 @@ function renderChartOficina(filas) {
       <div class="barra-valor">${n}</div>
       <div class="barra" style="height:${(n/max*100).toFixed(0)}%; background:${COLORES_BARRA[idx % COLORES_BARRA.length]};"></div>
       <div class="barra-label">${nombre}</div>
+
     </div>`).join("");
 }
 
@@ -1362,7 +1374,119 @@ async function cargarPizarra() {
 document.getElementById("piz_btn_actualizar").addEventListener("click", cargarPizarra);
 
 // ---------------------------------------------------------------
+// REPORTE DIARIO DE FALLAS MASIVAS
+// ---------------------------------------------------------------
+function renderResumenPorEstado(filas) {
+  const unicos = ticketsUnicos(filas);
+  const porEstado = {};
+  unicos.forEach((t) => {
+    const region = t.region || "SIN ESTADO";
+    if (!porEstado[region]) porEstado[region] = { fallas: 0, afectados: 0 };
+    porEstado[region].fallas += 1;
+    porEstado[region].afectados += Number(t.nro_clientes_afectados || 0);
+  });
+  const entradas = Object.entries(porEstado).sort((a,b) => b[1].fallas - a[1].fallas);
+  const tbody = document.querySelector("#rep_resumen_estado tbody");
+  const tfoot = document.querySelector("#rep_resumen_estado tfoot");
+  tbody.innerHTML = entradas.map(([region, v]) => `
+    <tr><td>${region}</td><td>${v.fallas}</td><td>${v.afectados}</td></tr>
+  `).join("");
+  const totalFallas = entradas.reduce((s,[,v]) => s + v.fallas, 0);
+  const totalAfectados = entradas.reduce((s,[,v]) => s + v.afectados, 0);
+  tfoot.innerHTML = `<tr><td><strong>Total</strong></td><td><strong>${totalFallas}</strong></td><td><strong>${totalAfectados}</strong></td></tr>`;
+}
+
+function renderTablaReporte(filas) {
+  const tbody = document.querySelector("#rep_table tbody");
+  tbody.innerHTML = filas.map((f, idx) => `
+    <tr>
+      <td>${idx + 1}</td>
+      <td><strong style="font-size:14px;">${formatearTicket(f.ticket_cmr)}</strong></td>
+      <td>-</td>
+      <td>${f.afectacion || "-"}</td>
+      <td${f.unidad_resolutoria === "REPARACIONES" ? ' style="background:#c8f0c8;"' : ""}>${f.unidad_resolutoria || "-"}</td>
+      <td>${f.estado_ticket}</td>
+      <td>${f.fecha_apertura_cmr || "-"}</td>
+      <td>${f.grupo_horario || "-"}</td>
+      <td>${f.nro_clientes_afectados}</td>
+      <td class="${f.semaforo ? "sem-" + f.semaforo : ""}">${f.horas_abierta !== null ? f.horas_abierta.toFixed(1) + " h" : "-"}</td>
+      <td>${f.region || "-"}</td>
+      <td>${f.oficina_nombre || "-"}</td>
+      <td>${f.avance_cmr || "-"}</td>
+    </tr>
+  `).join("");
+}
+
+async function cargarReporte() {
+  try {
+    const data = await apiGet(`/consulta?${construirQueryGenerico("rep")}`);
+    reporteDatos = data.filas;
+    renderKpisGenerico(reporteDatos, "rep");
+    renderSemaforoBar(reporteDatos, "rep_semaforo_bar");
+    renderChartUnidad(reporteDatos, "rep_chart_unidad");
+    renderChartOficina(reporteDatos, "rep_chart_oficina");
+    renderResumenPorEstado(reporteDatos);
+    renderTablaReporte(reporteDatos);
+  } catch (err) {
+    console.error("Error cargando el reporte diario:", err);
+  }
+}
+
+document.getElementById("rep_btn_actualizar").addEventListener("click", cargarReporte);
+
+// ---------------------------------------------------------------
 // Arranque
 // ---------------------------------------------------------------
-loadLookups().catch((err) => console.error("Error cargando catálogos:", err));
-loadCurrentUser();
+// ---------------------------------------------------------------
+// Login / arranque de la app
+// ---------------------------------------------------------------
+function mostrarLogin() {
+  document.getElementById("login_screen").classList.remove("hidden");
+  document.getElementById("app_shell").classList.add("hidden");
+}
+function mostrarApp() {
+  document.getElementById("login_screen").classList.add("hidden");
+  document.getElementById("app_shell").classList.remove("hidden");
+}
+
+async function iniciarSesionApp() {
+  try {
+    currentUser = await apiGet("/me");
+  } catch (e) {
+    currentUser = null;
+  }
+  if (!currentUser || !currentUser.registrado) {
+    mostrarLogin();
+    return;
+  }
+  mostrarApp();
+  await loadLookups();
+  aplicarPermisosRol();
+}
+
+document.getElementById("login_btn").addEventListener("click", async () => {
+  const msg = document.getElementById("login_msg");
+  const email = document.getElementById("login_email").value.trim();
+  const password = document.getElementById("login_password").value;
+  if (!email || !password) { showMsg(msg, "Ingresa correo y contraseña.", false); return; }
+  try {
+    currentUser = await apiSend("/auth/login", "POST", { email, password });
+    currentUser.registrado = true;
+    document.getElementById("login_password").value = "";
+    mostrarApp();
+    await loadLookups();
+    aplicarPermisosRol();
+  } catch (err) {
+    showMsg(msg, err.message, false);
+  }
+});
+document.getElementById("login_password").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("login_btn").click();
+});
+
+document.getElementById("btn_logout").addEventListener("click", async () => {
+  try { await apiSend("/auth/logout", "POST"); } catch (e) { /* no importa si falla */ }
+  location.reload();
+});
+
+iniciarSesionApp();

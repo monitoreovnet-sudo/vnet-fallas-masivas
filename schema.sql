@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT NOT NULL UNIQUE,
   nombre TEXT,
-  rol TEXT NOT NULL DEFAULT 'operador',   -- operador | admin
+  rol TEXT NOT NULL DEFAULT 'observador',   -- administrador | supervisor | observador
   activo INTEGER NOT NULL DEFAULT 1
 );
 
@@ -77,10 +77,10 @@ CREATE TABLE IF NOT EXISTS usuarios (
 
 CREATE TABLE IF NOT EXISTS tickets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  ticket_crm TEXT NOT NULL UNIQUE,        -- "Ticket CRM-COR"
+  ticket_cmr TEXT NOT NULL UNIQUE,        -- "Ticket CMR-COR"
   tickets_vinculados TEXT,
   fecha_apertura_cda TEXT,                -- ISO 8601
-  fecha_apertura_crm TEXT,
+  fecha_apertura_cmr TEXT,
   estado_ticket TEXT NOT NULL DEFAULT 'EN CURSO (ASIGNADO)',
   unidad_resolutoria TEXT,
   categoria_afectacion TEXT,
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   descripcion TEXT,
   avance_cmr TEXT,
   oficina_id INTEGER REFERENCES oficinas(id),
-  fecha_solucion_crm TEXT,
+  fecha_solucion_cmr TEXT,
   fecha_solucion_cda TEXT,
   creado_por TEXT,
   creado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS tickets (
 
 CREATE INDEX IF NOT EXISTS idx_tickets_estado ON tickets(estado_ticket);
 CREATE INDEX IF NOT EXISTS idx_tickets_oficina ON tickets(oficina_id);
-CREATE INDEX IF NOT EXISTS idx_tickets_crm ON tickets(ticket_crm);
+CREATE INDEX IF NOT EXISTS idx_tickets_cmr ON tickets(ticket_cmr);
 
 -- ---------- Detalle OLT / Tarjeta / Puerto por ticket ----------
 
@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS ticket_puertos (
   no_clientes_reportaron INTEGER NOT NULL DEFAULT 0,
   nro_clientes_afectados INTEGER NOT NULL DEFAULT 0,
   estado_puerto TEXT NOT NULL DEFAULT 'EN CURSO (ASIGNADO)',
-  fecha_cierre_crm TEXT,
+  fecha_cierre_cmr TEXT,
   fecha_cierre_cda TEXT,
   creado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   actualizado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP

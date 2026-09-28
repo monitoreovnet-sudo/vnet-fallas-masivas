@@ -22,7 +22,14 @@ body {
   background: var(--purple);
   color: white;
   padding: 14px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
+.topbar-usuario { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.topbar-usuario #btn_logout { background: white; color: var(--purple-dark); border: none; padding: 6px 14px; }
 .brand-mark { font-weight: 800; font-size: 20px; margin-right: 12px; }
 .brand-sub { font-size: 14px; opacity: 0.9; }
 
@@ -307,4 +314,24 @@ input:focus, select:focus, textarea:focus {
 @media (max-width: 900px) {
   .charts-row { grid-template-columns: 1fr; }
 }
+
+.login-screen {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.login-box {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 32px 28px;
+  width: 320px;
+  box-shadow: 0 8px 24px rgba(60, 30, 90, 0.12);
+}
+.login-box h2 { margin-top: 4px; color: var(--purple-dark); font-size: 18px; }
+.login-box .btn-primary { width: 100%; margin-top: 6px; }
 

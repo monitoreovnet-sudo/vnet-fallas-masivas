@@ -1,9 +1,12 @@
 import { json, badRequest, notFound, requireAdmin } from "../../../_lib/helpers.js";
+import { hashPassword } from "../../../_lib/auth.js";
 
-const ROLES_VALIDOS = ["administrador", "supervisor", "consultor"];
+const ROLES_VALIDOS = ["administrador", "supervisor", "observador"];
 
 // PATCH /api/admin/usuarios/:id
-// Body: cualquier combinación de { nombre, rol, activo }
+// Body: cualquier combinación de { nombre, rol, activo, password }
+// "password" es opcional: solo se cambia si viene con contenido (mínimo 6
+// caracteres). Dejarla vacía no toca la contraseña actual.
 export async function onRequestPatch({ request, env, params }) {
   await requireAdmin(request, env);
   const body = await request.json();
@@ -20,6 +23,10 @@ export async function onRequestPatch({ request, env, params }) {
     campos.push("rol = ?"); binds.push(body.rol);
   }
   if (body.activo !== undefined) { campos.push("activo = ?"); binds.push(body.activo ? 1 : 0); }
+  if (body.password) {
+    if (body.password.length < 6) return badRequest("La contraseña debe tener al menos 6 caracteres.");
+    campos.push("password_hash = ?"); binds.push(await hashPassword(body.password));
+  }
 
   if (campos.length === 0) return badRequest("No enviaste ningún campo para actualizar.");
 

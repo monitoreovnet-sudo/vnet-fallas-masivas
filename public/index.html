@@ -7,10 +7,26 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <div id="login_screen" class="login-screen">
+    <div class="login-box">
+      <div class="brand-mark" style="font-size:22px;">vnet</div>
+      <h2>Iniciar Sesión</h2>
+      <div class="field"><label>Correo</label><input id="login_email" type="email" autocomplete="username" /></div>
+      <div class="field"><label>Contraseña</label><input id="login_password" type="password" autocomplete="current-password" /></div>
+      <button id="login_btn" class="btn-primary" type="button">Entrar</button>
+      <div id="login_msg" class="msg"></div>
+    </div>
+  </div>
+
+  <div id="app_shell" class="hidden">
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark">vnet</span>
       <span class="brand-sub">Registro y Monitoreo de Fallas Masivas CDA</span>
+    </div>
+    <div class="topbar-usuario">
+      <span id="topbar_usuario_nombre"></span>
+      <button id="btn_logout" class="btn-secondary" type="button">Cerrar Sesión</button>
     </div>
   </header>
 
@@ -18,6 +34,7 @@
     <button class="tab-btn active" data-tab="crear">Crear Ticket</button>
     <button class="tab-btn" data-tab="modificar">Modificar / Cerrar Ticket</button>
     <button class="tab-btn" data-tab="pizarra">Pizarra de Monitoreo</button>
+    <button class="tab-btn" data-tab="reporte">Reporte Diario</button>
     <button class="tab-btn" data-tab="consultar">Consultar / Log</button>
     <button class="tab-btn hidden" data-tab="admin" id="nav_admin">Administración</button>
   </nav>
@@ -260,6 +277,73 @@
     </div>
   </section>
 
+  <!-- ===================== REPORTE DIARIO DE FALLAS MASIVAS ===================== -->
+  <section id="tab-reporte" class="tab-panel">
+    <div class="pizarra-header">
+      <div class="pizarra-kpis">
+        <div class="pizarra-kpi"><div class="valor" id="rep_kpi_curso">-</div><div class="label">En Curso Asignado</div></div>
+        <div class="pizarra-kpi"><div class="valor" id="rep_kpi_observacion">-</div><div class="label">En Observación</div></div>
+        <div class="pizarra-kpi"><div class="valor" id="rep_kpi_ventana">-</div><div class="label">Ventana de Mantenimiento</div></div>
+        <div class="pizarra-kpi"><div class="valor" id="rep_kpi_cerrados">-</div><div class="label">Cerrados (30 días)</div></div>
+        <div class="pizarra-kpi"><div class="valor" id="rep_kpi_total">-</div><div class="label">Total Abiertos</div></div>
+      </div>
+      <button id="rep_btn_actualizar" class="btn-secondary" type="button">⟳ Actualizar</button>
+    </div>
+
+    <div id="rep_filtros" class="filtros-grid">
+      <div class="field"><label>N° Ticket</label><input id="rep_ticket" inputmode="numeric" placeholder="Número" /></div>
+      <div class="field"><label>Mes</label><select id="rep_mes"></select></div>
+      <div class="field"><label>Grupo Horario</label><select id="rep_grupo_horario"></select></div>
+      <div class="field"><label>Estado del Ticket</label><select id="rep_estado_ticket"></select></div>
+      <div class="field"><label>Afectación</label><select id="rep_afectacion"></select></div>
+      <div class="field"><label>Tipo Falla</label><select id="rep_tipo_falla"></select></div>
+      <div class="field"><label>Unidad Resolutoria</label><select id="rep_unidad"></select></div>
+      <div class="field"><label>Oficina</label><select id="rep_oficina"></select></div>
+      <div class="field"><label>Estado</label><select id="rep_region"></select></div>
+      <div class="field"><label>Semáforo</label><select id="rep_semaforo"></select></div>
+    </div>
+
+    <div id="rep_semaforo_bar" class="semaforo-bar"></div>
+
+    <div class="charts-row">
+      <div class="chart-box">
+        <h4>Fallas únicas por Unidad Resolutoria</h4>
+        <div id="rep_chart_unidad" class="treemap-row"></div>
+      </div>
+      <div class="chart-box">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h4>Fallas únicas por Oficina</h4>
+        </div>
+        <div id="rep_chart_oficina" class="bar-chart"></div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="align-items:start;">
+      <div></div>
+      <div class="chart-box">
+        <h4>Resumen por Estado</h4>
+        <table class="rows-table" id="rep_resumen_estado">
+          <thead><tr><th>Estado</th><th>Nro Fallas</th><th>Nro Afectados</th></tr></thead>
+          <tbody></tbody>
+          <tfoot></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="table-scroll" style="max-height:440px; overflow-y:auto;">
+      <table class="rows-table" id="rep_table">
+        <thead>
+          <tr>
+            <th>Fila</th><th>Title</th><th>Tipo</th><th>Afectación</th><th>Unidad Resolutoria</th>
+            <th>Estado del Ticket</th><th>Apertura CMR</th><th>Grupo Horario CMR</th>
+            <th>N° Cltes Afectados</th><th>Tiempo Abierto CMR</th><th>Estado</th><th>Oficina</th><th>Avance CMR</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <section id="tab-consultar" class="tab-panel">
     <h2>Consultar / Log</h2>
 
@@ -318,16 +402,20 @@
         <input id="adm_email" placeholder="nombre@vnet.com.ve" />
       </div>
       <div class="field">
-        <label>Nombre</label>
-        <input id="adm_nombre" placeholder="Nombre completo" />
+        <label>Alias</label>
+        <input id="adm_nombre" placeholder="Nombre a mostrar" />
       </div>
       <div class="field">
         <label>Rol</label>
         <select id="adm_rol">
-          <option value="consultor">consultor</option>
+          <option value="observador">observador</option>
           <option value="supervisor">supervisor</option>
           <option value="administrador">administrador</option>
         </select>
+      </div>
+      <div class="field">
+        <label>Contraseña</label>
+        <input id="adm_password" type="password" placeholder="Mínimo 6 caracteres" />
       </div>
     </div>
     <button id="adm_btn_crear" class="btn-primary">+ Agregar Usuario</button>
@@ -335,7 +423,7 @@
 
     <table class="rows-table" id="adm_table">
       <thead>
-        <tr><th>Correo</th><th>Nombre</th><th>Rol</th><th>Activo</th><th></th></tr>
+        <tr><th>Correo</th><th>Alias</th><th>Rol</th><th>Activo</th><th>Nueva contraseña</th><th></th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -358,6 +446,7 @@
   </section>
 
   </main>
+  </div>
 
   <script src="app.js"></script>
 </body>

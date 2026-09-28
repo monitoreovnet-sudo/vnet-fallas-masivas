@@ -1,5 +1,7 @@
 // Helpers compartidos por todas las funciones de /functions/api
 
+import { emailDeSesionSinVerificar } from "./auth.js";
+
 export function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -10,6 +12,16 @@ export function json(data, status = 200) {
   });
 }
 
+// Igual que json(), pero permite agregar encabezados extra (ej. Set-Cookie).
+export function jsonConHeaders(data, status, extraHeaders) {
+  const headers = new Headers({
+    "content-type": "application/json;charset=UTF-8",
+    "access-control-allow-origin": "*",
+  });
+  for (const [k, v] of Object.entries(extraHeaders || {})) headers.append(k, v);
+  return new Response(JSON.stringify(data), { status, headers });
+}
+
 export function badRequest(msg) {
   return json({ error: msg }, 400);
 }
@@ -18,11 +30,13 @@ export function notFound(msg = "No encontrado") {
   return json({ error: msg }, 404);
 }
 
-// Identifica al usuario actual.
-// Cuando se active Cloudflare Access, este header lo inyecta Cloudflare
-// automáticamente y ya no hace falta tocar este archivo.
-// Mientras tanto, se usa un usuario de desarrollo por defecto.
+// Identifica al usuario actual. Prioriza la cookie de sesión propia
+// (login con correo/contraseña); si no hay sesión, revisa el header de
+// Cloudflare Access por compatibilidad, y como último recurso un header de
+// desarrollo local.
 export function currentUserEmail(request) {
+  const emailSesion = emailDeSesionSinVerificar(request);
+  if (emailSesion) return emailSesion;
   const accessEmail = request.headers.get("Cf-Access-Authenticated-User-Email");
   if (accessEmail) return accessEmail;
   const devHeader = request.headers.get("X-Dev-User-Email");
