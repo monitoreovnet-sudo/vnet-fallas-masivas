@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS catalogo_afectaciones (
 
 CREATE TABLE IF NOT EXISTS catalogo_comentarios (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  nombre TEXT NOT NULL UNIQUE,
+  categoria_id INTEGER REFERENCES catalogo_categorias(id), -- NULL = aplica a todas las categorías
+  nombre TEXT NOT NULL,
   orden INTEGER DEFAULT 0
 );
 
@@ -69,8 +70,9 @@ CREATE TABLE IF NOT EXISTS usuarios (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   email TEXT NOT NULL UNIQUE,
   nombre TEXT,
-  rol TEXT NOT NULL DEFAULT 'observador',   -- administrador | supervisor | observador
-  activo INTEGER NOT NULL DEFAULT 1
+  rol TEXT NOT NULL DEFAULT 'analista',   -- administrador | supervisor | especialista | analista
+  activo INTEGER NOT NULL DEFAULT 1,
+  password_cifrada TEXT
 );
 
 -- ---------- Tickets ----------

@@ -8,7 +8,7 @@ export async function onRequestGet({ env }) {
       db.prepare("SELECT id, codigo, nombre, estado, localidad FROM oficinas WHERE activo = 1 ORDER BY nombre").all(),
       db.prepare("SELECT id, nombre FROM catalogo_categorias ORDER BY orden, nombre").all(),
       db.prepare("SELECT id, categoria_id, nombre FROM catalogo_afectaciones ORDER BY orden, nombre").all(),
-      db.prepare("SELECT id, nombre FROM catalogo_comentarios ORDER BY orden, nombre").all(),
+      db.prepare("SELECT id, categoria_id, nombre FROM catalogo_comentarios ORDER BY orden, nombre").all(),
       db.prepare("SELECT id, nombre FROM catalogo_unidades_resolutorias ORDER BY orden, nombre").all(),
       db.prepare("SELECT id, nombre FROM catalogo_estados_ticket ORDER BY orden, nombre").all(),
       db.prepare("SELECT id, nombre FROM catalogo_estados_puerto ORDER BY orden, nombre").all(),

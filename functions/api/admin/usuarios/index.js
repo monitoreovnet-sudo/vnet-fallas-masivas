@@ -1,15 +1,28 @@
 import { json, badRequest, requireAdmin } from "../../../_lib/helpers.js";
-import { hashPassword } from "../../../_lib/auth.js";
+import { cifrarPassword, descifrarPassword } from "../../../_lib/auth.js";
 
-const ROLES_VALIDOS = ["administrador", "supervisor", "observador"];
+const ROLES_VALIDOS = ["administrador", "supervisor", "especialista", "analista"];
 
 // GET /api/admin/usuarios
+// Incluye password_actual (descifrada) para que el administrador pueda verla.
 export async function onRequestGet({ request, env }) {
   await requireAdmin(request, env);
   const { results } = await env.DB
-    .prepare("SELECT id, email, nombre, rol, activo, (password_hash IS NOT NULL) AS tiene_password FROM usuarios ORDER BY rol, nombre")
+    .prepare("SELECT id, email, nombre, rol, activo, password_cifrada FROM usuarios ORDER BY rol, nombre")
     .all();
-  return json({ usuarios: results });
+
+  const usuarios = await Promise.all(
+    results.map(async (u) => ({
+      id: u.id,
+      email: u.email,
+      nombre: u.nombre,
+      rol: u.rol,
+      activo: u.activo,
+      password_actual: u.password_cifrada ? await descifrarPassword(u.password_cifrada, env) : null,
+    }))
+  );
+
+  return json({ usuarios });
 }
 
 // POST /api/admin/usuarios
@@ -31,11 +44,11 @@ export async function onRequestPost({ request, env }) {
   const existente = await env.DB.prepare("SELECT id FROM usuarios WHERE email = ?").bind(email).first();
   if (existente) return badRequest("Ya existe un usuario con ese correo.");
 
-  const passwordHash = password ? await hashPassword(password) : null;
+  const passwordCifrada = password ? await cifrarPassword(password, env) : null;
 
   const ins = await env.DB
-    .prepare("INSERT INTO usuarios (email, nombre, rol, activo, password_hash) VALUES (?, ?, ?, 1, ?)")
-    .bind(email, nombre || null, rol, passwordHash)
+    .prepare("INSERT INTO usuarios (email, nombre, rol, activo, password_cifrada) VALUES (?, ?, ?, 1, ?)")
+    .bind(email, nombre || null, rol, passwordCifrada)
     .run();
 
   return json({ id: ins.meta.last_row_id, email, nombre, rol, activo: 1 }, 201);

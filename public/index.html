@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Registro y Monitoreo de Fallas Masivas CDA</title>
 <link rel="stylesheet" href="styles.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <div id="login_screen" class="login-screen">
@@ -12,7 +14,13 @@
       <div class="brand-mark" style="font-size:22px;">vnet</div>
       <h2>Iniciar Sesión</h2>
       <div class="field"><label>Correo</label><input id="login_email" type="email" autocomplete="username" /></div>
-      <div class="field"><label>Contraseña</label><input id="login_password" type="password" autocomplete="current-password" /></div>
+      <div class="field">
+        <label>Contraseña</label>
+        <div class="search-row">
+          <input id="login_password" type="password" autocomplete="current-password" />
+          <button id="login_toggle_ojo" class="btn-secondary" type="button">👁</button>
+        </div>
+      </div>
       <button id="login_btn" class="btn-primary" type="button">Entrar</button>
       <div id="login_msg" class="msg"></div>
     </div>
@@ -225,41 +233,67 @@
 
   <!-- ===================== CONSULTAR / LOG ===================== -->
   <!-- ===================== PIZARRA DE MONITOREO ===================== -->
-  <section id="tab-pizarra" class="tab-panel">
-    <div class="pizarra-header">
-      <div class="pizarra-kpis">
-        <div class="pizarra-kpi"><div class="valor" id="piz_kpi_curso">-</div><div class="label">En Curso Asignado</div></div>
-        <div class="pizarra-kpi"><div class="valor" id="piz_kpi_observacion">-</div><div class="label">En Observación</div></div>
-        <div class="pizarra-kpi"><div class="valor" id="piz_kpi_ventana">-</div><div class="label">Ventana de Mantenimiento</div></div>
-        <div class="pizarra-kpi"><div class="valor" id="piz_kpi_cerrados">-</div><div class="label">Cerrados (30 días)</div></div>
-        <div class="pizarra-kpi"><div class="valor" id="piz_kpi_total">-</div><div class="label">Total Abiertos</div></div>
+  <section id="tab-pizarra" class="tab-panel dash-v2">
+    <div class="db-topbar">
+      <img src="assets/vnet-logo.png" alt="VNET" class="db-topbar-logo" />
+      <img src="assets/titulo-pizarra.png" alt="Pizarra de Monitoreo" class="db-topbar-titulo" />
+      <img src="assets/atc-logo.png" alt="Gerencia General de ATC" class="db-topbar-logo" />
+    </div>
+    <div class="db-estado-row">
+      <div class="db-estado-card"><div class="titulo">En Curso Asignado</div><div class="valor" id="piz_kpi_curso">-</div></div>
+      <div class="db-estado-card"><div class="titulo">En Observación</div><div class="valor" id="piz_kpi_observacion">-</div></div>
+      <div class="db-estado-card"><div class="titulo">Ventana de Mantenimiento</div><div class="valor" id="piz_kpi_ventana">-</div></div>
+      <div class="db-estado-card"><div class="titulo">Resuelto</div><div class="valor" id="piz_kpi_resuelto">-</div></div>
+      <div class="db-estado-card"><div class="titulo">Cerrado</div><div class="valor" id="piz_kpi_cerrado">-</div></div>
+      <div class="db-acciones">
+        <button id="piz_btn_actualizar" class="db-btn-circular" type="button">Actualizar</button>
+        <div class="db-btns-exportar">
+          <button id="piz_btn_csv" class="db-btn-rect" type="button">Exportar csv</button>
+          <button id="piz_btn_excel" class="db-btn-rect" type="button">Exportar xlsx</button>
+          <button id="piz_btn_pdf" class="db-btn-rect" type="button">Exportar pdf</button>
+        </div>
       </div>
-      <button id="piz_btn_actualizar" class="btn-secondary" type="button">⟳ Actualizar</button>
     </div>
 
-    <div id="piz_filtros" class="filtros-grid">
-      <div class="field"><label>N° Ticket</label><input id="piz_ticket" inputmode="numeric" placeholder="Número" /></div>
-      <div class="field"><label>Mes</label><select id="piz_mes"></select></div>
-      <div class="field"><label>Grupo Horario</label><select id="piz_grupo_horario"></select></div>
-      <div class="field"><label>Estado del Ticket</label><select id="piz_estado_ticket"></select></div>
-      <div class="field"><label>Afectación</label><select id="piz_afectacion"></select></div>
-      <div class="field"><label>Tipo Falla</label><select id="piz_tipo_falla"></select></div>
-      <div class="field"><label>Unidad Resolutoria</label><select id="piz_unidad"></select></div>
-      <div class="field"><label>Oficina</label><select id="piz_oficina"></select></div>
-      <div class="field"><label>Estado</label><select id="piz_region"></select></div>
-      <div class="field"><label>Semáforo</label><select id="piz_semaforo"></select></div>
+    <div class="db-resumen-row">
+      <div class="db-resumen-card db-resumen-activos"><div class="titulo">Tickets Activos</div><div class="valor" id="piz_kpi_activos">-</div></div>
+      <div class="db-resumen-card db-resumen-gestionados"><div class="titulo">Tickets Gestionados</div><div class="valor" id="piz_kpi_gestionados">-</div></div>
     </div>
 
-    <div id="piz_semaforo_bar" class="semaforo-bar"></div>
+    <div id="piz_filtros" class="db-filtros-grid">
+      <div class="db-filtro-item"><label>N° Ticket</label><input id="piz_ticket" inputmode="numeric" placeholder="Número" /></div>
+      <div class="db-filtro-item"><label>Estado del Ticket</label><select id="piz_estado_ticket"></select></div>
+      <div class="db-filtro-item"><label>Tipo de Falla</label><select id="piz_tipo_falla"></select></div>
+      <div class="db-filtro-item"><label>Afectación</label><select id="piz_afectacion"></select></div>
+      <div class="db-filtro-item"><label>Unidad Resolutoria</label><select id="piz_unidad"></select></div>
+      <div class="db-filtro-item"><label>Estado</label><select id="piz_region"></select></div>
+      <div class="db-filtro-item"><label>Oficina</label><select id="piz_oficina"></select></div>
+      <div class="db-filtro-item"><label>Semáforo</label><select id="piz_semaforo"></select></div>
+      <div class="db-filtro-item"><label>Grupo Horario</label><select id="piz_grupo_horario"></select></div>
+      <div class="db-filtro-item"><label>Mes</label><select id="piz_mes"></select></div>
+    </div>
 
-    <div class="charts-row">
-      <div class="chart-box">
-        <h4>Fallas únicas por Unidad Resolutoria</h4>
-        <div id="piz_chart_unidad" class="treemap-row"></div>
+    <div id="piz_semaforo_bar" class="db-semaforo-wrap"></div>
+
+    <div class="db-bloque6">
+      <div class="db-col">
+        <div class="db-col-titulo">Top 5 de Afectados por Estado</div>
+        <table class="db-top5-tabla" id="piz_top5_estado">
+          <thead><tr><th>Estado</th><th>N° Fallas</th><th>N° Afectados</th></tr></thead>
+          <tbody></tbody>
+        </table>
       </div>
-      <div class="chart-box">
-        <h4>Fallas únicas por Oficina</h4>
-        <div id="piz_chart_oficina" class="bar-chart"></div>
+      <div class="db-col">
+        <div class="db-col-titulo">Fallas por Unidades Resolutorias</div>
+        <div class="db-chart-wrap"><canvas id="piz_chart_unidad"></canvas></div>
+      </div>
+      <div class="db-col">
+        <div class="db-col-titulo">Fallas por Oficinas</div>
+        <div class="db-chart-wrap"><canvas id="piz_chart_oficina"></canvas></div>
+      </div>
+      <div class="db-col">
+        <div class="db-col-titulo">Desglose Tickets Activos</div>
+        <div class="db-chart-wrap"><canvas id="piz_chart_desglose"></canvas></div>
       </div>
     </div>
 
@@ -278,55 +312,67 @@
   </section>
 
   <!-- ===================== REPORTE DIARIO DE FALLAS MASIVAS ===================== -->
-  <section id="tab-reporte" class="tab-panel">
-    <div class="pizarra-header">
-      <div class="pizarra-kpis">
-        <div class="pizarra-kpi"><div class="valor" id="rep_kpi_curso">-</div><div class="label">En Curso Asignado</div></div>
-        <div class="pizarra-kpi"><div class="valor" id="rep_kpi_observacion">-</div><div class="label">En Observación</div></div>
-        <div class="pizarra-kpi"><div class="valor" id="rep_kpi_ventana">-</div><div class="label">Ventana de Mantenimiento</div></div>
-        <div class="pizarra-kpi"><div class="valor" id="rep_kpi_cerrados">-</div><div class="label">Cerrados (30 días)</div></div>
-        <div class="pizarra-kpi"><div class="valor" id="rep_kpi_total">-</div><div class="label">Total Abiertos</div></div>
-      </div>
-      <button id="rep_btn_actualizar" class="btn-secondary" type="button">⟳ Actualizar</button>
+  <section id="tab-reporte" class="tab-panel dash-v2">
+    <div class="db-topbar">
+      <img src="assets/vnet-logo.png" alt="VNET" class="db-topbar-logo" />
+      <img src="assets/titulo-reporte.png" alt="Reporte Diario de Fallas Masivas" class="db-topbar-titulo" />
+      <img src="assets/atc-logo.png" alt="Gerencia General de ATC" class="db-topbar-logo" />
     </div>
-
-    <div id="rep_filtros" class="filtros-grid">
-      <div class="field"><label>N° Ticket</label><input id="rep_ticket" inputmode="numeric" placeholder="Número" /></div>
-      <div class="field"><label>Mes</label><select id="rep_mes"></select></div>
-      <div class="field"><label>Grupo Horario</label><select id="rep_grupo_horario"></select></div>
-      <div class="field"><label>Estado del Ticket</label><select id="rep_estado_ticket"></select></div>
-      <div class="field"><label>Afectación</label><select id="rep_afectacion"></select></div>
-      <div class="field"><label>Tipo Falla</label><select id="rep_tipo_falla"></select></div>
-      <div class="field"><label>Unidad Resolutoria</label><select id="rep_unidad"></select></div>
-      <div class="field"><label>Oficina</label><select id="rep_oficina"></select></div>
-      <div class="field"><label>Estado</label><select id="rep_region"></select></div>
-      <div class="field"><label>Semáforo</label><select id="rep_semaforo"></select></div>
-    </div>
-
-    <div id="rep_semaforo_bar" class="semaforo-bar"></div>
-
-    <div class="charts-row">
-      <div class="chart-box">
-        <h4>Fallas únicas por Unidad Resolutoria</h4>
-        <div id="rep_chart_unidad" class="treemap-row"></div>
-      </div>
-      <div class="chart-box">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <h4>Fallas únicas por Oficina</h4>
+    <div class="db-estado-row">
+      <div class="db-estado-card"><div class="titulo">En Curso Asignado</div><div class="valor" id="rep_kpi_curso">-</div></div>
+      <div class="db-estado-card"><div class="titulo">En Observación</div><div class="valor" id="rep_kpi_observacion">-</div></div>
+      <div class="db-estado-card"><div class="titulo">Ventana de Mantenimiento</div><div class="valor" id="rep_kpi_ventana">-</div></div>
+      <div class="db-estado-card"><div class="titulo">Resuelto</div><div class="valor" id="rep_kpi_resuelto">-</div></div>
+      <div class="db-estado-card"><div class="titulo">Cerrado</div><div class="valor" id="rep_kpi_cerrado">-</div></div>
+      <div class="db-acciones">
+        <button id="rep_btn_actualizar" class="db-btn-circular" type="button">Actualizar</button>
+        <div class="db-btns-exportar">
+          <button id="rep_btn_csv" class="db-btn-rect" type="button">Exportar csv</button>
+          <button id="rep_btn_excel" class="db-btn-rect" type="button">Exportar xlsx</button>
+          <button id="rep_btn_pdf" class="db-btn-rect" type="button">Exportar pdf</button>
         </div>
-        <div id="rep_chart_oficina" class="bar-chart"></div>
       </div>
     </div>
 
-    <div class="grid-2" style="align-items:start;">
-      <div></div>
-      <div class="chart-box">
-        <h4>Resumen por Estado</h4>
-        <table class="rows-table" id="rep_resumen_estado">
-          <thead><tr><th>Estado</th><th>Nro Fallas</th><th>Nro Afectados</th></tr></thead>
+    <div class="db-resumen-row">
+      <div class="db-resumen-card db-resumen-activos"><div class="titulo">Tickets Activos</div><div class="valor" id="rep_kpi_activos">-</div></div>
+      <div class="db-resumen-card db-resumen-gestionados"><div class="titulo">Tickets Gestionados</div><div class="valor" id="rep_kpi_gestionados">-</div></div>
+    </div>
+
+    <div id="rep_filtros" class="db-filtros-grid">
+      <div class="db-filtro-item"><label>N° Ticket</label><input id="rep_ticket" inputmode="numeric" placeholder="Número" /></div>
+      <div class="db-filtro-item"><label>Estado del Ticket</label><select id="rep_estado_ticket"></select></div>
+      <div class="db-filtro-item"><label>Tipo de Falla</label><select id="rep_tipo_falla"></select></div>
+      <div class="db-filtro-item"><label>Afectación</label><select id="rep_afectacion"></select></div>
+      <div class="db-filtro-item"><label>Unidad Resolutoria</label><select id="rep_unidad"></select></div>
+      <div class="db-filtro-item"><label>Estado</label><select id="rep_region"></select></div>
+      <div class="db-filtro-item"><label>Oficina</label><select id="rep_oficina"></select></div>
+      <div class="db-filtro-item"><label>Semáforo</label><select id="rep_semaforo"></select></div>
+      <div class="db-filtro-item"><label>Grupo Horario</label><select id="rep_grupo_horario"></select></div>
+      <div class="db-filtro-item"><label>Mes</label><select id="rep_mes"></select></div>
+    </div>
+
+    <div id="rep_semaforo_bar" class="db-semaforo-wrap"></div>
+
+    <div class="db-bloque6">
+      <div class="db-col">
+        <div class="db-col-titulo">Top 5 de Afectados por Estado</div>
+        <table class="db-top5-tabla" id="rep_top5_estado">
+          <thead><tr><th>Estado</th><th>N° Fallas</th><th>N° Afectados</th></tr></thead>
           <tbody></tbody>
-          <tfoot></tfoot>
         </table>
+      </div>
+      <div class="db-col">
+        <div class="db-col-titulo">Fallas por Unidades Resolutorias</div>
+        <div class="db-chart-wrap"><canvas id="rep_chart_unidad"></canvas></div>
+      </div>
+      <div class="db-col">
+        <div class="db-col-titulo">Fallas por Oficinas</div>
+        <div class="db-chart-wrap"><canvas id="rep_chart_oficina"></canvas></div>
+      </div>
+      <div class="db-col">
+        <div class="db-col-titulo">Desglose Tickets Activos</div>
+        <div class="db-chart-wrap"><canvas id="rep_chart_desglose"></canvas></div>
       </div>
     </div>
 
@@ -408,7 +454,8 @@
       <div class="field">
         <label>Rol</label>
         <select id="adm_rol">
-          <option value="observador">observador</option>
+          <option value="analista">analista</option>
+          <option value="especialista">especialista</option>
           <option value="supervisor">supervisor</option>
           <option value="administrador">administrador</option>
         </select>
@@ -423,7 +470,7 @@
 
     <table class="rows-table" id="adm_table">
       <thead>
-        <tr><th>Correo</th><th>Alias</th><th>Rol</th><th>Activo</th><th>Nueva contraseña</th><th></th></tr>
+        <tr><th>Correo</th><th>Alias</th><th>Rol</th><th>Activo</th><th>Contraseña actual</th><th>Nueva contraseña</th><th></th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -448,6 +495,9 @@
   </main>
   </div>
 
-  <script src="app.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

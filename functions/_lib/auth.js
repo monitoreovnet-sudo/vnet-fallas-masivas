@@ -1,8 +1,11 @@
-// Autenticación propia: hash de contraseñas (PBKDF2) y sesiones firmadas
-// (HMAC-SHA256), usando Web Crypto API disponible en Cloudflare Workers/Pages.
-// No se necesita ninguna librería externa.
+// Autenticación propia: cifrado reversible de contraseñas (AES-GCM) y
+// sesiones firmadas (HMAC-SHA256), usando Web Crypto API disponible en
+// Cloudflare Workers/Pages. No se necesita ninguna librería externa.
+//
+// Nota de diseño: las contraseñas se guardan CIFRADAS (no como hash de un
+// solo sentido) a propósito, para que el administrador pueda verlas desde
+// el panel. La llave de cifrado se deriva del mismo SESSION_SECRET.
 
-const ITERACIONES_PBKDF2 = 100000;
 const DURACION_SESION_MS = 24 * 60 * 60 * 1000; // 24 horas
 
 function bufferAHex(buffer) {
@@ -14,30 +17,39 @@ function hexABuffer(hex) {
   return bytes;
 }
 
-// --- Hash de contraseñas ---
-
-export async function hashPassword(password) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt, iterations: ITERACIONES_PBKDF2, hash: "SHA-256" },
-    key,
-    256
-  );
-  return `${bufferAHex(salt)}:${bufferAHex(bits)}`;
+async function claveAES(env) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(env.SESSION_SECRET));
+  return crypto.subtle.importKey("raw", digest, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
-export async function verifyPassword(password, hashGuardado) {
-  if (!hashGuardado || !hashGuardado.includes(":")) return false;
-  const [saltHex, hashHex] = hashGuardado.split(":");
-  const salt = hexABuffer(saltHex);
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt, iterations: ITERACIONES_PBKDF2, hash: "SHA-256" },
-    key,
-    256
-  );
-  return bufferAHex(bits) === hashHex;
+// --- Cifrado reversible de contraseñas ---
+
+export async function cifrarPassword(password, env) {
+  const key = await claveAES(env);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const cifrado = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(password));
+  return `${bufferAHex(iv)}:${bufferAHex(cifrado)}`;
+}
+
+export async function descifrarPassword(valorCifrado, env) {
+  if (!valorCifrado || !valorCifrado.includes(":")) return null;
+  const [ivHex, cifradoHex] = valorCifrado.split(":");
+  try {
+    const key = await claveAES(env);
+    const descifrado = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: hexABuffer(ivHex) },
+      key,
+      hexABuffer(cifradoHex)
+    );
+    return new TextDecoder().decode(descifrado);
+  } catch {
+    return null; // llave cambiada o dato corrupto
+  }
+}
+
+export async function verificarPassword(password, valorCifrado, env) {
+  const real = await descifrarPassword(valorCifrado, env);
+  return real !== null && real === password;
 }
 
 // --- Sesiones firmadas (cookie) ---

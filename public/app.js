@@ -84,7 +84,7 @@ async function loadLookups() {
   fillSelect(document.getElementById("c_estado_ticket"), LOOKUPS.estados_ticket, { valueKey: "nombre" });
   fillSelect(document.getElementById("c_unidad_resolutoria"), LOOKUPS.unidades_resolutorias, { valueKey: "nombre" });
   fillSelect(document.getElementById("c_categoria"), LOOKUPS.categorias, { valueKey: "id" });
-  fillSelect(document.getElementById("c_comentario"), LOOKUPS.comentarios, { valueKey: "nombre" });
+  fillSelect(document.getElementById("c_comentario"), comentariosParaCategoria(""), { valueKey: "nombre" });
   fillSelect(document.getElementById("add_oficina_select"), LOOKUPS.oficinas, { valueKey: "id" });
 
   fillSelect(document.getElementById("mc_estado"), LOOKUPS.estados_ticket, { valueKey: "nombre" });
@@ -100,8 +100,15 @@ document.getElementById("c_categoria").addEventListener("change", (e) => {
   const catId = e.target.value;
   const afectaciones = LOOKUPS.afectaciones.filter((a) => String(a.categoria_id) === String(catId));
   fillSelect(document.getElementById("c_afectacion"), afectaciones, { valueKey: "nombre" });
+  fillSelect(document.getElementById("c_comentario"), comentariosParaCategoria(catId), { valueKey: "nombre" });
   actualizarVisibilidadOficinas();
 });
+
+// Comentarios que aplican a una categoría: los ligados a ella + los genéricos
+// (categoria_id NULL = aplican a todas las categorías).
+function comentariosParaCategoria(catId) {
+  return LOOKUPS.comentarios.filter((c) => !c.categoria_id || String(c.categoria_id) === String(catId));
+}
 
 // Nombre exacto de la categoría que habilita el flujo de Oficinas/OLT.
 const CATEGORIA_INTERNET_PLEY = "Soporte Técnico (Internet / Pley)";
@@ -994,18 +1001,26 @@ document.getElementById("q_btn_volver").addEventListener("click", () => {
 // ---------------------------------------------------------------
 let currentUser = null;
 
+const TABS_POR_ROL = {
+  analista: ["pizarra", "reporte"],
+  especialista: ["crear", "modificar", "pizarra", "reporte"],
+  supervisor: ["crear", "modificar", "pizarra", "reporte", "consultar"],
+  administrador: ["crear", "modificar", "pizarra", "reporte", "consultar", "admin"],
+};
+
 function aplicarPermisosRol() {
   document.getElementById("topbar_usuario_nombre").textContent = currentUser.nombre || currentUser.email || "";
-  if (currentUser.rol === "observador") {
-    ["crear", "modificar"].forEach((tab) => {
-      document.querySelector(`.tab-btn[data-tab="${tab}"]`)?.classList.add("hidden");
-    });
-    if (document.querySelector(".tab-btn.active")?.classList.contains("hidden")) {
-      document.querySelector('.tab-btn[data-tab="consultar"]')?.click();
-    }
+
+  const permitidas = TABS_POR_ROL[currentUser.rol] || [];
+  document.querySelectorAll(".tab-btn[data-tab]").forEach((btn) => {
+    btn.classList.toggle("hidden", !permitidas.includes(btn.dataset.tab));
+  });
+
+  if (document.querySelector(".tab-btn.active")?.classList.contains("hidden")) {
+    document.querySelector(`.tab-btn[data-tab="${permitidas[0]}"]`)?.click();
   }
+
   if (currentUser.rol === "administrador") {
-    document.getElementById("nav_admin").classList.remove("hidden");
     cargarUsuarios();
     initCatalogosUI();
   }
@@ -1026,20 +1041,31 @@ async function cargarUsuarios() {
         <td><input class="adm-nombre" value="${u.nombre || ""}" /></td>
         <td>
           <select class="adm-rol-sel">
-            <option value="observador" ${u.rol === "observador" ? "selected" : ""}>observador</option>
+            <option value="analista" ${u.rol === "analista" ? "selected" : ""}>analista</option>
+            <option value="especialista" ${u.rol === "especialista" ? "selected" : ""}>especialista</option>
             <option value="supervisor" ${u.rol === "supervisor" ? "selected" : ""}>supervisor</option>
             <option value="administrador" ${u.rol === "administrador" ? "selected" : ""}>administrador</option>
           </select>
         </td>
         <td><input type="checkbox" class="adm-activo" ${u.activo ? "checked" : ""} /></td>
         <td>
-          <input type="password" class="adm-password" placeholder="${u.tiene_password ? "•••••• (sin cambios)" : "Sin contraseña asignada"}" />
+          <div class="search-row">
+            <input type="password" class="adm-password-actual" value="${u.password_actual || ""}" readonly placeholder="Sin asignar" />
+            <button type="button" class="btn-secondary adm-toggle-ojo">👁</button>
+          </div>
+        </td>
+        <td>
+          <input type="password" class="adm-password" placeholder="Escribir para cambiar" />
         </td>
         <td>
           <button type="button" class="btn-secondary adm-guardar">Guardar</button>
           <button type="button" class="btn-secondary adm-eliminar">Eliminar</button>
         </td>
       `;
+      tr.querySelector(".adm-toggle-ojo").addEventListener("click", () => {
+        const input = tr.querySelector(".adm-password-actual");
+        input.type = input.type === "password" ? "text" : "password";
+      });
       tr.querySelector(".adm-guardar").addEventListener("click", async () => {
         try {
           const password = tr.querySelector(".adm-password").value;
@@ -1100,16 +1126,18 @@ const CATALOGOS_UI = {
     { key: "estado", tipo: "text" }, { key: "localidad", tipo: "text" }, { key: "activo", tipo: "bool" },
   ]},
   olts: { label: "OLTs", campos: [
-    { key: "oficina_id", tipo: "number" }, { key: "codigo", tipo: "text" },
+    { key: "oficina_id", tipo: "ref", ref: "oficinas", label: "oficina" }, { key: "codigo", tipo: "text" },
     { key: "num_tarjetas", tipo: "number" }, { key: "puertos_por_tarjeta", tipo: "number" }, { key: "activo", tipo: "bool" },
   ]},
-  catalogo_categorias: { label: "Categorías de Afectación", campos: [
+  catalogo_categorias: { label: "Tipos de Incidencia (Categorías)", campos: [
     { key: "nombre", tipo: "text" }, { key: "orden", tipo: "number" },
   ]},
-  catalogo_afectaciones: { label: "Afectaciones", campos: [
-    { key: "categoria_id", tipo: "number" }, { key: "nombre", tipo: "text" }, { key: "orden", tipo: "number" },
+  catalogo_afectaciones: { label: "Incidencias (Afectaciones)", campos: [
+    { key: "categoria_id", tipo: "ref", ref: "catalogo_categorias", label: "tipo de incidencia" },
+    { key: "nombre", tipo: "text" }, { key: "orden", tipo: "number" },
   ]},
   catalogo_comentarios: { label: "Comentarios", campos: [
+    { key: "categoria_id", tipo: "ref", ref: "catalogo_categorias", label: "tipo de incidencia" },
     { key: "nombre", tipo: "text" }, { key: "orden", tipo: "number" },
   ]},
   catalogo_unidades_resolutorias: { label: "Unidades Resolutorias", campos: [
@@ -1123,12 +1151,18 @@ const CATALOGOS_UI = {
   ]},
 };
 
-function catInputHtml(campo, valor) {
+function catInputHtml(campo, valor, refs = {}) {
   if (campo.tipo === "bool") {
     return `<input type="checkbox" class="cat-f" data-key="${campo.key}" ${valor ? "checked" : ""} />`;
   }
   if (campo.tipo === "number") {
     return `<input type="number" class="cat-f" data-key="${campo.key}" value="${valor ?? ""}" />`;
+  }
+  if (campo.tipo === "ref") {
+    const opciones = (refs[campo.ref] || [])
+      .map((r) => `<option value="${r.id}" ${String(r.id) === String(valor ?? "") ? "selected" : ""}>${r.nombre}</option>`)
+      .join("");
+    return `<select class="cat-f" data-key="${campo.key}" data-tipo="ref"><option value="">(Todas / ninguna)</option>${opciones}</select>`;
   }
   return `<input type="text" class="cat-f" data-key="${campo.key}" value="${valor ?? ""}" />`;
 }
@@ -1136,7 +1170,9 @@ function catInputHtml(campo, valor) {
 function catLeerValores(fila) {
   const valores = {};
   fila.querySelectorAll(".cat-f").forEach((el) => {
-    valores[el.dataset.key] = el.type === "checkbox" ? (el.checked ? 1 : 0) : el.value;
+    if (el.type === "checkbox") valores[el.dataset.key] = el.checked ? 1 : 0;
+    else if (el.dataset.tipo === "ref") valores[el.dataset.key] = el.value === "" ? null : Number(el.value);
+    else valores[el.dataset.key] = el.value;
   });
   return valores;
 }
@@ -1145,16 +1181,30 @@ async function cargarCatalogo(tabla) {
   const config = CATALOGOS_UI[tabla];
   const thead = document.getElementById("cat_thead_row");
   const addRow = document.getElementById("cat_add_row");
-  thead.innerHTML = config.campos.map((c) => `<th>${c.key}</th>`).join("") + "<th></th>";
-  addRow.innerHTML = config.campos.map((c) => `<div class="field"><label>${c.key}</label>${catInputHtml(c, "")}</div>`).join("");
-
   const tbody = document.querySelector("#cat_table tbody");
   tbody.innerHTML = "";
+
+  // Carga las listas a las que apuntan los campos tipo "ref" (ej. categorías, oficinas)
+  const refs = {};
+  try {
+    for (const c of config.campos) {
+      if (c.tipo === "ref" && !refs[c.ref]) {
+        refs[c.ref] = (await apiGet(`/admin/catalogos/${c.ref}`)).filas;
+      }
+    }
+  } catch (err) {
+    showMsg(document.getElementById("cat_msg"), err.message, false);
+    return;
+  }
+
+  thead.innerHTML = config.campos.map((c) => `<th>${c.label || c.key}</th>`).join("") + "<th></th>";
+  addRow.innerHTML = config.campos.map((c) => `<div class="field"><label>${c.label || c.key}</label>${catInputHtml(c, "", refs)}</div>`).join("");
+
   try {
     const data = await apiGet(`/admin/catalogos/${tabla}`);
     data.filas.forEach((fila) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = config.campos.map((c) => `<td>${catInputHtml(c, fila[c.key])}</td>`).join("") +
+      tr.innerHTML = config.campos.map((c) => `<td>${catInputHtml(c, fila[c.key], refs)}</td>`).join("") +
         `<td><button type="button" class="btn-secondary cat-guardar">Guardar</button>
          <button type="button" class="btn-secondary cat-eliminar">Eliminar</button></td>`;
       tr.querySelector(".cat-guardar").addEventListener("click", async () => {
@@ -1207,6 +1257,18 @@ function initCatalogosUI() {
 let pizarraDatos = [];
 let reporteDatos = [];
 
+const FILTROS_CASCADA = [
+  { id: "estado_ticket", campo: "estado_ticket" },
+  { id: "tipo_falla", campo: "categoria_afectacion" },
+  { id: "afectacion", campo: "afectacion" },
+  { id: "unidad", campo: "unidad_resolutoria" },
+  { id: "region", campo: "region" },
+  { id: "oficina", campo: "oficina_id", labelCampo: "oficina_nombre" },
+  { id: "semaforo", campo: "semaforo" },
+  { id: "grupo_horario", campo: "grupo_horario" },
+  { id: "mes", campo: "mes_apertura" },
+];
+
 function initFiltrosGenerico(prefix) {
   llenarSelectSimple(`${prefix}_mes`, MESES.map((m,i)=>({value:i+1,label:m})), "Todos");
   llenarSelectSimple(`${prefix}_grupo_horario`, ["MAÑANA","TARDE","NOCHE"].map((g)=>({value:g,label:g})), "Todos");
@@ -1218,23 +1280,74 @@ function initFiltrosGenerico(prefix) {
   llenarSelectSimple(`${prefix}_semaforo`, ["VERDE","AMARILLO","NARANJA","ROJO"].map((s)=>({value:s,label:s})), "Todos");
   const regiones = Array.from(new Set(LOOKUPS.oficinas.map((o)=>o.estado).filter(Boolean))).sort();
   llenarSelectSimple(`${prefix}_region`, regiones.map((r)=>({value:r,label:r})), "Todos");
+
+  FILTROS_CASCADA.forEach((flt) => {
+    document.getElementById(`${prefix}_${flt.id}`).addEventListener("change", () => aplicarFiltros(prefix));
+  });
+  document.getElementById(`${prefix}_ticket`).addEventListener("input", () => aplicarFiltros(prefix));
 }
 function initFiltrosPizarra() { initFiltrosGenerico("piz"); }
 
-function construirQueryGenerico(prefix) {
-  const params = new URLSearchParams();
-  const campos = {
-    ticket_cmr: `${prefix}_ticket`, mes_apertura: `${prefix}_mes`, grupo_horario: `${prefix}_grupo_horario`,
-    estado_ticket: `${prefix}_estado_ticket`, afectacion: `${prefix}_afectacion`, categoria_afectacion: `${prefix}_tipo_falla`,
-    unidad_resolutoria: `${prefix}_unidad`, oficina_id: `${prefix}_oficina`, region: `${prefix}_region`, semaforo: `${prefix}_semaforo`,
-  };
-  for (const [param, id] of Object.entries(campos)) {
-    const v = document.getElementById(id).value;
-    if (v) params.set(param, v);
-  }
-  return params.toString();
+function valorFiltro(prefix, id) {
+  return document.getElementById(`${prefix}_${id}`).value;
 }
-function construirQueryPizarra() { return construirQueryGenerico("piz"); }
+
+function filasQueCoincidenExcepto(filas, prefix, idExcluir) {
+  return filas.filter((f) => FILTROS_CASCADA.every((flt) => {
+    if (flt.id === idExcluir) return true;
+    const v = valorFiltro(prefix, flt.id);
+    if (!v) return true;
+    return String(f[flt.campo] ?? "") === String(v);
+  }));
+}
+
+function actualizarCascada(prefix, datosCompletos) {
+  FILTROS_CASCADA.forEach((flt) => {
+    const disponibles = filasQueCoincidenExcepto(datosCompletos, prefix, flt.id);
+    const valores = new Map();
+    disponibles.forEach((f) => {
+      const val = f[flt.campo];
+      if (val === null || val === undefined || val === "") return;
+      valores.set(String(val), flt.labelCampo ? f[flt.labelCampo] : val);
+    });
+    const select = document.getElementById(`${prefix}_${flt.id}`);
+    const actual = select.value;
+    const placeholder = select.options[0] ? select.options[0].textContent : "Todos";
+    const ordenados = Array.from(valores.entries()).sort((a, b) => String(a[1]).localeCompare(String(b[1]), "es"));
+    select.innerHTML = `<option value="">${placeholder}</option>` +
+      ordenados.map(([v, l]) => `<option value="${v}" ${v === actual ? "selected" : ""}>${l}</option>`).join("");
+    if (![...select.options].some((o) => o.value === actual)) select.value = "";
+  });
+}
+
+function filtrarDatos(filas, prefix) {
+  const textoTicket = document.getElementById(`${prefix}_ticket`).value.trim();
+  return filas.filter((f) => {
+    if (textoTicket && !String(f.ticket_cmr).includes(textoTicket)) return false;
+    return FILTROS_CASCADA.every((flt) => {
+      const v = valorFiltro(prefix, flt.id);
+      if (!v) return true;
+      return String(f[flt.campo] ?? "") === String(v);
+    });
+  });
+}
+
+function aplicarFiltros(prefix) {
+  const datosCompletos = prefix === "piz" ? pizarraDatos : reporteDatos;
+  const filtrados = filtrarDatos(datosCompletos, prefix);
+  renderKpisGenerico(filtrados, prefix);
+  renderSemaforoBar(filtrados, `${prefix}_semaforo_bar`);
+  renderTop5PorEstado(filtrados, `${prefix}_top5_estado`);
+  renderChartUnidad(filtrados, `${prefix}_chart_unidad`);
+  renderChartOficina(filtrados, `${prefix}_chart_oficina`);
+  renderChartDesglose(filtrados, `${prefix}_chart_desglose`);
+  if (prefix === "piz") {
+    renderTablaPizarra(filtrados);
+  } else {
+    renderTablaReporte(filtrados);
+  }
+  actualizarCascada(prefix, datosCompletos);
+}
 
 function ticketsUnicos(filas) {
   const mapa = new Map();
@@ -1244,73 +1357,185 @@ function ticketsUnicos(filas) {
 
 function renderKpisGenerico(filas, prefix) {
   const unicos = ticketsUnicos(filas);
-  const hace30dias = Date.now() - 30 * 24 * 3600000;
 
   const curso = unicos.filter((t) => t.estado_ticket === "EN CURSO (ASIGNADO)").length;
   const observacion = unicos.filter((t) => t.estado_ticket === "EN OBSERVACIÓN").length;
   const ventana = unicos.filter((t) => t.estado_ticket === "VENTANA DE MANTENIMIENTO").length;
-  const cerrados30 = unicos.filter((t) =>
-    t.estado_ticket === "CERRADO" && t.fecha_solucion_cmr && new Date(t.fecha_solucion_cmr).getTime() >= hace30dias
-  ).length;
+  const resuelto = unicos.filter((t) => t.estado_ticket === "RESUELTO").length;
+  const cerrado = unicos.filter((t) => t.estado_ticket === "CERRADO").length;
 
   document.getElementById(`${prefix}_kpi_curso`).textContent = curso;
   document.getElementById(`${prefix}_kpi_observacion`).textContent = observacion;
   document.getElementById(`${prefix}_kpi_ventana`).textContent = ventana;
-  document.getElementById(`${prefix}_kpi_cerrados`).textContent = cerrados30;
-  document.getElementById(`${prefix}_kpi_total`).textContent = curso + observacion + ventana;
+  document.getElementById(`${prefix}_kpi_resuelto`).textContent = resuelto;
+  document.getElementById(`${prefix}_kpi_cerrado`).textContent = cerrado;
+  document.getElementById(`${prefix}_kpi_activos`).textContent = curso + observacion + ventana;
+  document.getElementById(`${prefix}_kpi_gestionados`).textContent = resuelto + cerrado;
 }
 function renderKpisPizarra(filas) { renderKpisGenerico(filas, "piz"); }
 
+const FONT_DASH = '"Glacial Indifference", "Quicksand", sans-serif';
+if (window.Chart && window.ChartDataLabels) Chart.register(ChartDataLabels);
+
 const COLORES_UNIDAD = {
-  "OLR": "#a9d6f5", "REPARACIONES": "#b7e4b7", "TECNOLOGÍA": "#f7c99e",
-  "CONTROL DE CAMBIOS": "#f5eaa0", "MIGURA": "#d3bce8",
+  "OLR": "#6cb0e9", "MIGURA": "#875fc5", "TECNOLOGÍA": "#f3b86b",
+  "VENTANA DE MANTENIMIENTO": "#ffde59", "REPARACIONES": "#7ed957",
 };
-const COLORES_BARRA = ["#a9d6f5","#b7e4b7","#f7c99e","#f5eaa0","#d3bce8","#f5b8c4","#b8e0d2","#e0c3fc","#ffd6a5","#caffbf"];
+const ORDEN_UNIDADES = ["OLR", "MIGURA", "TECNOLOGÍA", "VENTANA DE MANTENIMIENTO", "REPARACIONES"];
+
+function mezclarColores(c1, c2, t) {
+  const p = (c) => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
+  const [r1, g1, b1] = p(c1), [r2, g2, b2] = p(c2);
+  return `rgb(${Math.round(r1 + (r2 - r1) * t)},${Math.round(g1 + (g2 - g1) * t)},${Math.round(b1 + (b2 - b1) * t)})`;
+}
+function colorGradienteOficinas(n) {
+  const stops = ["#6cb0e9", "#875fc5", "#c15fc9", "#ef5fa7", "#ff3131"];
+  if (n <= 1) return [stops[0]];
+  const resultado = [];
+  for (let i = 0; i < n; i++) {
+    const pos = (i / (n - 1)) * (stops.length - 1);
+    const i0 = Math.floor(pos), i1 = Math.min(i0 + 1, stops.length - 1);
+    resultado.push(mezclarColores(stops[i0], stops[i1], pos - i0));
+  }
+  return resultado;
+}
+function capitalizar(s) {
+  if (!s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+const chartInstances = {};
+function destruirChart(canvasId) {
+  if (chartInstances[canvasId]) { chartInstances[canvasId].destroy(); delete chartInstances[canvasId]; }
+}
 
 function renderSemaforoBar(filas, contId = "piz_semaforo_bar") {
   const unicos = ticketsUnicos(filas);
   const cont = document.getElementById(contId);
-  const orden = ["VERDE","AMARILLO","NARANJA","ROJO"];
-  cont.innerHTML = orden.map((color) => {
-    const n = unicos.filter((t) => t.semaforo === color).length;
-    return `<div class="seg seg-${color}">${color} (${n})</div>`;
-  }).join("");
+  const cfg = [
+    { color: "VERDE", label: "0-1 Días" },
+    { color: "AMARILLO", label: "1-2 Días" },
+    { color: "NARANJA", label: "2-3 Días" },
+    { color: "ROJO", label: "+3 Días" },
+  ];
+  const conteos = cfg.map((c) => unicos.filter((t) => t.semaforo === c.color).length);
+  cont.innerHTML = `
+    <div class="db-semaforo-bar">
+      ${cfg.map((c, i) => `<div class="seg seg-${c.color}" style="flex-grow:${conteos[i]}"><span>${conteos[i]}</span></div>`).join("")}
+    </div>
+    <div class="db-semaforo-labels">
+      ${cfg.map((c, i) => `<div style="flex-grow:${conteos[i]}">${c.label}</div>`).join("")}
+    </div>
+  `;
 }
 
-function renderChartUnidad(filas, contId = "piz_chart_unidad") {
+function renderChartUnidad(filas, canvasId = "piz_chart_unidad") {
   const unicos = ticketsUnicos(filas);
   const conteo = {};
+  ORDEN_UNIDADES.forEach((u) => { conteo[u] = 0; });
   unicos.forEach((t) => {
-    const u = t.unidad_resolutoria || "SIN ASIGNAR";
-    conteo[u] = (conteo[u] || 0) + 1;
+    if (!t.unidad_resolutoria) return;
+    conteo[t.unidad_resolutoria] = (conteo[t.unidad_resolutoria] || 0) + 1;
   });
-  const cont = document.getElementById(contId);
-  const entradas = Object.entries(conteo).filter(([,n]) => n > 0);
-  if (entradas.length === 0) { cont.innerHTML = '<p class="hint">Sin datos.</p>'; return; }
-  cont.innerHTML = entradas.map(([nombre, n]) => `
-    <div class="bloque" style="flex-grow:${n}; background:${COLORES_UNIDAD[nombre] || "#d9d9d9"};">
-      <div class="n">${n}</div><div>${nombre}</div>
-    </div>`).join("");
+  const etiquetas = Object.keys(conteo);
+  const valores = etiquetas.map((e) => conteo[e]);
+  const colores = etiquetas.map((e) => COLORES_UNIDAD[e] || "#cccccc");
+
+  destruirChart(canvasId);
+  const el = document.getElementById(canvasId);
+  if (!el) return;
+  chartInstances[canvasId] = new Chart(el.getContext("2d"), {
+    type: "bar",
+    data: { labels: etiquetas, datasets: [{ data: valores, backgroundColor: colores, borderRadius: 15, barThickness: 18 }] },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { right: 24 } },
+      scales: {
+        x: { display: false, grid: { display: false } },
+        y: { grid: { display: false }, ticks: { font: { family: FONT_DASH, size: 10 } } },
+      },
+      plugins: {
+        legend: { display: false },
+        datalabels: { anchor: "end", align: "right", color: "#000", font: { family: FONT_DASH, weight: "bold", size: 12 } },
+      },
+    },
+  });
 }
 
-function renderChartOficina(filas, contId = "piz_chart_oficina") {
+function renderChartOficina(filas, canvasId = "piz_chart_oficina") {
   const unicos = ticketsUnicos(filas);
   const conteo = {};
   unicos.forEach((t) => {
     const o = t.oficina_nombre || "SIN OFICINA";
     conteo[o] = (conteo[o] || 0) + 1;
   });
-  const entradas = Object.entries(conteo).sort((a,b) => b[1]-a[1]).slice(0, 12);
-  const cont = document.getElementById(contId);
-  if (entradas.length === 0) { cont.innerHTML = '<p class="hint">Sin datos.</p>'; return; }
-  const max = Math.max(...entradas.map(([,n]) => n));
-  cont.innerHTML = entradas.map(([nombre, n], idx) => `
-    <div class="barra-col">
-      <div class="barra-valor">${n}</div>
-      <div class="barra" style="height:${(n/max*100).toFixed(0)}%; background:${COLORES_BARRA[idx % COLORES_BARRA.length]};"></div>
-      <div class="barra-label">${nombre}</div>
+  const entradas = Object.entries(conteo).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const etiquetas = entradas.map(([n]) => capitalizar(n));
+  const valores = entradas.map(([, n]) => n);
+  const colores = colorGradienteOficinas(entradas.length);
 
-    </div>`).join("");
+  destruirChart(canvasId);
+  const el = document.getElementById(canvasId);
+  if (!el) return;
+  chartInstances[canvasId] = new Chart(el.getContext("2d"), {
+    type: "bar",
+    data: { labels: etiquetas, datasets: [{ data: valores, backgroundColor: colores, borderRadius: 15 }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: { top: 20 } },
+      scales: {
+        x: { grid: { display: false }, ticks: { font: { family: FONT_DASH, size: 9 }, maxRotation: 45, minRotation: 45 } },
+        y: { display: false, grid: { display: false } },
+      },
+      plugins: {
+        legend: { display: false },
+        datalabels: { anchor: "end", align: "top", color: "#000", font: { family: FONT_DASH, weight: "bold", size: 11 } },
+      },
+    },
+  });
+}
+
+function renderChartDesglose(filas, canvasId) {
+  const unicos = ticketsUnicos(filas);
+  const cfg = [
+    { estado: "VENTANA DE MANTENIMIENTO", label: "Ventana de Mantenimiento", color: "#baa3ed" },
+    { estado: "EN CURSO (ASIGNADO)", label: "En Curso Asignado", color: "#ab48ae" },
+    { estado: "EN OBSERVACIÓN", label: "En Observación", color: "#9571cd" },
+  ];
+  const valores = cfg.map((c) => unicos.filter((t) => t.estado_ticket === c.estado).length);
+  const total = valores.reduce((a, b) => a + b, 0) || 1;
+
+  destruirChart(canvasId);
+  const el = document.getElementById(canvasId);
+  if (!el) return;
+  chartInstances[canvasId] = new Chart(el.getContext("2d"), {
+    type: "doughnut",
+    data: { labels: cfg.map((c) => c.label), datasets: [{ data: valores, backgroundColor: cfg.map((c) => c.color), borderWidth: 0 }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "55%",
+      plugins: {
+        legend: { position: "bottom", labels: { font: { family: FONT_DASH, size: 10 }, color: "#000", boxWidth: 12 } },
+        datalabels: {
+          labels: {
+            porcentaje: {
+              color: "#fff", font: { family: FONT_DASH, weight: "bold", size: 11 },
+              formatter: (v) => (total ? Math.round((v / total) * 100) + "%" : "0%"),
+            },
+            valor: {
+              anchor: "end", align: "end", offset: 8,
+              color: "#000", font: { family: FONT_DASH, weight: "bold", size: 11 },
+              formatter: (v) => v,
+            },
+          },
+        },
+      },
+    },
+  });
 }
 
 function asignarFilaYColor(filas) {
@@ -1359,13 +1584,9 @@ function renderTablaPizarra(filas) {
 
 async function cargarPizarra() {
   try {
-    const data = await apiGet(`/consulta?${construirQueryPizarra()}`);
+    const data = await apiGet("/consulta");
     pizarraDatos = data.filas;
-    renderKpisPizarra(pizarraDatos);
-    renderSemaforoBar(pizarraDatos);
-    renderChartUnidad(pizarraDatos);
-    renderChartOficina(pizarraDatos);
-    renderTablaPizarra(pizarraDatos);
+    aplicarFiltros("piz");
   } catch (err) {
     console.error("Error cargando la pizarra:", err);
   }
@@ -1373,10 +1594,61 @@ async function cargarPizarra() {
 
 document.getElementById("piz_btn_actualizar").addEventListener("click", cargarPizarra);
 
+function exportarExcelGenerico(filasObjetos, nombreHoja, nombreArchivo) {
+  const ws = XLSX.utils.json_to_sheet(filasObjetos);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, nombreHoja);
+  XLSX.writeFile(wb, nombreArchivo);
+}
+
+function exportarCSVGenerico(filasObjetos, nombreArchivo) {
+  const ws = XLSX.utils.json_to_sheet(filasObjetos);
+  const csv = XLSX.utils.sheet_to_csv(ws);
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nombreArchivo;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function filasParaExcelDashboard(filas) {
+  const { ordenadas, filaPorTicket } = asignarFilaYColor(filas);
+  return ordenadas.map((f) => ({
+    "Fila": filaPorTicket.get(f.ticket_cmr),
+    "Ticket": f.ticket_cmr,
+    "Oficina": f.oficina_nombre || "",
+    "OLT": f.olt,
+    "Tarjeta": f.tarjeta,
+    "Puerto": f.puerto,
+    "Apertura CMR": f.fecha_apertura_cmr || "",
+    "Tiempo Abierto CMR (h)": f.horas_abierta !== null ? Number(f.horas_abierta.toFixed(1)) : "",
+    "Estado del Ticket": f.estado_ticket,
+    "Afectación": f.afectacion || "",
+    "N Cltes Afectados": f.nro_clientes_afectados,
+    "N Cltes Reportaron": f.no_clientes_reportaron,
+    "Unidad Resolutoria": f.unidad_resolutoria || "",
+    "Semáforo": f.semaforo || "",
+  }));
+}
+
+document.getElementById("piz_btn_excel").addEventListener("click", () => {
+  if (pizarraDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
+  const fecha = new Date().toISOString().slice(0, 10);
+  exportarExcelGenerico(filasParaExcelDashboard(pizarraDatos), "Pizarra", `pizarra_monitoreo_${fecha}.xlsx`);
+});
+document.getElementById("piz_btn_pdf").addEventListener("click", () => window.print());
+document.getElementById("piz_btn_csv").addEventListener("click", () => {
+  if (pizarraDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
+  const fecha = new Date().toISOString().slice(0, 10);
+  exportarCSVGenerico(filasParaExcelDashboard(pizarraDatos), `pizarra_monitoreo_${fecha}.csv`);
+});
+
 // ---------------------------------------------------------------
 // REPORTE DIARIO DE FALLAS MASIVAS
 // ---------------------------------------------------------------
-function renderResumenPorEstado(filas) {
+function renderTop5PorEstado(filas, tablaId) {
   const unicos = ticketsUnicos(filas);
   const porEstado = {};
   unicos.forEach((t) => {
@@ -1385,15 +1657,26 @@ function renderResumenPorEstado(filas) {
     porEstado[region].fallas += 1;
     porEstado[region].afectados += Number(t.nro_clientes_afectados || 0);
   });
-  const entradas = Object.entries(porEstado).sort((a,b) => b[1].fallas - a[1].fallas);
-  const tbody = document.querySelector("#rep_resumen_estado tbody");
-  const tfoot = document.querySelector("#rep_resumen_estado tfoot");
-  tbody.innerHTML = entradas.map(([region, v]) => `
-    <tr><td>${region}</td><td>${v.fallas}</td><td>${v.afectados}</td></tr>
-  `).join("");
-  const totalFallas = entradas.reduce((s,[,v]) => s + v.fallas, 0);
-  const totalAfectados = entradas.reduce((s,[,v]) => s + v.afectados, 0);
-  tfoot.innerHTML = `<tr><td><strong>Total</strong></td><td><strong>${totalFallas}</strong></td><td><strong>${totalAfectados}</strong></td></tr>`;
+  const entradas = Object.entries(porEstado).sort((a, b) => b[1].fallas - a[1].fallas);
+  const top5 = entradas.slice(0, 5).map(([region, v]) => ({ region, ...v }));
+  const resto = entradas.slice(5);
+  const filasTabla = [...top5];
+  if (resto.length > 0) {
+    filasTabla.push({
+      region: "Otros",
+      fallas: resto.reduce((s, [, v]) => s + v.fallas, 0),
+      afectados: resto.reduce((s, [, v]) => s + v.afectados, 0),
+    });
+  }
+  filasTabla.push({
+    region: "Total",
+    fallas: entradas.reduce((s, [, v]) => s + v.fallas, 0),
+    afectados: entradas.reduce((s, [, v]) => s + v.afectados, 0),
+  });
+
+  const tbody = document.querySelector(`#${tablaId} tbody`);
+  if (!tbody) return;
+  tbody.innerHTML = filasTabla.map((f) => `<tr><td>${f.region}</td><td>${f.fallas}</td><td>${f.afectados}</td></tr>`).join("");
 }
 
 function renderTablaReporte(filas) {
@@ -1419,20 +1702,67 @@ function renderTablaReporte(filas) {
 
 async function cargarReporte() {
   try {
-    const data = await apiGet(`/consulta?${construirQueryGenerico("rep")}`);
+    const data = await apiGet("/consulta");
     reporteDatos = data.filas;
-    renderKpisGenerico(reporteDatos, "rep");
-    renderSemaforoBar(reporteDatos, "rep_semaforo_bar");
-    renderChartUnidad(reporteDatos, "rep_chart_unidad");
-    renderChartOficina(reporteDatos, "rep_chart_oficina");
-    renderResumenPorEstado(reporteDatos);
-    renderTablaReporte(reporteDatos);
+    aplicarFiltros("rep");
   } catch (err) {
     console.error("Error cargando el reporte diario:", err);
   }
 }
 
 document.getElementById("rep_btn_actualizar").addEventListener("click", cargarReporte);
+
+function filasResumenPorEstadoParaExcel(filas) {
+  const unicos = ticketsUnicos(filas);
+  const porEstado = {};
+  unicos.forEach((t) => {
+    const region = t.region || "SIN ESTADO";
+    if (!porEstado[region]) porEstado[region] = { fallas: 0, afectados: 0 };
+    porEstado[region].fallas += 1;
+    porEstado[region].afectados += Number(t.nro_clientes_afectados || 0);
+  });
+  const entradas = Object.entries(porEstado).sort((a,b) => b[1].fallas - a[1].fallas);
+  const filasExcel = entradas.map(([region, v]) => ({ "Estado": region, "Nro Fallas": v.fallas, "Nro Afectados": v.afectados }));
+  filasExcel.push({
+    "Estado": "Total",
+    "Nro Fallas": entradas.reduce((s,[,v]) => s + v.fallas, 0),
+    "Nro Afectados": entradas.reduce((s,[,v]) => s + v.afectados, 0),
+  });
+  return filasExcel;
+}
+
+function filasDetalleReporteParaExcel(filas) {
+  return filas.map((f, idx) => ({
+    "Fila": idx + 1,
+    "Ticket": f.ticket_cmr,
+    "Tipo": "",
+    "Afectación": f.afectacion || "",
+    "Unidad Resolutoria": f.unidad_resolutoria || "",
+    "Estado del Ticket": f.estado_ticket,
+    "Apertura CMR": f.fecha_apertura_cmr || "",
+    "Grupo Horario CMR": f.grupo_horario || "",
+    "N Cltes Afectados": f.nro_clientes_afectados,
+    "Tiempo Abierto CMR (h)": f.horas_abierta !== null ? Number(f.horas_abierta.toFixed(1)) : "",
+    "Estado": f.region || "",
+    "Oficina": f.oficina_nombre || "",
+    "Avance CMR": f.avance_cmr || "",
+  }));
+}
+
+document.getElementById("rep_btn_excel").addEventListener("click", () => {
+  if (reporteDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasResumenPorEstadoParaExcel(reporteDatos)), "Resumen por Estado");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasDetalleReporteParaExcel(reporteDatos)), "Detalle");
+  const fecha = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `reporte_diario_fallas_${fecha}.xlsx`);
+});
+document.getElementById("rep_btn_pdf").addEventListener("click", () => window.print());
+document.getElementById("rep_btn_csv").addEventListener("click", () => {
+  if (reporteDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
+  const fecha = new Date().toISOString().slice(0, 10);
+  exportarCSVGenerico(filasDetalleReporteParaExcel(reporteDatos), `reporte_diario_fallas_${fecha}.csv`);
+});
 
 // ---------------------------------------------------------------
 // Arranque
@@ -1479,6 +1809,10 @@ document.getElementById("login_btn").addEventListener("click", async () => {
   } catch (err) {
     showMsg(msg, err.message, false);
   }
+});
+document.getElementById("login_toggle_ojo").addEventListener("click", () => {
+  const input = document.getElementById("login_password");
+  input.type = input.type === "password" ? "text" : "password";
 });
 document.getElementById("login_password").addEventListener("keydown", (e) => {
   if (e.key === "Enter") document.getElementById("login_btn").click();

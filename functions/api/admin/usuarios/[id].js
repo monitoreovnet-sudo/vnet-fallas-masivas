@@ -1,7 +1,7 @@
 import { json, badRequest, notFound, requireAdmin } from "../../../_lib/helpers.js";
-import { hashPassword } from "../../../_lib/auth.js";
+import { cifrarPassword } from "../../../_lib/auth.js";
 
-const ROLES_VALIDOS = ["administrador", "supervisor", "observador"];
+const ROLES_VALIDOS = ["administrador", "supervisor", "especialista", "analista"];
 
 // PATCH /api/admin/usuarios/:id
 // Body: cualquier combinación de { nombre, rol, activo, password }
@@ -25,7 +25,7 @@ export async function onRequestPatch({ request, env, params }) {
   if (body.activo !== undefined) { campos.push("activo = ?"); binds.push(body.activo ? 1 : 0); }
   if (body.password) {
     if (body.password.length < 6) return badRequest("La contraseña debe tener al menos 6 caracteres.");
-    campos.push("password_hash = ?"); binds.push(await hashPassword(body.password));
+    campos.push("password_cifrada = ?"); binds.push(await cifrarPassword(body.password, env));
   }
 
   if (campos.length === 0) return badRequest("No enviaste ningún campo para actualizar.");

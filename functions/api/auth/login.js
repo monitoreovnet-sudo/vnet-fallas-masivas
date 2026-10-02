@@ -1,5 +1,5 @@
 import { jsonConHeaders, json, badRequest } from "../../_lib/helpers.js";
-import { verifyPassword, crearTokenSesion, cookieSesionHeader } from "../../_lib/auth.js";
+import { verificarPassword, crearTokenSesion, cookieSesionHeader } from "../../_lib/auth.js";
 
 // POST /api/auth/login
 // Body: { email, password }
@@ -11,7 +11,7 @@ export async function onRequestPost({ request, env }) {
   if (!email || !password) return badRequest("Correo y contraseña son obligatorios.");
 
   const usuario = await env.DB
-    .prepare("SELECT email, nombre, rol, activo, password_hash FROM usuarios WHERE email = ?")
+    .prepare("SELECT email, nombre, rol, activo, password_cifrada FROM usuarios WHERE email = ?")
     .bind(email)
     .first();
 
@@ -19,9 +19,9 @@ export async function onRequestPost({ request, env }) {
   // para no revelar qué correos están registrados.
   const credencialesInvalidas = () => json({ error: "Correo o contraseña incorrectos." }, 401);
 
-  if (!usuario || !usuario.activo || !usuario.password_hash) return credencialesInvalidas();
+  if (!usuario || !usuario.activo || !usuario.password_cifrada) return credencialesInvalidas();
 
-  const ok = await verifyPassword(password, usuario.password_hash);
+  const ok = await verificarPassword(password, usuario.password_cifrada, env);
   if (!ok) return credencialesInvalidas();
 
   const token = await crearTokenSesion(usuario.email, usuario.rol, env);
