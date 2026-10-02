@@ -1399,6 +1399,19 @@ function colorGradienteOficinas(n) {
   }
   return resultado;
 }
+function hexARgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+const SEMAFORO_HEX = { VERDE: "#7ed957", AMARILLO: "#ffde59", NARANJA: "#ff914d", ROJO: "#ff3131" };
+function estiloTiempoAbierto(semaforo) {
+  return semaforo ? `background:${hexARgba(SEMAFORO_HEX[semaforo], 0.5)};` : "";
+}
+function estiloUnidad(unidad) {
+  const hex = COLORES_UNIDAD[unidad];
+  return hex ? `background:${hexARgba(hex, 0.5)};` : "";
+}
+
 function capitalizar(s) {
   if (!s) return s;
   return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
@@ -1560,7 +1573,6 @@ function colorPorNombreFactory(paleta) {
 
 function renderTablaPizarra(filas) {
   const { ordenadas, filaPorTicket } = asignarFilaYColor(filas);
-  const colorUnidad = colorPorNombreFactory(COLORES_BARRA);
   const tbody = document.querySelector("#piz_table tbody");
   tbody.innerHTML = ordenadas.map((f) => `
     <tr>
@@ -1571,12 +1583,12 @@ function renderTablaPizarra(filas) {
       <td>${f.tarjeta}</td>
       <td>${f.puerto}</td>
       <td>${f.fecha_apertura_cmr || "-"}</td>
-      <td class="${f.semaforo ? "sem-" + f.semaforo : ""}">${f.horas_abierta !== null ? f.horas_abierta.toFixed(1) + " h" : "-"}</td>
+      <td style="${estiloTiempoAbierto(f.semaforo)}">${f.horas_abierta !== null ? f.horas_abierta.toFixed(1) + " h" : "-"}</td>
       <td>${f.estado_ticket}</td>
       <td>${f.afectacion || "-"}</td>
       <td>${f.nro_clientes_afectados}</td>
       <td>${f.no_clientes_reportaron}</td>
-      <td style="background:${colorUnidad(f.unidad_resolutoria)}66;">${f.unidad_resolutoria || "-"}</td>
+      <td style="${estiloUnidad(f.unidad_resolutoria)}">${f.unidad_resolutoria || "-"}</td>
     </tr>
   `).join("");
 }
@@ -1680,19 +1692,20 @@ function renderTop5PorEstado(filas, tablaId) {
 }
 
 function renderTablaReporte(filas) {
+  const { ordenadas, filaPorTicket } = asignarFilaYColor(filas);
   const tbody = document.querySelector("#rep_table tbody");
-  tbody.innerHTML = filas.map((f, idx) => `
+  tbody.innerHTML = ordenadas.map((f) => `
     <tr>
-      <td>${idx + 1}</td>
+      <td>${filaPorTicket.get(f.ticket_cmr)}</td>
       <td><strong style="font-size:14px;">${formatearTicket(f.ticket_cmr)}</strong></td>
       <td>-</td>
       <td>${f.afectacion || "-"}</td>
-      <td${f.unidad_resolutoria === "REPARACIONES" ? ' style="background:#c8f0c8;"' : ""}>${f.unidad_resolutoria || "-"}</td>
+      <td style="${estiloUnidad(f.unidad_resolutoria)}">${f.unidad_resolutoria || "-"}</td>
       <td>${f.estado_ticket}</td>
       <td>${f.fecha_apertura_cmr || "-"}</td>
       <td>${f.grupo_horario || "-"}</td>
+      <td style="${estiloTiempoAbierto(f.semaforo)}">${f.horas_abierta !== null ? f.horas_abierta.toFixed(1) + " h" : "-"}</td>
       <td>${f.nro_clientes_afectados}</td>
-      <td class="${f.semaforo ? "sem-" + f.semaforo : ""}">${f.horas_abierta !== null ? f.horas_abierta.toFixed(1) + " h" : "-"}</td>
       <td>${f.region || "-"}</td>
       <td>${f.oficina_nombre || "-"}</td>
       <td>${f.avance_cmr || "-"}</td>

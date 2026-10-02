@@ -40,8 +40,16 @@
   font-family: var(--db-font);
   background: var(--db-bg);
   color: var(--db-text);
-  margin: -20px -24px -60px;
   padding: 0 0 40px;
+  /* Full-bleed: el dashboard ocupa todo el ancho del viewport, escapando
+     el max-width:1100px de <main>, para que la tabla maestra quepa sin
+     scroll horizontal. */
+  width: 100vw;
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
 }
 
 * { box-sizing: border-box; }
@@ -155,6 +163,36 @@
 
 @media (max-width: 1100px) {
   .db-bloque6 { grid-template-columns: repeat(2, 1fr); }
+}
+
+.db-table-scroll {
+  overflow-x: hidden;
+  margin: 14px 24px 0;
+  border: 1px solid var(--db-secondary);
+  border-radius: 8px;
+}
+.db-tabla-maestra {
+  width: 100%;
+  table-layout: auto;
+  border-collapse: collapse;
+  font-family: var(--db-font);
+}
+.db-tabla-maestra th, .db-tabla-maestra td {
+  border: 1px solid var(--db-divider);
+  padding: 6px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.db-tabla-maestra th {
+  background: var(--db-primary);
+  color: var(--db-white);
+  position: sticky;
+  top: 0;
+}
+.db-tabla-maestra th:last-child, .db-tabla-maestra td:last-child {
+  white-space: normal;
+  word-break: break-word;
+  min-width: 220px;
 }
 
 .db-filtro-item select {
