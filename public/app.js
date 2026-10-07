@@ -1005,7 +1005,7 @@ const TABS_POR_ROL = {
   analista: ["pizarra", "reporte"],
   especialista: ["crear", "modificar", "pizarra", "reporte"],
   supervisor: ["crear", "modificar", "pizarra", "reporte", "consultar"],
-  administrador: ["crear", "modificar", "pizarra", "reporte", "consultar", "admin"],
+  administrador: ["crear", "modificar", "pizarra", "reporte", "consultar", "admin", "repositorio"],
 };
 
 function aplicarPermisosRol() {
@@ -1834,6 +1834,169 @@ document.getElementById("login_password").addEventListener("keydown", (e) => {
 document.getElementById("btn_logout").addEventListener("click", async () => {
   try { await apiSend("/auth/logout", "POST"); } catch (e) { /* no importa si falla */ }
   location.reload();
+});
+
+// ---------------------------------------------------------------
+// REPOSITORIO: importar tickets históricos desde CSV/XLSX
+// ---------------------------------------------------------------
+const MAP_TIPO_REPO = {
+  "SOPORTE TÉCNICO": "Soporte Técnico (Internet / Pley)",
+  "SOPORTE TECNICO": "Soporte Técnico (Internet / Pley)",
+  "Soporte Técnico (Internet / Pley)": "Soporte Técnico (Internet / Pley)",
+  "CENTRAL TELEFÓNICA": "Central Telefónica",
+  "PAGOS": "Pagos",
+  "HERRAMIENTAS VNET": "Herramientas VNET",
+};
+function normTipoRepo(v) {
+  if (!v) return null;
+  const s = String(v).trim();
+  return MAP_TIPO_REPO[s] || s;
+}
+function normUnidadRepo(v) {
+  return v ? String(v).trim().toUpperCase() : null;
+}
+function limpiarNumeroRepo(v) {
+  if (v === null || v === undefined || v === "") return null;
+  let s = String(v).trim();
+  if (s.endsWith(".0")) s = s.slice(0, -2);
+  s = s.replace(/[^0-9]/g, "");
+  return s || null;
+}
+function fechaRepoAIso(v) {
+  if (v === null || v === undefined || v === "") return null;
+  let d = v instanceof Date ? v : new Date(v);
+  if (isNaN(d.getTime())) return null;
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+function codigoOficinaRepo(oficinaTexto) {
+  if (!oficinaTexto) return null;
+  const m = String(oficinaTexto).trim().match(/^([A-Z0-9]{2,6})\s*-\s*/);
+  if (!m) return null;
+  const cod = m[1];
+  return (LOOKUPS.oficinas || []).some((o) => o.codigo === cod) ? cod : null;
+}
+function normalizarFilaRepo(filaCruda) {
+  const limpia = {};
+  for (const [k, v] of Object.entries(filaCruda)) limpia[String(k).trim()] = v;
+  return limpia;
+}
+function textoORepo(v, def = "DESCONOCIDO") {
+  const s = v === null || v === undefined ? "" : String(v).trim();
+  return s || def;
+}
+
+async function leerArchivoRepositorio(file) {
+  if (file.name.toLowerCase().endsWith(".csv")) {
+    const texto = await file.text();
+    return XLSX.read(texto, { type: "string" });
+  }
+  const buffer = await file.arrayBuffer();
+  return XLSX.read(buffer, { type: "array", cellDates: true });
+}
+
+let repoParsed = { tickets: [], puertos: [] };
+
+async function analizarArchivoRepositorio() {
+  const msg = document.getElementById("repo_msg_analisis");
+  document.getElementById("repo_preview").classList.add("hidden");
+  document.getElementById("repo_resultado").innerHTML = "";
+  const file = document.getElementById("repo_archivo").files[0];
+  if (!file) { showMsg(msg, "Selecciona un archivo primero.", false); return; }
+
+  try {
+    const wb = await leerArchivoRepositorio(file);
+    const hoja = wb.Sheets[wb.SheetNames[0]];
+    const filasCrudas = XLSX.utils.sheet_to_json(hoja, { defval: null });
+
+    const ticketsMap = new Map();
+    const puertos = [];
+    let invalidas = 0;
+    let sinOficina = 0;
+
+    filasCrudas.forEach((filaCruda) => {
+      const f = normalizarFilaRepo(filaCruda);
+      const ticketCmr = limpiarNumeroRepo(f["Title"]);
+      if (!ticketCmr) { invalidas += 1; return; }
+
+      if (!ticketsMap.has(ticketCmr)) {
+        ticketsMap.set(ticketCmr, {
+          ticket_cmr: ticketCmr,
+          tickets_vinculados: limpiarNumeroRepo(f["Tickets Vinculados"]),
+          fecha_apertura_cda: fechaRepoAIso(f["FECHA DE CREACION DEL CDA"]),
+          fecha_apertura_cmr: fechaRepoAIso(f["FECHA DE CREACION DEL CRM"]),
+          estado_ticket: textoORepo(f["ESTADO DEL TICKET"], "CERRADO"),
+          unidad_resolutoria: normUnidadRepo(f["UNIDAD RESOLUTORIA"]),
+          categoria_afectacion: normTipoRepo(f["TIPO"]),
+          afectacion: f["AFECTACIÓN"] || null,
+          comentario: f["COMENTARIO"] || null,
+          descripcion: f["DESCRIPCION"] || null,
+          avance_cmr: f["AVANCE DEL CMR"] || null,
+          fecha_solucion_cmr: fechaRepoAIso(f["FECHA DE SOLUCION DEL CRM"]),
+          fecha_solucion_cda: fechaRepoAIso(f["FECHA DE SOLUCION DEL CDA"]),
+        });
+      }
+
+      const codOficina = codigoOficinaRepo(f["OFICINA"]);
+      if (f["OFICINA"] && !codOficina) sinOficina += 1;
+
+      puertos.push({
+        ticket_cmr: ticketCmr,
+        oficina_codigo: codOficina,
+        olt: textoORepo(f["OLT"]),
+        tarjeta: textoORepo(f["Tarjeta"]),
+        puerto: textoORepo(f["PUERTO"]),
+        sector: textoORepo(f["UBICACIÓN"]),
+        edificio: textoORepo(f["NOMBRE DEL EDIFICIO (SI APLICA)"]),
+        no_clientes_reportaron: Number(f["N° CLIENTES QUE REPORTARON FALLA"] || 0),
+        nro_clientes_afectados: Number(f["CANTIDAD DE CLIENTES AFECTADOS"] || 0),
+        estado_puerto: textoORepo(f["ESTADO DEL TICKET"], "CERRADO"),
+      });
+    });
+
+    repoParsed = { tickets: Array.from(ticketsMap.values()), puertos };
+
+    document.getElementById("repo_prev_tickets").textContent = repoParsed.tickets.length;
+    document.getElementById("repo_prev_puertos").textContent = repoParsed.puertos.length;
+    document.getElementById("repo_prev_sin_oficina").textContent = sinOficina;
+    document.getElementById("repo_prev_invalidas").textContent = invalidas;
+    document.getElementById("repo_preview").classList.remove("hidden");
+    showMsg(msg, "Archivo analizado correctamente. Revisa el resumen y confirma para importar.", true);
+  } catch (err) {
+    showMsg(msg, "No se pudo leer el archivo: " + err.message, false);
+  }
+}
+
+document.getElementById("repo_btn_analizar").addEventListener("click", analizarArchivoRepositorio);
+
+document.getElementById("repo_btn_importar").addEventListener("click", async () => {
+  const cont = document.getElementById("repo_resultado");
+  const btn = document.getElementById("repo_btn_importar");
+  btn.disabled = true;
+  btn.textContent = "Importando...";
+  cont.innerHTML = "";
+  try {
+    const data = await apiSend("/admin/importar", "POST", repoParsed);
+    cont.innerHTML = `
+      <div class="ticket-card">
+        <h3>Importación completada</h3>
+        <div class="kv">
+          <div><span>Tickets recibidos:</span> ${data.tickets_recibidos}</div>
+          <div><span>Tickets nuevos insertados:</span> ${data.tickets_insertados}</div>
+          <div><span>Tickets que ya existían:</span> ${data.tickets_ya_existian}</div>
+          <div><span>Puertos recibidos:</span> ${data.puertos_recibidos}</div>
+          <div><span>Puertos nuevos insertados:</span> ${data.puertos_insertados}</div>
+          <div><span>Puertos que ya existían:</span> ${data.puertos_ya_existian}</div>
+          <div><span>Puertos sin ticket válido:</span> ${data.puertos_sin_ticket}</div>
+          <div><span>Puertos con oficina no reconocida:</span> ${data.puertos_sin_oficina_reconocida}</div>
+        </div>
+      </div>`;
+  } catch (err) {
+    cont.innerHTML = `<div class="msg error">${err.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "2. Confirmar e Importar";
+  }
 });
 
 iniciarSesionApp();

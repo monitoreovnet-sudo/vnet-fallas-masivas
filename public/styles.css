@@ -208,6 +208,21 @@ body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text);
+  overflow-x: hidden; /* protege contra el truco de full-bleed (100vw) de abajo */
+}
+
+/* Utilidad reutilizable: escapa el max-width:1100px de <main> para ocupar
+   todo el ancho del viewport (dashboards y tabla de Consultar/Log). */
+.full-bleed {
+  width: 100vw;
+  position: relative;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  box-sizing: border-box;
+  padding-left: 24px;
+  padding-right: 24px;
 }
 
 .topbar {
@@ -224,6 +239,8 @@ body {
 .topbar-usuario #btn_logout { background: white; color: var(--purple-dark); border: none; padding: 6px 14px; }
 .brand-mark { font-weight: 800; font-size: 20px; margin-right: 12px; }
 .brand-sub { font-size: 14px; opacity: 0.9; }
+.brand-logo { height: 32px; object-fit: contain; margin-right: 12px; vertical-align: middle; }
+.login-logo-atc { display: block; height: 48px; object-fit: contain; margin: 0 auto 10px; }
 
 .tabs {
   display: flex;
@@ -561,5 +578,53 @@ input:focus, select:focus, textarea:focus {
   }
   .table-scroll { max-height: none !important; overflow: visible !important; }
   .charts-row { page-break-inside: avoid; }
+}
+
+/* ---------- Responsive: dashboards (Pizarra / Reporte) ---------- */
+
+@media (max-width: 1000px) {
+  .db-topbar { padding: 8px 14px; flex-wrap: wrap; justify-content: center; gap: 8px; }
+  .db-topbar-logo { height: 40px; }
+  .db-topbar-titulo { height: 30px; }
+
+  .db-estado-row, .db-resumen-row {
+    grid-template-columns: repeat(2, 1fr);
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .db-estado-row .db-acciones { grid-column: 1 / -1; justify-content: center; }
+  .db-resumen-activos, .db-resumen-gestionados { grid-column: auto; }
+
+  .db-filtros-grid { grid-template-columns: repeat(3, 1fr); padding-left: 14px; padding-right: 14px; }
+  .db-semaforo-bar, .db-semaforo-labels { margin-left: 14px; margin-right: 14px; }
+  .db-bloque6 { padding-left: 14px; padding-right: 14px; }
+}
+
+@media (max-width: 680px) {
+  .db-estado-row, .db-resumen-row, .db-filtros-grid { grid-template-columns: 1fr; }
+  .db-bloque6 { grid-template-columns: 1fr; }
+  .db-chart-wrap { min-height: 220px; }
+  .db-acciones { flex-direction: column; align-items: center; }
+  .db-btn-circular { width: 80px; height: 80px; font-size: 13px; }
+  .db-btns-exportar { height: auto; width: 160px; gap: 6px; }
+
+  /* En pantallas muy angostas, 13 columnas no caben de ningún modo
+     razonable: se permite scroll horizontal solo aquí, como respaldo. */
+  .db-table-scroll { overflow-x: auto; }
+  .db-tabla-maestra { min-width: 900px; }
+
+  .login-box { width: 90vw; max-width: 320px; }
+}
+
+/* ---------- Responsive: resto de la app (formularios, tablas, topbar) ---------- */
+
+@media (max-width: 700px) {
+  .topbar { padding: 10px 14px; }
+  .brand-logo { height: 26px; }
+  .brand-sub { font-size: 12px; }
+  .tabs { overflow-x: auto; flex-wrap: nowrap; }
+  .tab-btn { white-space: nowrap; }
+  main { padding: 14px 14px 40px; }
+  .full-bleed { padding-left: 14px; padding-right: 14px; }
 }
 
