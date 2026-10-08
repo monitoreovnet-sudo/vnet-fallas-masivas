@@ -1924,7 +1924,7 @@ async function analizarArchivoRepositorio() {
           ticket_cmr: ticketCmr,
           tickets_vinculados: limpiarNumeroRepo(f["Tickets Vinculados"]),
           fecha_apertura_cda: fechaRepoAIso(f["FECHA DE CREACION DEL CDA"]),
-          fecha_apertura_cmr: fechaRepoAIso(f["FECHA DE CREACION DEL CRM"]),
+          fecha_apertura_cmr: fechaRepoAIso(f["FECHA DE CREACION DEL CMR"]),
           estado_ticket: textoORepo(f["ESTADO DEL TICKET"], "CERRADO"),
           unidad_resolutoria: normUnidadRepo(f["UNIDAD RESOLUTORIA"]),
           categoria_afectacion: normTipoRepo(f["TIPO"]),
@@ -1932,7 +1932,7 @@ async function analizarArchivoRepositorio() {
           comentario: f["COMENTARIO"] || null,
           descripcion: f["DESCRIPCION"] || null,
           avance_cmr: f["AVANCE DEL CMR"] || null,
-          fecha_solucion_cmr: fechaRepoAIso(f["FECHA DE SOLUCION DEL CRM"]),
+          fecha_solucion_cmr: fechaRepoAIso(f["FECHA DE SOLUCION DEL CMR"]),
           fecha_solucion_cda: fechaRepoAIso(f["FECHA DE SOLUCION DEL CDA"]),
         });
       }
