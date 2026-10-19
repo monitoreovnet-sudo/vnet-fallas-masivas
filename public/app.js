@@ -1302,6 +1302,7 @@ async function cargarConsulta() {
   const tbody = document.querySelector("#cl_table tbody");
   const contador = document.getElementById("cl_contador");
   clSeleccion = new Set();
+  clFilas = new Map();
   tbody.innerHTML = `<tr><td colspan="21">Cargando...</td></tr>`;
   try {
     const data = await apiGet(`/consulta?${construirQueryConsulta()}`);
@@ -1312,7 +1313,7 @@ async function cargarConsulta() {
       tr.style.cursor = "pointer";
       tr.title = "Doble click para ver el log";
       tr.innerHTML = `
-        <td class="cl-sel"><input type="checkbox" class="cl-check" data-ticket="${f.ticket_cmr}" /></td>
+        <td class="cl-sel"><input type="checkbox" class="cl-check" data-ticket="${f.ticket_cmr}" data-registro="${f.puerto_id}" title="Marca todo el ticket. Ctrl+clic: solo este registro." /></td>
         <td><strong>${formatearTicket(f.ticket_cmr)}</strong></td>
         <td>${f.tickets_vinculados ? formatearTicket(f.tickets_vinculados) : "-"}</td>
         <td>${f.fecha_apertura_cda || "-"}</td>
@@ -1335,9 +1336,10 @@ async function cargarConsulta() {
         <td>${f.tiempo_cierre_horas !== null ? f.tiempo_cierre_horas.toFixed(1) : "-"}</td>
       `;
       tr.addEventListener("dblclick", () => mostrarDetalleTicket(f.ticket_cmr));
+      clFilas.set(String(f.puerto_id), { ticket: String(f.ticket_cmr), total: Number(f.total_registros_ticket) || 0 });
       const chk = tr.querySelector(".cl-check");
-      ["click", "dblclick"].forEach((ev) => chk.addEventListener(ev, (e) => e.stopPropagation()));
-      chk.addEventListener("change", () => { clMarcarTicket(f.ticket_cmr, chk.checked); clActualizarSeleccion(); });
+      chk.addEventListener("dblclick", (e) => e.stopPropagation());
+      chk.addEventListener("click", (e) => { e.stopPropagation(); clAlHacerClic(chk, e.ctrlKey || e.metaKey || e.altKey); });
       tbody.appendChild(tr);
     });
     clActualizarSeleccion();
@@ -1350,25 +1352,49 @@ async function cargarConsulta() {
 // ---------------------------------------------------------------
 // Consultar / Log: eliminar tickets (solo administrador, con su contraseña)
 // ---------------------------------------------------------------
-let clSeleccion = new Set();   // números de ticket marcados (al marcar una fila se marca el ticket completo)
+let clSeleccion = new Set();   // ids de REGISTRO (fila de detalle) marcados
+let clFilas = new Map();      // id de registro -> { ticket, total de registros que tiene ese ticket en la base }
 
-function clMarcarTicket(ticket, marcado) {
-  if (marcado) clSeleccion.add(ticket); else clSeleccion.delete(ticket);
-  document.querySelectorAll(`#cl_table .cl-check[data-ticket="${ticket}"]`).forEach((c) => { c.checked = marcado; });
+// Marcar una fila marca todo el ticket (si no había ya filas suyas marcadas); desmarcar quita solo esa fila.
+// Ctrl+clic marca únicamente ese registro.
+function clAlHacerClic(chk, soloEste) {
+  const ticket = chk.dataset.ticket;
+  const delTicket = [...document.querySelectorAll(`#cl_table .cl-check[data-ticket="${ticket}"]`)];
+  if (chk.checked) {
+    const yaHabiaOtras = delTicket.some((c) => c !== chk && c.checked);
+    if (!soloEste && !yaHabiaOtras) delTicket.forEach((c) => { c.checked = true; });
+  }
+  clActualizarSeleccion();
 }
 function clActualizarSeleccion() {
   const checks = [...document.querySelectorAll("#cl_table .cl-check")];
-  const marcadas = checks.filter((c) => c.checked).length;
+  clSeleccion = new Set(checks.filter((c) => c.checked).map((c) => c.dataset.registro));
   checks.forEach((c) => c.closest("tr").classList.toggle("cl-fila-sel", c.checked));
   document.getElementById("cl_sel_count").textContent = clSeleccion.size ? `(${clSeleccion.size})` : "";
   document.getElementById("cl_btn_eliminar").disabled = clSeleccion.size === 0;
-  document.getElementById("cl_check_todos").checked = checks.length > 0 && marcadas === checks.length;
+  document.getElementById("cl_check_todos").checked = checks.length > 0 && clSeleccion.size === checks.length;
 }
 document.getElementById("cl_check_todos").addEventListener("change", (e) => {
-  const marcar = e.target.checked;
-  document.querySelectorAll("#cl_table .cl-check").forEach((c) => clMarcarTicket(c.dataset.ticket, marcar));
+  document.querySelectorAll("#cl_table .cl-check").forEach((c) => { c.checked = e.target.checked; });
   clActualizarSeleccion();
 });
+
+// Qué se va a borrar: tickets con TODOS sus registros marcados -> ticket completo; el resto -> solo esos registros.
+function clPlanEliminacion() {
+  const porTicket = new Map();
+  clSeleccion.forEach((idReg) => {
+    const f = clFilas.get(idReg);
+    if (!f) return;
+    if (!porTicket.has(f.ticket)) porTicket.set(f.ticket, { total: f.total, ids: [] });
+    porTicket.get(f.ticket).ids.push(idReg);
+  });
+  const completos = [], sueltos = [];
+  porTicket.forEach((v, ticket) => {
+    if (v.total > 0 && v.ids.length >= v.total) completos.push({ ticket, registros: v.ids.length });
+    else sueltos.push({ ticket, ids: v.ids, total: v.total });
+  });
+  return { completos, sueltos };
+}
 
 // Ventana que pide la contraseña. "ejecutar(clave)" hace la llamada; si falla (ej. clave incorrecta)
 // el mensaje se muestra en la ventana y se puede reintentar. Resuelve con el resultado, o null si se cancela.
@@ -1400,33 +1426,54 @@ function pedirClave(texto, ejecutar) {
   });
 }
 
-// El servidor acepta hasta 500 tickets por llamada: lo grande se envía en lotes con la misma confirmación.
-async function eliminarTicketsEnLotes(tickets, password) {
-  const total = { tickets_eliminados: 0, registros_eliminados: 0 };
-  for (let i = 0; i < tickets.length; i += 400) {
+// El servidor acepta hasta 500 por llamada: lo grande se envía en lotes con la misma confirmación.
+async function eliminarEnLotes(ruta, campo, lista, password, acumulado) {
+  for (let i = 0; i < lista.length; i += 400) {
     try {
-      const r = await apiSend("/admin/eliminar-tickets", "POST", { tickets: tickets.slice(i, i + 400), password });
-      total.tickets_eliminados += r.tickets_eliminados;
-      total.registros_eliminados += r.registros_eliminados;
+      const r = await apiSend(ruta, "POST", { [campo]: lista.slice(i, i + 400), password });
+      acumulado.tickets_eliminados += r.tickets_eliminados || 0;
+      acumulado.registros_eliminados += r.registros_eliminados || 0;
+      acumulado.tickets_vaciados += r.tickets_vaciados_eliminados || 0;
     } catch (e) {
-      if (total.tickets_eliminados > 0) throw new Error(`Se eliminaron ${total.tickets_eliminados} ticket(s) antes del error: ${e.message}`);
+      const hecho = acumulado.tickets_eliminados + acumulado.registros_eliminados;
+      if (hecho > 0) throw new Error(`Ya se había eliminado una parte antes del error (${acumulado.tickets_eliminados} ticket(s), ${acumulado.registros_eliminados} registro(s)): ${e.message}`);
       throw e;
     }
   }
-  return total;
 }
 
 document.getElementById("cl_btn_eliminar").addEventListener("click", async () => {
-  const tickets = [...clSeleccion];
-  if (tickets.length === 0) return;
-  const filas = document.querySelectorAll("#cl_table .cl-check:checked").length;
-  const detalle = tickets.length <= 8 ? ` (${tickets.map(formatearTicket).join(", ")})` : "";
-  const texto = `Vas a eliminar ${tickets.length} ticket(s)${detalle}, con sus ${filas} fila(s) de detalle y todo su historial (log). Esta acción no se puede deshacer.`;
-  const res = await pedirClave(texto, (password) => eliminarTicketsEnLotes(tickets, password));
+  if (clSeleccion.size === 0) return;
+  const { completos, sueltos } = clPlanEliminacion();
+  const lineas = ["Vas a eliminar definitivamente:"];
+  if (completos.length) {
+    const lista = completos.length <= 6 ? ` (${completos.map((c) => formatearTicket(c.ticket)).join(", ")})` : "";
+    lineas.push(`• ${completos.length} ticket(s) COMPLETO(S)${lista}, con todos sus registros e historial.`);
+  }
+  if (sueltos.length) {
+    const nReg = sueltos.reduce((s, x) => s + x.ids.length, 0);
+    const lista = sueltos.length <= 4
+      ? ": " + sueltos.map((x) => `ticket ${formatearTicket(x.ticket)} (${x.ids.length} de ${x.total})`).join("; ") : "";
+    lineas.push(`• ${nReg} registro(s) suelto(s)${lista}. El resto de esos tickets se conserva.`);
+  }
+  lineas.push("Esta acción no se puede deshacer.");
+
+  const res = await pedirClave(lineas.join("\n"), async (password) => {
+    const acum = { tickets_eliminados: 0, registros_eliminados: 0, tickets_vaciados: 0 };
+    if (completos.length) await eliminarEnLotes("/admin/eliminar-tickets", "tickets", completos.map((c) => c.ticket), password, acum);
+    const ids = sueltos.flatMap((x) => x.ids);
+    if (ids.length) await eliminarEnLotes("/admin/eliminar-registros", "registros", ids, password, acum);
+    return acum;
+  });
   if (!res) return;
   pizarraDatos = []; reporteDatos = [];            // los dashboards se recargan al abrirlos
   await cargarConsulta();
-  showMsg(document.getElementById("cl_contador"), `Se eliminaron ${res.tickets_eliminados} ticket(s) (${res.registros_eliminados} registro(s) de detalle).`, true);
+  const sueltosEl = sueltos.reduce((s, x) => s + x.ids.length, 0);
+  const partes = [];
+  if (completos.length) partes.push(`${res.tickets_eliminados - res.tickets_vaciados} ticket(s) completo(s)`);
+  if (sueltosEl) partes.push(`${sueltosEl} registro(s) suelto(s)`);
+  if (res.tickets_vaciados) partes.push(`${res.tickets_vaciados} ticket(s) que quedaron sin registros`);
+  showMsg(document.getElementById("cl_contador"), `Se eliminaron: ${partes.join(", ")}.`, true);
 });
 
 document.getElementById("cl_btn_filtrar").addEventListener("click", cargarConsulta);
@@ -1464,6 +1511,7 @@ function aplicarPermisosRol() {
   const esAdminCl = currentUser.rol === "administrador";
   document.getElementById("cl_table").classList.toggle("cl-admin", esAdminCl);
   document.getElementById("cl_btn_eliminar").classList.toggle("hidden", !esAdminCl);
+  document.getElementById("cl_ayuda_sel").classList.toggle("hidden", !esAdminCl);
 
   if (currentUser.rol === "administrador") {
     cargarUsuarios();

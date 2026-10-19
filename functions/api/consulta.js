@@ -42,9 +42,11 @@ export async function onRequestGet({ request, env }) {
       t.categoria_afectacion, t.afectacion, t.comentario, t.descripcion, t.avance_cmr,
       p.id AS puerto_id, p.oficina_id, o.nombre AS oficina_nombre, o.estado AS region, o.localidad,
       p.olt, p.sector, p.edificio, p.tarjeta, p.puerto,
-      p.no_clientes_reportaron, p.nro_clientes_afectados, p.estado_puerto
+      p.no_clientes_reportaron, p.nro_clientes_afectados, p.estado_puerto,
+      tot.n AS total_registros_ticket
     FROM ticket_puertos p
     JOIN tickets t ON t.id = p.ticket_id
+    JOIN (SELECT ticket_id, COUNT(*) AS n FROM ticket_puertos GROUP BY ticket_id) tot ON tot.ticket_id = t.id
     LEFT JOIN oficinas o ON o.id = p.oficina_id
     WHERE 1 = 1
   `;

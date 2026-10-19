@@ -652,3 +652,4 @@ tr.cl-fila-sel td { box-shadow: inset 0 0 0 9999px rgba(192, 57, 43, .16); }
 .db-fb-dona::after { content: ""; position: absolute; inset: 25%; background: #fff; border-radius: 50%; }
 .db-fb-leyenda { display: flex; flex-direction: column; gap: 4px; }
 .db-fb-leyenda span i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+#modal_clave_texto { white-space: pre-line; }

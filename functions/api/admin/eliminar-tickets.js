@@ -1,13 +1,12 @@
-import { json, badRequest, requireAdmin, nowIso } from "../../_lib/helpers.js";
-import { verificarPassword } from "../../_lib/auth.js";
+import { json, badRequest, nowIso } from "../../_lib/helpers.js";
+import { confirmarAdminConClave } from "../../_lib/confirmar.js";
 
-// POST /api/admin/eliminar-tickets
+// POST /api/admin/eliminar-tickets   (RUTA 1: ticket COMPLETO)
 // Body: { tickets: ["334455", ...], password: "<clave del administrador que confirma>" }
 // Solo administradores. Exige la contraseña de quien está conectado (confirmación),
 // borra cada ticket con TODOS sus registros de detalle y su historial (log), y deja
 // una huella en la tabla tickets_eliminados (quién, cuándo, qué ticket).
 export async function onRequestPost({ request, env }) {
-  const admin = await requireAdmin(request, env);
   const db = env.DB;
   const body = await request.json().catch(() => ({}));
 
@@ -16,11 +15,8 @@ export async function onRequestPost({ request, env }) {
   if (lista.length > 500) return badRequest("Máximo 500 tickets por operación.");
   if (lista.some((t) => !/^[0-9]+$/.test(t))) return badRequest("Número de ticket inválido.");
 
-  const password = String(body.password || "");
-  if (!password) return badRequest("Ingresa tu contraseña para confirmar.");
-  const fila = await db.prepare("SELECT password_cifrada FROM usuarios WHERE email = ?").bind(admin.email).first();
-  const claveOk = !!fila && (await verificarPassword(password, fila.password_cifrada, env));
-  if (!claveOk) return json({ error: "Contraseña incorrecta. No se eliminó nada." }, 403);
+  const { admin, error } = await confirmarAdminConClave(request, env, body.password);
+  if (error) return error;
 
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS tickets_eliminados (

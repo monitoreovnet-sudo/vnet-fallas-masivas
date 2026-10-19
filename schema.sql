@@ -151,3 +151,14 @@ CREATE TABLE IF NOT EXISTS tickets_eliminados (
   eliminado_por TEXT NOT NULL,
   eliminado_en TEXT NOT NULL
 );
+
+-- Auditoría de registros sueltos eliminados desde Consultar / Log (solo administradores).
+CREATE TABLE IF NOT EXISTS registros_eliminados (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_cmr TEXT NOT NULL,
+  registro_id INTEGER,
+  oficina TEXT, olt TEXT, tarjeta TEXT, puerto TEXT, sector TEXT, edificio TEXT,
+  nro_clientes_afectados INTEGER, no_clientes_reportaron INTEGER, estado_puerto TEXT,
+  eliminado_por TEXT NOT NULL,
+  eliminado_en TEXT NOT NULL
+);
