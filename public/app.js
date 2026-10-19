@@ -60,6 +60,28 @@ function formatearTicket(numero) {
 }
 
 // ---------------------------------------------------------------
+// Tablas de Pizarra / Reporte: se ven 50 filas y a partir de ahí hay scroll vertical
+// ---------------------------------------------------------------
+const FILAS_VISIBLES_TABLA = 50;
+function ajustarAlturaTabla(tableId, maxFilas = FILAS_VISIBLES_TABLA) {
+  const tabla = document.getElementById(tableId);
+  const cont = tabla && tabla.closest(".db-table-scroll");
+  if (!cont) return;
+  const filas = tabla.querySelectorAll("tbody tr");
+  if (filas.length <= maxFilas) { cont.style.maxHeight = ""; return; }
+  const hHead = tabla.tHead ? tabla.tHead.getBoundingClientRect().height : 0;
+  if (!hHead) return;   // pestaña oculta: se recalcula al mostrarla
+  // Se mide dos veces: al aparecer la barra de scroll la tabla se angosta y las filas pueden crecer una línea.
+  for (let pasada = 0; pasada < 2; pasada++) {
+    // posición real del borde inferior de la fila N (incluye bordes colapsados) + borde del contenedor
+    const alto = filas[maxFilas - 1].getBoundingClientRect().bottom - tabla.getBoundingClientRect().top + 3;
+    cont.style.maxHeight = Math.ceil(alto) + "px";
+  }
+}
+function ajustarTodasLasTablas() { ["piz_table", "rep_table"].forEach((id) => ajustarAlturaTabla(id)); }
+window.addEventListener("resize", ajustarTodasLasTablas);
+
+// ---------------------------------------------------------------
 // Pestañas
 // ---------------------------------------------------------------
 document.querySelectorAll(".tab-btn").forEach((btn) => {
@@ -70,6 +92,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
     if (btn.dataset.tab === "pizarra" && pizarraDatos.length === 0) cargarPizarra();
     if (btn.dataset.tab === "reporte" && reporteDatos.length === 0) cargarReporte();
+    ajustarTodasLasTablas();
   });
 });
 
@@ -2229,6 +2252,7 @@ function renderTablaPizarra(filas) {
       <td style="${estiloUnidad(f.unidad_resolutoria)}">${f.unidad_resolutoria || "-"}</td>
     </tr>
   `).join("");
+  ajustarAlturaTabla("piz_table");
 }
 
 
@@ -2243,6 +2267,137 @@ async function cargarPizarra() {
 }
 
 document.getElementById("piz_btn_actualizar").addEventListener("click", cargarPizarra);
+
+// ---------------------------------------------------------------
+// Exportar PDF (descarga directa, A4 horizontal, a color) — html2canvas + jsPDF
+//   Página 1: filtros e indicadores · Página 2: gráficas · Página 3+: tabla completa
+// Nunca se modifica la pantalla: todo se hace sobre una copia del documento (onclone).
+// ---------------------------------------------------------------
+// Reparte filas en páginas sin partir ninguna: devuelve [[desde, hasta), ...]. Pura, probada en Node.
+// PDF-PAGINAR-START
+function paginarFilasPdf(alturas, altoCabecera, altoMaximo) {
+  const paginas = [];
+  let inicio = 0, acumulado = altoCabecera;
+  for (let i = 0; i < alturas.length; i++) {
+    if (i > inicio && acumulado + alturas[i] > altoMaximo) {
+      paginas.push([inicio, i]);
+      inicio = i;
+      acumulado = altoCabecera;
+    }
+    acumulado += alturas[i];
+  }
+  if (alturas.length > inicio) paginas.push([inicio, alturas.length]);
+  return paginas;
+}
+// PDF-PAGINAR-END
+
+const PDF_CFG = {
+  piz: { seccion: "tab-pizarra", titulo: "Pizarra de Monitoreo", archivo: "pizarra_monitoreo" },
+  rep: { seccion: "tab-reporte", titulo: "Reporte Diario de Fallas Masivas", archivo: "reporte_diario_fallas" },
+};
+
+async function exportarPdfDashboard(prefix) {
+  const cfg = PDF_CFG[prefix];
+  const btn = document.getElementById(`${prefix}_btn_pdf`);
+  if (typeof window.html2canvas !== "function" || !(window.jspdf && window.jspdf.jsPDF)) {
+    alert("No se pudieron cargar las librerías para generar el PDF (html2canvas / jsPDF). Revisa la conexión o el bloqueador de contenido y recarga la página.");
+    return;
+  }
+  const seccion = document.getElementById(cfg.seccion);
+  const tabla = document.getElementById(`${prefix}_table`);
+  const contTabla = tabla.closest(".db-table-scroll");
+  const textoBtn = btn.textContent;
+  const scrollPrevio = window.scrollY;
+  btn.disabled = true;
+  try {
+    btn.textContent = "Generando…";
+    window.scrollTo(0, 0);
+    await new Promise((r) => setTimeout(r, 60));
+
+    const fondo = getComputedStyle(seccion).backgroundColor;
+    const fondoOk = fondo && fondo !== "rgba(0, 0, 0, 0)" ? fondo : "#ffffff";
+    const base = { scale: 2, useCORS: true, logging: false, backgroundColor: fondoOk };
+
+    // Captura la sección dejando visibles solo los bloques indicados (en la copia, no en pantalla)
+    const capturarBloques = (mostrar) => window.html2canvas(seccion, {
+      ...base,
+      onclone: (doc) => {
+        const sec = doc.getElementById(cfg.seccion);
+        [...sec.children].forEach((h) => { if (!mostrar.some((sel) => h.matches(sel))) h.style.display = "none"; });
+        sec.querySelectorAll(".db-acciones, .db-aviso").forEach((e) => { e.style.display = "none"; });
+        sec.querySelectorAll(".db-estado-row").forEach((e) => { e.style.gridTemplateColumns = "repeat(5, 1fr)"; });
+      },
+    });
+
+    // Geometría A4 horizontal (mm)
+    const PW = 297, PH = 210, M = 8, PIE = 8;
+    const anchoUtil = PW - 2 * M, altoUtil = PH - M - PIE - 4;
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4", compress: true });
+    let primera = true;
+    const ponerImagen = (canvas) => {
+      if (!primera) pdf.addPage("a4", "landscape");
+      primera = false;
+      let w = anchoUtil, h = (canvas.height * w) / canvas.width;
+      if (h > altoUtil) { h = altoUtil; w = (canvas.width * h) / canvas.height; }
+      pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", M + (anchoUtil - w) / 2, M, w, h, undefined, "FAST");
+    };
+
+    // Página 1: filtros aplicados + indicadores superiores
+    btn.textContent = "Generando… (1)";
+    ponerImagen(await capturarBloques([".db-topbar", ".db-estado-row", ".db-resumen-row", ".db-filtros-grid", ".db-semaforo-wrap"]));
+    // Página 2: gráficas
+    btn.textContent = "Generando… (2)";
+    ponerImagen(await capturarBloques([".db-bloque6"]));
+
+    // Página 3 en adelante: tabla completa, sin filas partidas
+    const filas = [...tabla.querySelectorAll("tbody tr")];
+    if (filas.length) {
+      const altoFilas = filas.map((f) => f.getBoundingClientRect().height);
+      const altoCab = tabla.tHead.getBoundingClientRect().height + 2;
+      const anchoPx = contTabla.getBoundingClientRect().width;
+      const altoMaxPx = ((altoUtil * anchoPx) / anchoUtil) * 0.97;   // margen de seguridad
+      const paginas = paginarFilasPdf(altoFilas, altoCab, altoMaxPx);
+      if (paginas.length > 60 && !confirm(`El PDF tendrá ${paginas.length + 2} páginas (${filas.length} filas) y puede tardar varios minutos. ¿Continuar?\n\nSugerencia: filtra primero para reducir la cantidad de filas.`)) return;
+      for (let p = 0; p < paginas.length; p++) {
+        btn.textContent = `Generando… (${p + 3}/${paginas.length + 2})`;
+        const [desde, hasta] = paginas[p];
+        const canvas = await window.html2canvas(contTabla, {
+          ...base,
+          onclone: (doc) => {
+            const t = doc.getElementById(`${prefix}_table`);
+            const c = t.closest(".db-table-scroll");
+            c.style.maxHeight = "none"; c.style.height = "auto"; c.style.overflow = "visible";
+            t.querySelectorAll("thead th").forEach((th) => { th.style.position = "static"; });
+            [...t.querySelectorAll("tbody tr")].forEach((tr, i) => { if (i < desde || i >= hasta) tr.remove(); });
+          },
+        });
+        ponerImagen(canvas);
+      }
+    }
+
+    // Pie de página: título, fecha y numeración
+    const total = pdf.getNumberOfPages();
+    const ahora = new Date();
+    const sello = ahora.toLocaleDateString("es-VE") + " " + ahora.toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" });
+    pdf.setFontSize(8); pdf.setTextColor(110);
+    for (let i = 1; i <= total; i++) {
+      pdf.setPage(i);
+      pdf.text(`${cfg.titulo} - generado el ${sello}`, M, PH - 4);
+      pdf.text(`Página ${i} de ${total}`, PW - M, PH - 4, { align: "right" });
+    }
+    pdf.save(`${cfg.archivo}_${ahora.toISOString().slice(0, 10)}.pdf`);
+  } catch (err) {
+    console.error("Exportar PDF:", err);
+    alert("No se pudo generar el PDF: " + (err && err.message ? err.message : err));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = textoBtn;
+    window.scrollTo(0, scrollPrevio);
+  }
+}
+document.getElementById("piz_btn_pdf").addEventListener("click", () => exportarPdfDashboard("piz"));
+document.getElementById("rep_btn_pdf").addEventListener("click", () => exportarPdfDashboard("rep"));
 
 function exportarExcelGenerico(filasObjetos, nombreHoja, nombreArchivo) {
   const ws = XLSX.utils.json_to_sheet(filasObjetos);
@@ -2288,7 +2443,6 @@ document.getElementById("piz_btn_excel").addEventListener("click", () => {
   const fecha = new Date().toISOString().slice(0, 10);
   exportarExcelGenerico(filasParaExcelDashboard(pizarraDatos), "Pizarra", `pizarra_monitoreo_${fecha}.xlsx`);
 });
-document.getElementById("piz_btn_pdf").addEventListener("click", () => window.print());
 document.getElementById("piz_btn_csv").addEventListener("click", () => {
   if (pizarraDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
   const fecha = new Date().toISOString().slice(0, 10);
@@ -2349,6 +2503,7 @@ function renderTablaReporte(filas) {
       <td>${f.avance_cmr || "-"}</td>
     </tr>
   `).join("");
+  ajustarAlturaTabla("rep_table");
 }
 
 async function cargarReporte() {
@@ -2408,7 +2563,6 @@ document.getElementById("rep_btn_excel").addEventListener("click", () => {
   const fecha = new Date().toISOString().slice(0, 10);
   XLSX.writeFile(wb, `reporte_diario_fallas_${fecha}.xlsx`);
 });
-document.getElementById("rep_btn_pdf").addEventListener("click", () => window.print());
 document.getElementById("rep_btn_csv").addEventListener("click", () => {
   if (reporteDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
   const fecha = new Date().toISOString().slice(0, 10);

@@ -1,4 +1,5 @@
-Copia local opcional de las librerías de gráficas (evita depender de CDN):
+Copia local opcional de las librerías externas (evita depender de CDN). Guarda aquí, con estos nombres exactos:
   chart.umd.min.js                  <- https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.js
   chartjs-plugin-datalabels.min.js  <- https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js
-Descárgalos y guárdalos en esta carpeta con esos nombres exactos.
+  html2canvas.min.js                <- https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js
+  jspdf.umd.min.js                  <- https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js

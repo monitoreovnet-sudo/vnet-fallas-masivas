@@ -170,7 +170,9 @@
 }
 
 .db-table-scroll {
-  overflow-x: hidden;
+  overflow-x: auto;      /* solo aparece si la pantalla es realmente demasiado angosta */
+  overflow-y: auto;      /* el alto máximo (50 filas) lo fija ajustarAlturaTabla() en app.js */
+  scrollbar-gutter: stable;  /* la barra no cambia el ancho útil, así las filas no se reacomodan */
   margin: 14px 24px 0;
   border: 1px solid var(--db-secondary);
   border-radius: 8px;
@@ -181,23 +183,24 @@
   border-collapse: collapse;
   font-family: var(--db-font);
 }
+/* Todas las columnas visibles: el texto se ajusta en varias líneas en lugar de ensanchar la tabla */
 .db-tabla-maestra th, .db-tabla-maestra td {
   border: 1px solid var(--db-divider);
-  padding: 6px 8px;
+  padding: 5px 6px;
   font-size: 12px;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: middle;
 }
 .db-tabla-maestra th {
   background: var(--db-primary);
   color: var(--db-white);
   position: sticky;
   top: 0;
+  line-height: 1.15;
 }
-.db-tabla-maestra th:last-child, .db-tabla-maestra td:last-child {
-  white-space: normal;
-  word-break: break-word;
-  min-width: 220px;
-}
+.db-tabla-maestra td:first-child, .db-tabla-maestra th:first-child { white-space: nowrap; }
+.db-tabla-maestra th:last-child, .db-tabla-maestra td:last-child { min-width: 110px; }
 
 .db-filtro-item select {
   appearance: none; -webkit-appearance: none;
