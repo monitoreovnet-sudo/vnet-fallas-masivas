@@ -1282,14 +1282,15 @@ function llenarSelectSimple(id, opciones, placeholder) {
 }
 
 function initFiltrosConsulta() {
-  llenarSelectSimple("cl_dia_apertura", Array.from({length:31},(_,i)=>({value:i+1,label:i+1})), "Día");
-  llenarSelectSimple("cl_dia_cierre", Array.from({length:31},(_,i)=>({value:i+1,label:i+1})), "Día");
-  llenarSelectSimple("cl_mes_apertura", MESES.map((m,i)=>({value:i+1,label:m})), "Mes");
-  llenarSelectSimple("cl_mes_cierre", MESES.map((m,i)=>({value:i+1,label:m})), "Mes");
-  const anioActual = new Date().getFullYear();
-  const anios = Array.from({length:6},(_,i)=>({value:anioActual-4+i,label:anioActual-4+i}));
-  llenarSelectSimple("cl_anio_apertura", anios, "Año");
-  llenarSelectSimple("cl_anio_cierre", anios, "Año");
+  llenarSelectSimple("cl_dia_apertura", [], "Día");
+  llenarSelectSimple("cl_dia_cierre", [], "Día");
+  llenarSelectSimple("cl_mes_apertura", [], "Mes");
+  llenarSelectSimple("cl_mes_cierre", [], "Mes");
+  // Día / Mes / Año se llenan con las fechas que existen en los registros (llegan con cada consulta): ver clActualizarFechas()
+  llenarSelectSimple("cl_anio_apertura", [], "Año");
+  llenarSelectSimple("cl_anio_cierre", [], "Año");
+  ["apertura", "cierre"].forEach((eje) => ["dia", "mes", "anio"].forEach((parte) =>
+    document.getElementById(`cl_${parte}_${eje}`).addEventListener("change", () => clActualizarFechas(eje))));
 
   llenarSelectSimple("cl_categoria", LOOKUPS.categorias.map((c)=>({value:c.nombre,label:c.nombre})), "Todas");
   llenarSelectSimple("cl_afectacion", LOOKUPS.afectaciones.map((a)=>({value:a.nombre,label:a.nombre})), "Todas");
@@ -1305,6 +1306,40 @@ function initFiltrosConsulta() {
   const estadoEl = document.getElementById("cl_estado");
   estadoEl.innerHTML = `<option value="">Todos</option><option value="__ABIERTOS__" selected>Distinto de Cerrado</option>` +
     LOOKUPS.estados_ticket.map((e)=>`<option value="${e.nombre}">${e.nombre}</option>`).join("");
+}
+
+// FECHAS-PURE-START
+// triples = [[año, mes, día], ...] con las fechas que existen en los registros; sel = lo que el usuario ya eligió.
+// Cada selector ofrece solo los valores que existen combinados con lo elegido en los otros dos (cascada completa).
+function opcionesFechaEnCascada(triples, sel) {
+  const ok = (t, omitir) => (omitir === "anio" || !sel.anio || t[0] === sel.anio)
+    && (omitir === "mes" || !sel.mes || t[1] === sel.mes)
+    && (omitir === "dia" || !sel.dia || t[2] === sel.dia);
+  const unicos = (idx, omitir) => [...new Set(triples.filter((t) => ok(t, omitir)).map((t) => t[idx]))].sort((a, b) => a - b);
+  return { anios: unicos(0, "anio"), meses: unicos(1, "mes"), dias: unicos(2, "dia") };
+}
+// FECHAS-PURE-END
+let clFechas = { apertura: [], cierre: [] };   // fechas existentes que devolvió la última consulta
+
+function clActualizarFechas(eje) {
+  const el = (parte) => document.getElementById(`cl_${parte}_${eje}`);
+  const triples = clFechas[eje] || [];
+  const leer = () => ({ anio: Number(el("anio").value) || 0, mes: Number(el("mes").value) || 0, dia: Number(el("dia").value) || 0 });
+  let sel = leer();
+  let o = opcionesFechaEnCascada(triples, sel);
+  // si lo elegido ya no existe junto con lo demás (p. ej. cambió el año y ese mes no tiene datos), se limpia
+  for (let i = 0; i < 3; i++) {
+    let cambio = false;
+    if (sel.anio && !o.anios.includes(sel.anio)) { sel.anio = 0; cambio = true; }
+    if (sel.mes && !o.meses.includes(sel.mes)) { sel.mes = 0; cambio = true; }
+    if (sel.dia && !o.dias.includes(sel.dia)) { sel.dia = 0; cambio = true; }
+    if (!cambio) break;
+    o = opcionesFechaEnCascada(triples, sel);
+  }
+  llenarSelectSimple(`cl_anio_${eje}`, o.anios.map((a) => ({ value: a, label: a })), "Año");
+  llenarSelectSimple(`cl_mes_${eje}`, o.meses.map((m) => ({ value: m, label: MESES[m - 1] })), "Mes");
+  llenarSelectSimple(`cl_dia_${eje}`, o.dias.map((d) => ({ value: d, label: d })), "Día");
+  el("anio").value = sel.anio || ""; el("mes").value = sel.mes || ""; el("dia").value = sel.dia || "";
 }
 
 function construirQueryConsulta() {
@@ -1374,6 +1409,8 @@ async function cargarConsulta() {
     const data = await apiGet(`/consulta?${construirQueryConsulta()}`);
     tbody.innerHTML = "";
     clDatosActuales = data.filas;   // exactamente lo que se ve en la tabla (ya filtrado por el servidor)
+    clFechas = data.fechas || { apertura: [], cierre: [] };
+    clActualizarFechas("apertura"); clActualizarFechas("cierre");
     data.filas.forEach((f) => {
       const tr = document.createElement("tr");
       tr.className = f.semaforo ? `sem-${f.semaforo}` : "";
@@ -1589,29 +1626,86 @@ function aplicarPermisosRol() {
 
 // ---------------------------------------------------------------
 // ADMINISTRACIÓN: Generador de reportes (columnas de Pizarra y Reporte Diario)
+//   Las columnas disponibles se leen de la base de datos (/admin/campos-reportes).
+//   Cada columna guarda su db_column_name y el display_name (alias) que se muestra en el encabezado.
 // ---------------------------------------------------------------
-let rptBorrador = [];   // configuración que se está editando (se aplica a la vista previa al instante)
+let rptBorrador = [];       // configuración que se está editando (se refleja al instante en la vista previa)
+let rptCatalogo = null;     // { tablas, columnas, calculados } desde la BD
+let rptMuestra = [];        // filas de ejemplo para la vista previa
+let rptTemporizador = null;
 
 function rptPrefix() { return document.getElementById("rpt_select").value; }
-function rptDefs() { return REPORTES_COLUMNAS[rptPrefix()]; }
 
-function rptCargarBorrador() {
-  rptBorrador = columnasEfectivas(rptDefs(), REPORTES_CFG[rptPrefix()]).map((c) => ({ ...c }));
-  rptDibujar();
+async function rptCargarCatalogo() {
+  if (rptCatalogo) return;
+  try {
+    const c = await apiGet("/admin/campos-reportes");
+    if (!c || !Array.isArray(c.columnas) || !Array.isArray(c.tablas)) throw new Error("respuesta inesperada");
+    rptCatalogo = { tablas: c.tablas, columnas: c.columnas, calculados: Array.isArray(c.calculados) ? c.calculados : [] };
+  } catch (err) { showMsg(document.getElementById("rpt_msg"), "No se pudo leer el listado de columnas de la base de datos: " + err.message, false); }
 }
 
-function rptFilasMuestra() {
-  const datos = rptPrefix() === "piz" ? pizarraDatos : reporteDatos;
-  if (datos && datos.length) return datos.slice(0, 3);
+function rptLlenarSelectorAgregar() {
+  const sel = document.getElementById("rpt_add_select");
+  sel.innerHTML = '<option value="">Elige una columna de la base de datos…</option>';
+  if (!rptCatalogo) return;
+  const enUso = new Set(rptBorrador.map((c) => c.db_column_name));
+  const grupo = (titulo, items) => {
+    const libres = items.filter((c) => !enUso.has(c.db_column_name));
+    if (!libres.length) return;
+    const og = document.createElement("optgroup");
+    og.label = titulo;
+    libres.forEach((c) => {
+      const o = document.createElement("option");
+      o.value = c.db_column_name;
+      o.textContent = `${c.etiqueta}  ·  ${c.db_column_name}`;
+      og.appendChild(o);
+    });
+    sel.appendChild(og);
+  };
+  rptCatalogo.tablas.forEach((t) => grupo(t.etiqueta, rptCatalogo.columnas.filter((c) => c.tabla === t.tabla)));
+  grupo("Campos calculados", rptCatalogo.calculados);
+}
+
+function rptEtiquetaCatalogo(clave) {
+  if (!rptCatalogo) return etiquetaDeClave(clave);
+  const c = rptCatalogo.columnas.find((x) => x.db_column_name === clave) || rptCatalogo.calculados.find((x) => x.db_column_name === clave);
+  return c ? c.etiqueta : etiquetaDeClave(clave);
+}
+
+async function rptCargarBorrador() {
+  await rptCargarCatalogo();
+  rptBorrador = columnasEfectivas(rptPrefix(), REPORTES_CFG[rptPrefix()]).map((c) => ({ ...c }));
+  rptDibujar();
+  rptActualizarMuestra();
+}
+
+// Filas de ejemplo: las ya cargadas y, si el borrador usa columnas extra, 3 filas pedidas al servidor con esas columnas.
+async function rptActualizarMuestra() {
+  const prefix = rptPrefix();
+  const extras = extrasNecesarios(rptBorrador);
+  const datos = prefix === "piz" ? pizarraDatos : reporteDatos;
+  const tieneTodo = (fila) => extras.every((k) => k in fila);
+  if (datos && datos.length && tieneTodo(datos[0])) { rptMuestra = datos.slice(0, 3); rptDibujarVistaPrevia(); return; }
+  try {
+    const q = `/consulta?limite=3` + (extras.length ? "&extras=" + encodeURIComponent(extras.join(",")) : "");
+    const r = await apiGet(q);
+    if (prefix !== rptPrefix()) return;
+    rptMuestra = r.filas.length ? r.filas : [];
+  } catch { rptMuestra = []; }
+  rptDibujarVistaPrevia();
+}
+function rptProgramarMuestra() { clearTimeout(rptTemporizador); rptTemporizador = setTimeout(rptActualizarMuestra, 350); }
+
+function rptFilasVistaPrevia() {
+  if (rptMuestra.length) return rptMuestra;
   return [{ ticket_cmr: "334455", oficina_nombre: "Caracas - Chacao", olt: "CHA-OL-ZT-AC-001", tarjeta: "Tarjeta 4", puerto: "Puerto 12",
     fecha_apertura_cmr: "2026-10-04T09:30:00", horas_abierta: 52.4, semaforo: "NARANJA", estado_ticket: "EN CURSO (ASIGNADO)", afectacion: "SIN CONEXIÓN",
     nro_clientes_afectados: 120, no_clientes_reportaron: 15, unidad_resolutoria: "REPARACIONES", grupo_horario: "MAÑANA", region: "MIRANDA", avance_cmr: "Cuadrilla en sitio" }];
 }
 
 function rptDibujarVistaPrevia() {
-  const defs = rptDefs();
-  const filas = rptFilasMuestra();
-  const { thead, tbody } = htmlTablaDinamica(defs, rptBorrador, filas, (f) => ({ fila: 1 }));
+  const { thead, tbody } = htmlTablaDinamica(rptBorrador, rptFilasVistaPrevia(), () => ({ fila: 1 }));
   const t = document.getElementById("rpt_preview");
   t.tHead.innerHTML = thead;
   t.tBodies[0].innerHTML = tbody;
@@ -1622,18 +1716,19 @@ function rptDibujarVistaPrevia() {
 
 function rptDibujar() {
   const tbody = document.querySelector("#rpt_table tbody");
-  const defs = new Map(rptDefs().map((d) => [d.id, d]));
   tbody.innerHTML = "";
   rptBorrador.forEach((c, i) => {
     const tr = document.createElement("tr");
     tr.draggable = true;
-    tr.dataset.i = i;
     if (!c.visible) tr.classList.add("rpt-fila-oculta");
-    const tamanos = Array.from({ length: 17 }, (_, k) => k + 8).map((n) => `<option value="${n}" ${n === c.fontSize ? "selected" : ""}>${n}</option>`).join("");
+    const tamanos = Array.from({ length: 21 }, (_, k) => k + 8).map((n) => `<option value="${n}" ${n === c.fontSize ? "selected" : ""}>${n}</option>`).join("");
     tr.innerHTML = `
       <td class="rpt-asa" title="Arrastra para reordenar">☰</td>
       <td class="rpt-td-visible"><input type="checkbox" data-k="visible" ${c.visible ? "checked" : ""} title="Mostrar esta columna" /></td>
-      <td><input type="text" data-k="titulo" value="${escHtml(c.titulo)}" maxlength="60" title="Dato original: ${escHtml(defs.get(c.id).titulo)}" /></td>
+      <td class="rpt-td-alias">
+        <input type="text" data-k="display_name" value="${escHtml(c.display_name)}" maxlength="60" placeholder="${escHtml(rptEtiquetaCatalogo(c.db_column_name))}" />
+        <span class="rpt-bd" title="Columna de la base de datos">${escHtml(c.db_column_name)}</span>
+      </td>
       <td><input type="number" data-k="ancho" min="30" max="900" step="5" placeholder="auto" value="${c.ancho ?? ""}" /></td>
       <td><select data-k="fontSize">${tamanos}</select></td>
       <td class="rpt-estilo">
@@ -1644,15 +1739,15 @@ function rptDibujar() {
       <td class="rpt-orden">
         <button type="button" data-mv="-1" ${i === 0 ? "disabled" : ""} title="Subir">↑</button>
         <button type="button" data-mv="1" ${i === rptBorrador.length - 1 ? "disabled" : ""} title="Bajar">↓</button>
-      </td>`;
-    // edición de campos
+      </td>
+      <td><button type="button" class="rpt-quitar" data-quitar="1" title="Quitar esta columna del informe" ${rptBorrador.length <= 1 ? "disabled" : ""}>✕</button></td>`;
     tr.querySelectorAll("[data-k]").forEach((el) => {
       const k = el.dataset.k;
       el.addEventListener(k === "visible" || k === "fontSize" ? "change" : "input", () => {
-        if (k === "visible") { c.visible = el.checked; tr.classList.toggle("rpt-fila-oculta", !c.visible); }
+        if (k === "visible") { c.visible = el.checked; tr.classList.toggle("rpt-fila-oculta", !c.visible); rptProgramarMuestra(); }
         else if (k === "ancho") c.ancho = el.value === "" ? null : Math.max(30, Math.min(900, Math.round(Number(el.value))));
         else if (k === "fontSize") c.fontSize = Number(el.value);
-        else if (k === "titulo") c.titulo = el.value.trim() || defs.get(c.id).titulo;
+        else if (k === "display_name") c.display_name = el.value.trim() || rptEtiquetaCatalogo(c.db_column_name);
         rptDibujarVistaPrevia();
       });
     });
@@ -1660,7 +1755,10 @@ function rptDibujar() {
       c[b.dataset.t] = !c[b.dataset.t]; b.classList.toggle("on", c[b.dataset.t]); rptDibujarVistaPrevia();
     }));
     tr.querySelectorAll("[data-mv]").forEach((b) => b.addEventListener("click", () => rptMover(i, i + Number(b.dataset.mv))));
-    // arrastrar y soltar
+    tr.querySelector("[data-quitar]").addEventListener("click", () => {
+      if (rptBorrador.length <= 1) return;
+      rptBorrador.splice(i, 1); rptDibujar(); rptProgramarMuestra();
+    });
     tr.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/plain", String(i)); e.dataTransfer.effectAllowed = "move"; });
     tr.addEventListener("dragover", (e) => { e.preventDefault(); tr.classList.add("rpt-fila-arrastre"); });
     tr.addEventListener("dragleave", () => tr.classList.remove("rpt-fila-arrastre"));
@@ -1671,6 +1769,7 @@ function rptDibujar() {
     });
     tbody.appendChild(tr);
   });
+  rptLlenarSelectorAgregar();
   rptDibujarVistaPrevia();
 }
 
@@ -1682,13 +1781,22 @@ function rptMover(desde, hasta) {
 }
 
 document.getElementById("rpt_select").addEventListener("change", rptCargarBorrador);
+document.getElementById("rpt_btn_agregar").addEventListener("click", () => {
+  const sel = document.getElementById("rpt_add_select");
+  const clave = sel.value;
+  if (!clave) return;
+  rptBorrador.push(columnaPorDefecto(clave, rptEtiquetaCatalogo(clave)));
+  rptDibujar();
+  rptProgramarMuestra();
+});
 document.getElementById("rpt_btn_guardar").addEventListener("click", async () => {
   const msg = document.getElementById("rpt_msg");
   const prefix = rptPrefix();
   try {
     const r = await apiSend("/admin/config-reportes", "PUT", { reporte: prefix, config: { columnas: rptBorrador } });
     REPORTES_CFG[prefix] = r.config;
-    aplicarFiltros(prefix);   // vuelve a dibujar la tabla del informe con la nueva configuración
+    // se vuelven a pedir los datos: las columnas nuevas pueden necesitar campos que antes no se traían
+    if (prefix === "piz") await cargarPizarra(); else await cargarReporte();
     showMsg(msg, "Configuración guardada. Ya se aplica a todos los usuarios.", true);
   } catch (err) { showMsg(msg, err.message, false); }
 });
@@ -1699,8 +1807,8 @@ document.getElementById("rpt_btn_restablecer").addEventListener("click", async (
   try {
     await apiSend(`/admin/config-reportes?reporte=${prefix}`, "DELETE", {});
     REPORTES_CFG[prefix] = null;
-    rptCargarBorrador();
-    aplicarFiltros(prefix);
+    await rptCargarBorrador();
+    if (prefix === "piz") await cargarPizarra(); else await cargarReporte();
     showMsg(msg, "Se restableció la configuración de fábrica.", true);
   } catch (err) { showMsg(msg, err.message, false); }
 });
@@ -2128,15 +2236,13 @@ function formatearFechaHora(v) {
   if (!m) return escHtml(String(v));
   return `${m[3]}/${m[2]}/${m[1]}` + (m[4] ? ` ${m[4]}:${m[5]}` : "");
 }
-// 368.7 -> "15 días y 9 horas" | 28 -> "1 día y 4 horas" | 15 -> "15 horas"
+// Formato compacto: 368.7 -> "15 d 9 h" | 28 -> "1 d 4 h" | 15 -> "15 h" | 72 -> "3 d"
 function formatearTiempoAbierto(h) {
   if (h === null || h === undefined || h === "" || isNaN(Number(h))) return "-";
   const total = Math.max(0, Math.round(Number(h)));
   const dias = Math.floor(total / 24), horas = total % 24;
-  const txtH = `${horas} ${horas === 1 ? "hora" : "horas"}`;
-  if (dias === 0) return txtH;
-  const txtD = `${dias} ${dias === 1 ? "día" : "días"}`;
-  return horas === 0 ? txtD : `${txtD} y ${txtH}`;
+  if (dias === 0) return `${horas} h`;
+  return horas === 0 ? `${dias} d` : `${dias} d ${horas} h`;
 }
 function estiloTiempoAbierto(semaforo) {
   return semaforo ? `background:${hexARgba(SEMAFORO_HEX[semaforo], 0.5)};` : "";
@@ -2354,73 +2460,112 @@ function colorPorNombreFactory(paleta) {
 
 // ---------------------------------------------------------------
 // Generador de reportes: columnas de las tablas de Pizarra y Reporte Diario
-//   · REPORTES_COLUMNAS: catálogo de columnas disponibles (qué dato muestra cada una).
+//   · REPORTES_FABRICA: columnas de fábrica de cada informe; el resto de campos se elige en Administración (lee la BD).
 //   · REPORTES_CFG: configuración guardada por el administrador (D1: tabla config_reportes).
 //     Si no hay configuración guardada se usa la de fábrica (el orden y formato de siempre).
 // ---------------------------------------------------------------
 // REPORTES-PURE-START
-const REPORTES_COLUMNAS = {
+// Un informe es una lista de columnas. Cada columna se identifica por su db_column_name ("tabla.columna", o "calc.xxx"
+// para campos calculados) y tiene un display_name (alias) que es lo que se ve en el encabezado.
+//
+// Las filas que devuelve /api/consulta ya traen algunos datos con nombres históricos (ticket_cmr, oficina_nombre…).
+// CAMPO_EN_FILA relaciona "tabla.columna" → nombre del campo en la fila. Las columnas que NO estén aquí se piden al servidor
+// con ?extras= y llegan en la fila con su propio db_column_name como clave.
+const CAMPO_EN_FILA = {
+  "tickets.id": "ticket_id", "tickets.ticket_cmr": "ticket_cmr", "tickets.tickets_vinculados": "tickets_vinculados",
+  "tickets.fecha_apertura_cda": "fecha_apertura_cda", "tickets.fecha_apertura_cmr": "fecha_apertura_cmr",
+  "tickets.fecha_solucion_cmr": "fecha_solucion_cmr", "tickets.estado_ticket": "estado_ticket",
+  "tickets.unidad_resolutoria": "unidad_resolutoria", "tickets.categoria_afectacion": "categoria_afectacion",
+  "tickets.afectacion": "afectacion", "tickets.comentario": "comentario", "tickets.descripcion": "descripcion", "tickets.avance_cmr": "avance_cmr",
+  "ticket_puertos.id": "puerto_id", "ticket_puertos.oficina_id": "oficina_id", "ticket_puertos.olt": "olt", "ticket_puertos.sector": "sector",
+  "ticket_puertos.edificio": "edificio", "ticket_puertos.tarjeta": "tarjeta", "ticket_puertos.puerto": "puerto",
+  "ticket_puertos.no_clientes_reportaron": "no_clientes_reportaron", "ticket_puertos.nro_clientes_afectados": "nro_clientes_afectados",
+  "ticket_puertos.estado_puerto": "estado_puerto",
+  "oficinas.id": "oficina_id", "oficinas.nombre": "oficina_nombre", "oficinas.estado": "region", "oficinas.localidad": "localidad",
+  "calc.semaforo": "semaforo", "calc.grupo_horario": "grupo_horario", "calc.tiempo_cierre_horas": "tiempo_cierre_horas",
+};
+const NOWRAP_COLUMNAS = new Set(["calc.fila", "tickets.ticket_cmr"]);   // el N° de ticket y la fila nunca se parten en dos líneas
+const FABRICA_BASE = { "tickets.ticket_cmr": { fontSize: 14, negrita: true } };
+
+// Columnas de fábrica de cada informe (lo que se veía antes del Generador)
+const REPORTES_FABRICA = {
   piz: [
-    { id: "fila", titulo: "Fila", nowrap: true, celda: (f, c) => [c.fila] },
-    { id: "ticket", titulo: "Title", nowrap: true, base: { fontSize: 14, negrita: true }, celda: (f) => [formatearTicket(f.ticket_cmr)] },
-    { id: "oficina", titulo: "Oficina", celda: (f) => [f.oficina_nombre || "-"] },
-    { id: "olt", titulo: "OLT", celda: (f) => [f.olt] },
-    { id: "tarjeta", titulo: "Tarjeta", celda: (f) => [f.tarjeta] },
-    { id: "puerto", titulo: "Puerto", celda: (f) => [f.puerto] },
-    { id: "apertura_cmr", titulo: "Apertura CMR", celda: (f) => [formatearFechaHora(f.fecha_apertura_cmr)] },
-    { id: "tiempo_abierto", titulo: "Tiempo Abierto CMR", celda: (f) => [formatearTiempoAbierto(f.horas_abierta), estiloTiempoAbierto(f.semaforo)] },
-    { id: "estado_ticket", titulo: "Estado del Ticket", celda: (f) => [f.estado_ticket] },
-    { id: "afectacion", titulo: "Afectación", celda: (f) => [f.afectacion || "-"] },
-    { id: "clientes_afectados", titulo: "N° Cltes Afectados", celda: (f) => [f.nro_clientes_afectados] },
-    { id: "clientes_reportaron", titulo: "N° Cltes Reportaron", celda: (f) => [f.no_clientes_reportaron] },
-    { id: "unidad_resolutoria", titulo: "Unidad Resolutoria", celda: (f) => [f.unidad_resolutoria || "-", estiloUnidad(f.unidad_resolutoria)] },
+    ["calc.fila", "Fila"], ["tickets.ticket_cmr", "Title"], ["oficinas.nombre", "Oficina"], ["ticket_puertos.olt", "OLT"],
+    ["ticket_puertos.tarjeta", "Tarjeta"], ["ticket_puertos.puerto", "Puerto"], ["tickets.fecha_apertura_cmr", "Apertura CMR"],
+    ["calc.tiempo_abierto", "Tiempo Abierto CMR"], ["tickets.estado_ticket", "Estado del Ticket"], ["tickets.afectacion", "Afectación"],
+    ["ticket_puertos.nro_clientes_afectados", "N° Cltes Afectados"], ["ticket_puertos.no_clientes_reportaron", "N° Cltes Reportaron"],
+    ["tickets.unidad_resolutoria", "Unidad Resolutoria"],
   ],
   rep: [
-    { id: "fila", titulo: "Fila", nowrap: true, celda: (f, c) => [c.fila] },
-    { id: "ticket", titulo: "Title", nowrap: true, base: { fontSize: 14, negrita: true }, celda: (f) => [formatearTicket(f.ticket_cmr)] },
-    { id: "tipo", titulo: "Tipo", celda: () => ["-"] },
-    { id: "afectacion", titulo: "Afectación", celda: (f) => [f.afectacion || "-"] },
-    { id: "unidad_resolutoria", titulo: "Unidad Resolutoria", celda: (f) => [f.unidad_resolutoria || "-", estiloUnidad(f.unidad_resolutoria)] },
-    { id: "estado_ticket", titulo: "Estado del Ticket", celda: (f) => [f.estado_ticket] },
-    { id: "apertura_cmr", titulo: "Apertura CMR", celda: (f) => [formatearFechaHora(f.fecha_apertura_cmr)] },
-    { id: "grupo_horario", titulo: "Grupo Horario CMR", celda: (f) => [f.grupo_horario || "-"] },
-    { id: "tiempo_abierto", titulo: "Tiempo Abierto CMR", celda: (f) => [formatearTiempoAbierto(f.horas_abierta), estiloTiempoAbierto(f.semaforo)] },
-    { id: "clientes_afectados", titulo: "N° Cltes Afectados", celda: (f) => [f.nro_clientes_afectados] },
-    { id: "region", titulo: "Estado", celda: (f) => [f.region || "-"] },
-    { id: "oficina", titulo: "Oficina", celda: (f) => [f.oficina_nombre || "-"] },
-    { id: "avance_cmr", titulo: "Avance CMR", celda: (f) => [f.avance_cmr || "-"] },
+    ["calc.fila", "Fila"], ["tickets.ticket_cmr", "Title"], ["calc.tipo", "Tipo"], ["tickets.afectacion", "Afectación"],
+    ["tickets.unidad_resolutoria", "Unidad Resolutoria"], ["tickets.estado_ticket", "Estado del Ticket"],
+    ["tickets.fecha_apertura_cmr", "Apertura CMR"], ["calc.grupo_horario", "Grupo Horario CMR"], ["calc.tiempo_abierto", "Tiempo Abierto CMR"],
+    ["ticket_puertos.nro_clientes_afectados", "N° Cltes Afectados"], ["oficinas.estado", "Estado"], ["oficinas.nombre", "Oficina"],
+    ["tickets.avance_cmr", "Avance CMR"],
   ],
 };
+// Configuraciones guardadas con la primera versión (id/titulo) → db_column_name
+const ID_V1_A_CLAVE = {
+  fila: "calc.fila", ticket: "tickets.ticket_cmr", oficina: "oficinas.nombre", olt: "ticket_puertos.olt", tarjeta: "ticket_puertos.tarjeta",
+  puerto: "ticket_puertos.puerto", apertura_cmr: "tickets.fecha_apertura_cmr", tiempo_abierto: "calc.tiempo_abierto",
+  estado_ticket: "tickets.estado_ticket", afectacion: "tickets.afectacion", clientes_afectados: "ticket_puertos.nro_clientes_afectados",
+  clientes_reportaron: "ticket_puertos.no_clientes_reportaron", unidad_resolutoria: "tickets.unidad_resolutoria", tipo: "calc.tipo",
+  grupo_horario: "calc.grupo_horario", region: "oficinas.estado", avance_cmr: "tickets.avance_cmr",
+};
+const CAMPOS_CALC_CLIENTE = new Set(["calc.fila", "calc.tiempo_abierto", "calc.semaforo", "calc.grupo_horario", "calc.tiempo_cierre_horas", "calc.tipo"]);
 
-// Valores de fábrica de una columna
-function columnaPorDefecto(def) {
-  const b = def.base || {};
-  return { id: def.id, visible: true, titulo: def.titulo, ancho: null, fontSize: b.fontSize || 12,
-    negrita: !!b.negrita, cursiva: false, subrayado: false };
+function etiquetaDeClave(clave) {
+  const col = String(clave).split(".")[1] || clave;
+  const t = col.replace(/_/g, " ");
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }
-// Mezcla la configuración guardada con el catálogo: respeta el orden guardado, ignora columnas que ya no existen
-// y agrega al final las columnas nuevas del catálogo que la configuración todavía no conoce.
-function columnasEfectivas(defs, guardada) {
-  const porId = new Map(defs.map((d) => [d.id, d]));
+function columnaPorDefecto(clave, titulo) {
+  const b = FABRICA_BASE[clave] || {};
+  return { db_column_name: clave, display_name: titulo || etiquetaDeClave(clave), visible: true, ancho: null,
+    fontSize: b.fontSize || 12, negrita: !!b.negrita, cursiva: false, subrayado: false };
+}
+// Configuración efectiva de un informe: la guardada (si existe) o la de fábrica.
+function columnasEfectivas(prefix, guardada) {
+  const entrada = guardada && Array.isArray(guardada.columnas) ? guardada.columnas : null;
+  if (!entrada) return REPORTES_FABRICA[prefix].map(([clave, titulo]) => columnaPorDefecto(clave, titulo));
   const salida = [];
   const usados = new Set();
-  const entrada = guardada && Array.isArray(guardada.columnas) ? guardada.columnas : [];
   for (const g of entrada) {
-    const def = porId.get(g.id);
-    if (!def || usados.has(g.id)) continue;
-    usados.add(g.id);
-    const base = columnaPorDefecto(def);
+    const clave = g.db_column_name || ID_V1_A_CLAVE[g.id];
+    if (!clave || usados.has(clave)) continue;
+    if (clave.startsWith("calc.") && !CAMPOS_CALC_CLIENTE.has(clave)) continue;
+    usados.add(clave);
+    const base = columnaPorDefecto(clave);
+    const num = (v) => (v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v)) ? Number(v) : null);
     salida.push({
       ...base,
+      display_name: String(g.display_name || g.titulo || "").trim() || base.display_name,
       visible: g.visible !== false,
-      titulo: g.titulo ? String(g.titulo) : base.titulo,
-      ancho: Number.isFinite(Number(g.ancho)) && g.ancho !== null ? Number(g.ancho) : null,
-      fontSize: Number.isFinite(Number(g.fontSize)) && g.fontSize !== null ? Number(g.fontSize) : base.fontSize,
+      ancho: num(g.ancho),
+      fontSize: num(g.fontSize) ?? base.fontSize,
       negrita: !!g.negrita, cursiva: !!g.cursiva, subrayado: !!g.subrayado,
     });
   }
-  defs.forEach((d) => { if (!usados.has(d.id)) salida.push(columnaPorDefecto(d)); });
-  return salida;
+  return salida.length ? salida : REPORTES_FABRICA[prefix].map(([clave, titulo]) => columnaPorDefecto(clave, titulo));
+}
+// Columnas que hay que pedir al servidor aparte (?extras=): las que la fila de /api/consulta no trae por defecto.
+function extrasNecesarios(columnas) {
+  return columnas.filter((c) => c.visible && !c.db_column_name.startsWith("calc.") && !CAMPO_EN_FILA[c.db_column_name]).map((c) => c.db_column_name);
+}
+function esc(t) { return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+// Contenido y estilo extra de una celda según su columna
+function celdaDeColumna(clave, f, ctx) {
+  if (clave === "calc.fila") return [esc(ctx.fila ?? "")];
+  if (clave === "calc.tipo") return ["-"];
+  if (clave === "calc.tiempo_abierto") return [formatearTiempoAbierto(f.horas_abierta), estiloTiempoAbierto(f.semaforo)];
+  const campo = CAMPO_EN_FILA[clave] || clave;
+  const v = f[campo];
+  const vacio = v === null || v === undefined || v === "";
+  if (clave === "tickets.ticket_cmr") return [esc(formatearTicket(v))];
+  if (clave === "calc.tiempo_cierre_horas") return [vacio ? "-" : Number(v).toFixed(1)];
+  if (/\.(fecha_|creado_en|actualizado_en)/.test(clave)) return [vacio ? "-" : esc(formatearFechaHora(v))];
+  if (clave === "tickets.unidad_resolutoria") return [vacio ? "-" : esc(v), estiloUnidad(v)];
+  return [vacio ? "-" : esc(v)];
 }
 function estiloCeldaDeColumna(c) {
   const e = [];
@@ -2433,21 +2578,17 @@ function estiloCeldaDeColumna(c) {
 function estiloEncabezadoDeColumna(c) {
   return c.ancho ? `width:${c.ancho}px;min-width:${c.ancho}px;max-width:${c.ancho}px` : "";
 }
-// Construye el HTML del encabezado y de las filas a partir de una configuración. Sin acceso al DOM (se prueba en Node).
-function htmlTablaDinamica(defs, columnas, filas, contexto) {
-  const porId = new Map(defs.map((d) => [d.id, d]));
-  const vis = columnas.filter((c) => c.visible && porId.has(c.id));
-  const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  const thead = `<tr>${vis.map((c) => {
-    const d = porId.get(c.id);
-    return `<th class="${d.nowrap ? "col-nowrap" : ""}" data-col="${c.id}" style="${estiloEncabezadoDeColumna(c)}">${esc(c.titulo)}</th>`;
-  }).join("")}</tr>`;
+// HTML del encabezado (con el display_name) y de las filas. Sin acceso al DOM (se prueba en Node).
+function htmlTablaDinamica(columnas, filas, contexto) {
+  const vis = columnas.filter((c) => c.visible);
+  const thead = `<tr>${vis.map((c) =>
+    `<th class="${NOWRAP_COLUMNAS.has(c.db_column_name) ? "col-nowrap" : ""}" data-col="${esc(c.db_column_name)}" style="${estiloEncabezadoDeColumna(c)}">${esc(c.display_name)}</th>`
+  ).join("")}</tr>`;
   const tbody = filas.map((f) => {
     const ctx = contexto ? contexto(f) : {};
     return `<tr>${vis.map((c) => {
-      const d = porId.get(c.id);
-      const [contenido, extra] = d.celda(f, ctx);
-      return `<td class="${d.nowrap ? "col-nowrap" : ""}" data-col="${c.id}" style="${estiloCeldaDeColumna(c)}${extra ? ";" + extra : ""}">${contenido}</td>`;
+      const [contenido, extra] = celdaDeColumna(c.db_column_name, f, ctx);
+      return `<td class="${NOWRAP_COLUMNAS.has(c.db_column_name) ? "col-nowrap" : ""}" data-col="${esc(c.db_column_name)}" style="${estiloCeldaDeColumna(c)}${extra ? ";" + extra : ""}">${contenido}</td>`;
     }).join("")}</tr>`;
   }).join("");
   return { thead, tbody };
@@ -2464,14 +2605,18 @@ async function cargarConfigReportes() {
   }
 }
 function renderTablaDinamica(prefix, filas) {
-  const defs = REPORTES_COLUMNAS[prefix];
-  const columnas = columnasEfectivas(defs, REPORTES_CFG[prefix]);
+  const columnas = columnasEfectivas(prefix, REPORTES_CFG[prefix]);
   const { ordenadas, filaPorTicket } = asignarFilaYColor(filas);
-  const { thead, tbody } = htmlTablaDinamica(defs, columnas, ordenadas, (f) => ({ fila: filaPorTicket.get(f.ticket_cmr) }));
+  const { thead, tbody } = htmlTablaDinamica(columnas, ordenadas, (f) => ({ fila: filaPorTicket.get(f.ticket_cmr) }));
   const tabla = document.getElementById(`${prefix}_table`);
   tabla.tHead.innerHTML = thead;
   tabla.tBodies[0].innerHTML = tbody;
   ajustarAlturaTabla(`${prefix}_table`);
+}
+// /consulta con las columnas extra que el informe necesita (las que la fila no trae por defecto)
+function rutaConsultaInforme(prefix) {
+  const extras = extrasNecesarios(columnasEfectivas(prefix, REPORTES_CFG[prefix]));
+  return "/consulta" + (extras.length ? "?extras=" + encodeURIComponent(extras.join(",")) : "");
 }
 
 function renderTablaPizarra(filas) {
@@ -2481,7 +2626,7 @@ function renderTablaPizarra(filas) {
 
 async function cargarPizarra() {
   try {
-    const data = await apiGet("/consulta");
+    const data = await apiGet(rutaConsultaInforme("piz"));
     pizarraDatos = data.filas;
     aplicarFiltros("piz");
   } catch (err) {
@@ -2709,7 +2854,7 @@ function renderTablaReporte(filas) {
 
 async function cargarReporte() {
   try {
-    const data = await apiGet("/consulta");
+    const data = await apiGet(rutaConsultaInforme("rep"));
     reporteDatos = data.filas;
     aplicarFiltros("rep");
   } catch (err) {

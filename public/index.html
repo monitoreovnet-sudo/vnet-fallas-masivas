@@ -581,9 +581,9 @@
     <hr />
     <h2>Generador de reportes</h2>
     <p class="hint">
-      Define qué columnas muestran la Pizarra de Monitoreo y el Reporte Diario, en qué orden, con qué ancho y con qué letra.
-      Arrastra las filas (☰) o usa las flechas para ordenar. Ancho vacío = automático. Los cambios se aplican a todos los usuarios al guardar
-      y también al PDF; las exportaciones CSV/XLSX no cambian.
+      Arma las columnas de la Pizarra de Monitoreo y del Reporte Diario con <strong>cualquier campo de la base de datos</strong>:
+      agrégalos con el selector, ponles el <strong>nombre visible</strong> (alias) que quieras, ordénalos arrastrando las filas (☰) o con las flechas,
+      y define ancho (vacío = automático) y letra. Al guardar se aplica a todos los usuarios y al PDF; las exportaciones CSV/XLSX no cambian.
     </p>
     <div class="rpt-barra">
       <div class="field"><label>Informe</label>
@@ -595,10 +595,16 @@
       <button id="rpt_btn_guardar" class="btn-primary" type="button">Guardar configuración</button>
       <button id="rpt_btn_restablecer" class="btn-secondary" type="button">Restablecer valores de fábrica</button>
     </div>
+    <div class="rpt-barra">
+      <div class="field rpt-campo-agregar"><label>Agregar columna de la base de datos</label>
+        <select id="rpt_add_select"></select>
+      </div>
+      <button id="rpt_btn_agregar" class="btn-secondary" type="button">+ Agregar al informe</button>
+    </div>
     <div id="rpt_msg" class="msg"></div>
     <table class="rows-table rpt-config" id="rpt_table">
       <thead>
-        <tr><th></th><th>Visible</th><th>Título de la columna</th><th>Ancho (px)</th><th>Tamaño</th><th>Estilo</th><th>Orden</th></tr>
+        <tr><th></th><th>Visible</th><th>Nombre visible (alias) · columna en la BD</th><th>Ancho (px)</th><th>Tamaño</th><th>Estilo</th><th>Orden</th><th></th></tr>
       </thead>
       <tbody></tbody>
     </table>

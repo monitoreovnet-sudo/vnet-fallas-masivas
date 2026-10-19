@@ -679,3 +679,8 @@ tr.cl-fila-sel td { box-shadow: inset 0 0 0 9999px rgba(192, 57, 43, .16); }
 .rpt-estilo button.on { background: var(--purple-dark, #5b2d8e); color: #fff; border-color: transparent; }
 .rpt-orden button:disabled { opacity: .35; cursor: default; }
 .rpt-preview { max-height: none; margin: 8px 0 0; }
+.rpt-campo-agregar { min-width: 420px; flex: 1; }
+.rpt-td-alias { min-width: 220px; }
+.rpt-bd { display: block; font-size: 11px; color: #8a7aa3; font-family: ui-monospace, Consolas, monospace; margin-top: 2px; }
+.rpt-quitar { width: 28px; height: 28px; border: 1px solid #e3b8b4; background: #fff; color: #c0392b; border-radius: 6px; cursor: pointer; }
+.rpt-quitar:disabled { opacity: .35; cursor: default; }

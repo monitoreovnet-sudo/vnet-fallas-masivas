@@ -1,4 +1,5 @@
 import { json } from "../_lib/helpers.js";
+import { columnasBD, TABLAS_REPORTE } from "../_lib/campos-reportes.js";
 
 const MS_HORA = 3600000;
 
@@ -34,6 +35,18 @@ export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const p = (nombre) => url.searchParams.get(nombre) || "";
 
+  // Columnas extra pedidas por el Generador de reportes (?extras=tickets.creado_por,ticket_puertos.fecha_cierre_cmr).
+  // Solo se aceptan columnas que existen de verdad en la BD (lista blanca leída con PRAGMA); nunca se arma SQL con texto del usuario.
+  let extrasSql = "";
+  const pedidas = p("extras").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 40);
+  if (pedidas.length) {
+    const permitidas = new Map((await columnasBD(env.DB)).map((c) => [c.db_column_name, c]));
+    for (const clave of new Set(pedidas)) {
+      const c = permitidas.get(clave);
+      if (c) extrasSql += `, ${TABLAS_REPORTE[c.tabla].alias}."${c.columna}" AS "${clave}"`;
+    }
+  }
+
   let sql = `
     SELECT
       t.id AS ticket_id, t.ticket_cmr, t.tickets_vinculados,
@@ -43,7 +56,7 @@ export async function onRequestGet({ request, env }) {
       p.id AS puerto_id, p.oficina_id, o.nombre AS oficina_nombre, o.estado AS region, o.localidad,
       p.olt, p.sector, p.edificio, p.tarjeta, p.puerto,
       p.no_clientes_reportaron, p.nro_clientes_afectados, p.estado_puerto,
-      tot.n AS total_registros_ticket
+      tot.n AS total_registros_ticket${extrasSql}
     FROM ticket_puertos p
     JOIN tickets t ON t.id = p.ticket_id
     JOIN (SELECT ticket_id, COUNT(*) AS n FROM ticket_puertos GROUP BY ticket_id) tot ON tot.ticket_id = t.id
@@ -99,14 +112,28 @@ export async function onRequestGet({ request, env }) {
   const grupoH = p("grupo_horario");
   const sem = p("semaforo");
 
+  // Los filtros de grupo horario y semáforo no dependen de las fechas: se aplican antes para calcular las fechas disponibles.
+  if (grupoH) filas = filas.filter((f) => f.grupo_horario === grupoH);
+  if (sem) filas = filas.filter((f) => f.semaforo === sem);
+
+  // Fechas realmente presentes en los registros que cumplen TODOS los demás filtros (sin contar Día/Mes/Año).
+  // El navegador arma con esto los selectores de Año, Mes y Día en cascada (solo muestra valores que existen).
+  const comb = (a, m, d) => (Number.isFinite(a) && Number.isFinite(m) && Number.isFinite(d) ? `${a}-${m}-${d}` : null);
+  const setAp = new Set(filas.map((f) => comb(f.anio_apertura, f.mes_apertura, f.dia_apertura)).filter(Boolean));
+  const setCi = new Set(filas.map((f) => comb(f.anio_cierre, f.mes_cierre, f.dia_cierre)).filter(Boolean));
+  const aTriples = (set) => [...set].map((x) => x.split("-").map(Number));
+  const fechas = { apertura: aTriples(setAp), cierre: aTriples(setCi) };
+
   if (diaAp !== null) filas = filas.filter((f) => f.dia_apertura === diaAp);
   if (mesAp !== null) filas = filas.filter((f) => f.mes_apertura === mesAp);
   if (anioAp !== null) filas = filas.filter((f) => f.anio_apertura === anioAp);
   if (diaCi !== null) filas = filas.filter((f) => f.dia_cierre === diaCi);
   if (mesCi !== null) filas = filas.filter((f) => f.mes_cierre === mesCi);
   if (anioCi !== null) filas = filas.filter((f) => f.anio_cierre === anioCi);
-  if (grupoH) filas = filas.filter((f) => f.grupo_horario === grupoH);
-  if (sem) filas = filas.filter((f) => f.semaforo === sem);
 
-  return json({ filas });
+  // ?limite=N → solo las primeras N filas (la vista previa del Generador de reportes no necesita más)
+  const limite = Number(p("limite"));
+  if (Number.isInteger(limite) && limite > 0) filas = filas.slice(0, Math.min(limite, 200));
+
+  return json({ filas, fechas });
 }

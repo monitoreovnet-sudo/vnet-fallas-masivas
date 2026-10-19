@@ -1,4 +1,9 @@
-// Configuración del "Generador de reportes": qué columnas se ven, en qué orden, con qué ancho y tipografía.
+// Configuración del "Generador de reportes": qué columnas se ven, en qué orden, con qué alias, ancho y tipografía.
+// Formato guardado (JSON en config_reportes.config):
+//   { version: 2, columnas: [ { db_column_name: "tickets.estado_ticket", display_name: "Estado",
+//                               visible, ancho, fontSize, negrita, cursiva, subrayado } ] }
+import { etiquetaSugerida } from "./campos-reportes.js";
+
 export const REPORTES_VALIDOS = ["piz", "rep"];
 
 export async function asegurarTablaConfig(db) {
@@ -8,16 +13,18 @@ export async function asegurarTablaConfig(db) {
   ).run();
 }
 
-// Valida y normaliza lo que llega del navegador (nunca se guarda tal cual). Devuelve { config } o { error }.
-export function sanearConfigReporte(entrada) {
+// Valida y normaliza lo que llega del navegador (nunca se guarda tal cual).
+// "permitidas" = conjunto de db_column_name que existen de verdad (columnas de la BD + campos calculados).
+export function sanearConfigReporte(entrada, permitidas) {
   if (!entrada || !Array.isArray(entrada.columnas)) return { error: "Configuración inválida: faltan las columnas." };
-  if (entrada.columnas.length < 1 || entrada.columnas.length > 40) return { error: "Cantidad de columnas inválida." };
+  if (entrada.columnas.length < 1 || entrada.columnas.length > 60) return { error: "Cantidad de columnas inválida (1 a 60)." };
   const vistos = new Set();
   const columnas = [];
   for (const c of entrada.columnas) {
-    const id = String((c && c.id) ?? "");
-    if (!/^[a-z0-9_]{1,40}$/.test(id) || vistos.has(id)) return { error: `Columna inválida o repetida: "${id}".` };
-    vistos.add(id);
+    const clave = String((c && c.db_column_name) ?? "");
+    if (!/^[a-z_]+\.[a-z0-9_]{1,40}$/.test(clave) || !permitidas.has(clave)) return { error: `Columna desconocida: "${clave}".` };
+    if (vistos.has(clave)) return { error: `Columna repetida: "${clave}".` };
+    vistos.add(clave);
     const entero = (v, min, max) => {
       if (v === null || v === undefined || v === "") return null;
       const n = Math.round(Number(v));
@@ -26,12 +33,12 @@ export function sanearConfigReporte(entrada) {
     };
     const ancho = entero(c.ancho, 30, 900);
     const fontSize = entero(c.fontSize, 8, 28);
-    if (ancho === undefined) return { error: `Ancho fuera de rango (30–900 px) en "${id}".` };
-    if (fontSize === undefined) return { error: `Tamaño de letra fuera de rango (8–28) en "${id}".` };
+    if (ancho === undefined) return { error: `Ancho fuera de rango (30–900 px) en "${clave}".` };
+    if (fontSize === undefined) return { error: `Tamaño de letra fuera de rango (8–28) en "${clave}".` };
     columnas.push({
-      id,
+      db_column_name: clave,
+      display_name: String(c.display_name ?? "").trim().slice(0, 60) || etiquetaSugerida(clave),
       visible: c.visible !== false,
-      titulo: String(c.titulo ?? "").trim().slice(0, 60),
       ancho,
       fontSize,
       negrita: !!c.negrita,
@@ -40,5 +47,5 @@ export function sanearConfigReporte(entrada) {
     });
   }
   if (!columnas.some((c) => c.visible)) return { error: "Debe quedar al menos una columna visible." };
-  return { config: { version: 1, columnas } };
+  return { config: { version: 2, columnas } };
 }
