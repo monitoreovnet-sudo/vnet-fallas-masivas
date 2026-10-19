@@ -1301,15 +1301,55 @@ function construirQueryConsulta() {
   return params.toString();
 }
 
+let clDatosActuales = [];   // filas de la última búsqueda mostrada en Consultar / Log
+
+// Vista general (las mismas columnas de la tabla, con los filtros activos). No incluye el detalle del ticket.
+function filasExportConsulta() {
+  const v = (x) => (x === null || x === undefined ? "" : x);
+  return clDatosActuales.map((f) => ({
+    "Ticket": f.ticket_cmr,
+    "Vinculados": v(f.tickets_vinculados),
+    "Apert. CDA": v(f.fecha_apertura_cda),
+    "Apert. CMR": f.fecha_apertura_cmr ? formatearFechaHora(f.fecha_apertura_cmr) : "",
+    "Estado": v(f.estado_ticket),
+    "Unidad Res.": v(f.unidad_resolutoria),
+    "Categoría": v(f.categoria_afectacion),
+    "Afectación": v(f.afectacion),
+    "Comentario": v(f.comentario),
+    "Descripción": v(f.descripcion),
+    "Nro Afect.": v(f.nro_clientes_afectados),
+    "Nro Report.": v(f.no_clientes_reportaron),
+    "Oficina": v(f.oficina_nombre),
+    "OLT": v(f.olt),
+    "Sector": v(f.sector),
+    "Edificio": v(f.edificio),
+    "Tarjeta": v(f.tarjeta),
+    "Puerto": v(f.puerto),
+    "Semáforo": v(f.semaforo),
+    "Tiempo Cierre (h)": f.tiempo_cierre_horas !== null && f.tiempo_cierre_horas !== undefined ? Number(f.tiempo_cierre_horas.toFixed(1)) : "",
+  }));
+}
+function exportarConsulta(formato) {
+  if (!clDatosActuales.length) { alert("No hay registros en pantalla para descargar. Aplica los filtros y pulsa Filtrar."); return; }
+  const filas = filasExportConsulta();
+  const fecha = new Date().toISOString().slice(0, 10);
+  if (formato === "csv") exportarCSVGenerico(filas, `consulta_log_${fecha}.csv`);
+  else exportarExcelGenerico(filas, "Consulta", `consulta_log_${fecha}.xlsx`);
+}
+document.getElementById("cl_btn_csv").addEventListener("click", () => exportarConsulta("csv"));
+document.getElementById("cl_btn_xlsx").addEventListener("click", () => exportarConsulta("xlsx"));
+
 async function cargarConsulta() {
   const tbody = document.querySelector("#cl_table tbody");
   const contador = document.getElementById("cl_contador");
   clSeleccion = new Set();
   clFilas = new Map();
+  clDatosActuales = [];
   tbody.innerHTML = `<tr><td colspan="21">Cargando...</td></tr>`;
   try {
     const data = await apiGet(`/consulta?${construirQueryConsulta()}`);
     tbody.innerHTML = "";
+    clDatosActuales = data.filas;   // exactamente lo que se ve en la tabla (ya filtrado por el servidor)
     data.filas.forEach((f) => {
       const tr = document.createElement("tr");
       tr.className = f.semaforo ? `sem-${f.semaforo}` : "";

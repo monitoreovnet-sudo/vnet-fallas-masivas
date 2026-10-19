@@ -472,7 +472,11 @@
   <section id="tab-consultar" class="tab-panel full-bleed">
     <div class="cl-titulo-fila">
       <h2>Consultar / Log</h2>
-      <button id="cl_btn_eliminar" class="btn-danger hidden" type="button" disabled>Eliminar filas seleccionadas <span id="cl_sel_count"></span></button>
+      <div class="cl-acciones">
+        <button id="cl_btn_csv" class="btn-secondary" type="button" title="Descarga lo que muestra la tabla con los filtros aplicados">Descargar CSV</button>
+        <button id="cl_btn_xlsx" class="btn-secondary" type="button" title="Descarga lo que muestra la tabla con los filtros aplicados">Descargar XLSX</button>
+        <button id="cl_btn_eliminar" class="btn-danger hidden" type="button" disabled>Eliminar filas seleccionadas <span id="cl_sel_count"></span></button>
+      </div>
     </div>
 
     <div id="cl_vista_tabla">

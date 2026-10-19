@@ -634,6 +634,7 @@ input:focus, select:focus, textarea:focus {
 
 /* ---- Consultar / Log: selección y eliminación (solo administrador) ---- */
 .cl-titulo-fila { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.cl-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .btn-danger { background: #c0392b; color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
 .btn-danger:disabled { opacity: .5; cursor: not-allowed; }
 .cl-sel { display: none; width: 34px; text-align: center; }
