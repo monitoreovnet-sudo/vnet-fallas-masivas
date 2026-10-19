@@ -2026,6 +2026,8 @@ function renderChartUnidad(filas, canvasId = "piz_chart_unidad") {
   destruirChart(canvasId);
   const el = document.getElementById(canvasId);
   if (!el) return;
+  // Altura fija según nº de barras: el contenedor nunca depende del canvas (evita el bucle de redimensionado)
+  if (el.parentElement) el.parentElement.style.height = Math.min(700, Math.max(260, etiquetas.length * 28 + 50)) + "px";
   crearChartSeguro(canvasId, el, { tipo: "barras", items: etiquetas.map((e, i) => ({ etiqueta: e, valor: valores[i], color: colores[i] })) }, {
     type: "bar",
     data: { labels: etiquetas, datasets: [{ data: valores, backgroundColor: colores, borderRadius: 15, barThickness: 18 }] },
@@ -2061,6 +2063,8 @@ function renderChartOficina(filas, canvasId = "piz_chart_oficina") {
   destruirChart(canvasId);
   const el = document.getElementById(canvasId);
   if (!el) return;
+  // Altura fija según nº de barras: el contenedor nunca depende del canvas (evita el bucle de redimensionado)
+  if (el.parentElement) el.parentElement.style.height = Math.min(700, Math.max(260, etiquetas.length * 28 + 50)) + "px";
   crearChartSeguro(canvasId, el, { tipo: "barras", items: etiquetas.map((e, i) => ({ etiqueta: e, valor: valores[i], color: colores[i] })) }, {
     type: "bar",
     data: { labels: etiquetas, datasets: [{ data: valores, backgroundColor: colores, borderRadius: 15 }] },
