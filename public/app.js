@@ -1273,7 +1273,10 @@ function initFiltrosConsulta() {
   llenarSelectSimple("cl_semaforo", ["VERDE","AMARILLO","NARANJA","ROJO"].map((s)=>({value:s,label:s})), "Todos");
   llenarSelectSimple("cl_unidad", LOOKUPS.unidades_resolutorias.map((u)=>({value:u.nombre,label:u.nombre})), "Todas");
   llenarSelectSimple("cl_oficina", LOOKUPS.oficinas.map((o)=>({value:o.id,label:o.nombre})), "Todas");
-  llenarSelectSimple("cl_olt", LOOKUPS.olts.map((o)=>({value:o.codigo,label:o.codigo})), "Todos");
+  // Catálogo vigente + los OLT que ya aparecen en tickets (para poder filtrar también los históricos)
+  llenarSelectSimple("cl_olt",
+    [...new Set([...LOOKUPS.olts.map((o) => o.codigo), ...(LOOKUPS.olts_usados || [])])]
+      .sort((a, b) => a.localeCompare(b)).map((c) => ({ value: c, label: c })), "Todos");
 
   const estadoEl = document.getElementById("cl_estado");
   estadoEl.innerHTML = `<option value="">Todos</option><option value="__ABIERTOS__" selected>Distinto de Cerrado</option>` +
