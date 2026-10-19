@@ -1974,6 +1974,16 @@ function htmlFallbackDona(items) {
 }
 // Dibuja con Chart.js; si la librería no está o falla, muestra la misma información en modo simple
 // (barras/dona en HTML) y deja un aviso visible con el motivo.
+// La caja exterior (.db-chart-wrap) tiene altura fija. Solo si hay tantas barras que no caben, el área interna
+// (.db-chart-inner) se hace más alta y la caja muestra scroll vertical; si caben, ocupa el 100% sin scroll.
+function ajustarScrollBarras(el, n) {
+  const inner = el.parentElement;
+  if (!inner) return;
+  const wrap = inner.parentElement;
+  const disponible = (wrap ? wrap.clientHeight : 0) - 16;
+  const necesaria = n * 30 + 20;
+  inner.style.height = necesaria > disponible && disponible > 0 ? necesaria + "px" : "100%";
+}
 function crearChartSeguro(canvasId, el, fallback, config) {
   const wrap = el.parentElement;
   let alt = wrap.querySelector(".db-fb-alt");
@@ -2026,8 +2036,7 @@ function renderChartUnidad(filas, canvasId = "piz_chart_unidad") {
   destruirChart(canvasId);
   const el = document.getElementById(canvasId);
   if (!el) return;
-  // Altura fija según nº de barras: el contenedor nunca depende del canvas (evita el bucle de redimensionado)
-  if (el.parentElement) el.parentElement.style.height = Math.min(700, Math.max(260, etiquetas.length * 28 + 50)) + "px";
+  ajustarScrollBarras(el, etiquetas.length);
   crearChartSeguro(canvasId, el, { tipo: "barras", items: etiquetas.map((e, i) => ({ etiqueta: e, valor: valores[i], color: colores[i] })) }, {
     type: "bar",
     data: { labels: etiquetas, datasets: [{ data: valores, backgroundColor: colores, borderRadius: 15, barThickness: 18 }] },
@@ -2063,8 +2072,7 @@ function renderChartOficina(filas, canvasId = "piz_chart_oficina") {
   destruirChart(canvasId);
   const el = document.getElementById(canvasId);
   if (!el) return;
-  // Altura fija según nº de barras: el contenedor nunca depende del canvas (evita el bucle de redimensionado)
-  if (el.parentElement) el.parentElement.style.height = Math.min(700, Math.max(260, etiquetas.length * 28 + 50)) + "px";
+  ajustarScrollBarras(el, etiquetas.length);
   crearChartSeguro(canvasId, el, { tipo: "barras", items: etiquetas.map((e, i) => ({ etiqueta: e, valor: valores[i], color: colores[i] })) }, {
     type: "bar",
     data: { labels: etiquetas, datasets: [{ data: valores, backgroundColor: colores, borderRadius: 15 }] },
