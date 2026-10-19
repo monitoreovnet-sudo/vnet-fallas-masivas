@@ -470,7 +470,10 @@
   </section>
 
   <section id="tab-consultar" class="tab-panel full-bleed">
-    <h2>Consultar / Log</h2>
+    <div class="cl-titulo-fila">
+      <h2>Consultar / Log</h2>
+      <button id="cl_btn_eliminar" class="btn-danger hidden" type="button" disabled>Eliminar filas seleccionadas <span id="cl_sel_count"></span></button>
+    </div>
 
     <div id="cl_vista_tabla">
       <div id="cl_filtros" class="filtros-grid">
@@ -501,7 +504,7 @@
       <table class="rows-table" id="cl_table">
         <thead>
           <tr>
-            <th>Ticket</th><th>Vinculados</th><th>Apert. CDA</th><th>Apert. CMR</th><th>Estado</th>
+            <th class="cl-sel"><input type="checkbox" id="cl_check_todos" title="Seleccionar todas" /></th><th>Ticket</th><th>Vinculados</th><th>Apert. CDA</th><th>Apert. CMR</th><th>Estado</th>
             <th>Unidad Res.</th><th>Categoría</th><th>Afectación</th><th>Comentario</th><th>Descripción</th>
             <th>Nro Afect.</th><th>Nro Report.</th><th>Oficina</th><th>OLT</th><th>Sector</th>
             <th>Edificio</th><th>Tarjeta</th><th>Puerto</th><th>Semáforo</th><th>Tiempo Cierre (h)</th>
@@ -606,6 +609,23 @@
   </section>
 
   </main>
+  </div>
+
+  <!-- Confirmación con contraseña (eliminar tickets) -->
+  <div id="modal_clave" class="modal-overlay hidden">
+    <div class="modal-box">
+      <h3>Confirmar eliminación</h3>
+      <p id="modal_clave_texto"></p>
+      <div class="field">
+        <label>Tu contraseña</label>
+        <input id="modal_clave_input" type="password" autocomplete="current-password" />
+      </div>
+      <div id="modal_clave_msg" class="msg"></div>
+      <div class="modal-botones">
+        <button id="modal_clave_cancelar" class="btn-secondary" type="button">Cancelar</button>
+        <button id="modal_clave_ok" class="btn-danger" type="button">Eliminar definitivamente</button>
+      </div>
+    </div>
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>

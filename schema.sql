@@ -140,3 +140,14 @@ CREATE TABLE IF NOT EXISTS ticket_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_log_ticket ON ticket_log(ticket_id);
+
+-- Registro de auditoría: quién eliminó qué ticket (desde Consultar / Log, solo administradores).
+CREATE TABLE IF NOT EXISTS tickets_eliminados (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_cmr TEXT NOT NULL,
+  categoria_afectacion TEXT,
+  estado_ticket TEXT,
+  num_registros INTEGER NOT NULL DEFAULT 0,
+  eliminado_por TEXT NOT NULL,
+  eliminado_en TEXT NOT NULL
+);

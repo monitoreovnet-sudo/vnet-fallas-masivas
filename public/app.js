@@ -1301,7 +1301,8 @@ function construirQueryConsulta() {
 async function cargarConsulta() {
   const tbody = document.querySelector("#cl_table tbody");
   const contador = document.getElementById("cl_contador");
-  tbody.innerHTML = `<tr><td colspan="20">Cargando...</td></tr>`;
+  clSeleccion = new Set();
+  tbody.innerHTML = `<tr><td colspan="21">Cargando...</td></tr>`;
   try {
     const data = await apiGet(`/consulta?${construirQueryConsulta()}`);
     tbody.innerHTML = "";
@@ -1311,6 +1312,7 @@ async function cargarConsulta() {
       tr.style.cursor = "pointer";
       tr.title = "Doble click para ver el log";
       tr.innerHTML = `
+        <td class="cl-sel"><input type="checkbox" class="cl-check" data-ticket="${f.ticket_cmr}" /></td>
         <td><strong>${formatearTicket(f.ticket_cmr)}</strong></td>
         <td>${f.tickets_vinculados ? formatearTicket(f.tickets_vinculados) : "-"}</td>
         <td>${f.fecha_apertura_cda || "-"}</td>
@@ -1333,13 +1335,99 @@ async function cargarConsulta() {
         <td>${f.tiempo_cierre_horas !== null ? f.tiempo_cierre_horas.toFixed(1) : "-"}</td>
       `;
       tr.addEventListener("dblclick", () => mostrarDetalleTicket(f.ticket_cmr));
+      const chk = tr.querySelector(".cl-check");
+      ["click", "dblclick"].forEach((ev) => chk.addEventListener(ev, (e) => e.stopPropagation()));
+      chk.addEventListener("change", () => { clMarcarTicket(f.ticket_cmr, chk.checked); clActualizarSeleccion(); });
       tbody.appendChild(tr);
     });
+    clActualizarSeleccion();
     contador.textContent = `${data.filas.length} registro(s) encontrados.`;
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="20" class="msg error">${err.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="21" class="msg error">${err.message}</td></tr>`;
   }
 }
+
+// ---------------------------------------------------------------
+// Consultar / Log: eliminar tickets (solo administrador, con su contraseña)
+// ---------------------------------------------------------------
+let clSeleccion = new Set();   // números de ticket marcados (al marcar una fila se marca el ticket completo)
+
+function clMarcarTicket(ticket, marcado) {
+  if (marcado) clSeleccion.add(ticket); else clSeleccion.delete(ticket);
+  document.querySelectorAll(`#cl_table .cl-check[data-ticket="${ticket}"]`).forEach((c) => { c.checked = marcado; });
+}
+function clActualizarSeleccion() {
+  const checks = [...document.querySelectorAll("#cl_table .cl-check")];
+  const marcadas = checks.filter((c) => c.checked).length;
+  checks.forEach((c) => c.closest("tr").classList.toggle("cl-fila-sel", c.checked));
+  document.getElementById("cl_sel_count").textContent = clSeleccion.size ? `(${clSeleccion.size})` : "";
+  document.getElementById("cl_btn_eliminar").disabled = clSeleccion.size === 0;
+  document.getElementById("cl_check_todos").checked = checks.length > 0 && marcadas === checks.length;
+}
+document.getElementById("cl_check_todos").addEventListener("change", (e) => {
+  const marcar = e.target.checked;
+  document.querySelectorAll("#cl_table .cl-check").forEach((c) => clMarcarTicket(c.dataset.ticket, marcar));
+  clActualizarSeleccion();
+});
+
+// Ventana que pide la contraseña. "ejecutar(clave)" hace la llamada; si falla (ej. clave incorrecta)
+// el mensaje se muestra en la ventana y se puede reintentar. Resuelve con el resultado, o null si se cancela.
+function pedirClave(texto, ejecutar) {
+  return new Promise((resolve) => {
+    const ov = document.getElementById("modal_clave");
+    const inp = document.getElementById("modal_clave_input");
+    const msg = document.getElementById("modal_clave_msg");
+    const ok = document.getElementById("modal_clave_ok");
+    const cancelar = document.getElementById("modal_clave_cancelar");
+    document.getElementById("modal_clave_texto").textContent = texto;
+    inp.value = ""; msg.textContent = ""; msg.className = "msg"; ok.disabled = false;
+    ov.classList.remove("hidden");
+    inp.focus();
+    const cerrar = (res) => {
+      ov.classList.add("hidden");
+      inp.value = ""; ok.onclick = null; cancelar.onclick = null; inp.onkeydown = null;
+      resolve(res);
+    };
+    const confirmar = async () => {
+      if (!inp.value) { showMsg(msg, "Ingresa tu contraseña.", false); return; }
+      ok.disabled = true;
+      try { cerrar(await ejecutar(inp.value)); }
+      catch (e) { showMsg(msg, e.message, false); ok.disabled = false; inp.select(); }
+    };
+    ok.onclick = confirmar;
+    cancelar.onclick = () => cerrar(null);
+    inp.onkeydown = (e) => { if (e.key === "Enter") confirmar(); else if (e.key === "Escape") cerrar(null); };
+  });
+}
+
+// El servidor acepta hasta 500 tickets por llamada: lo grande se envía en lotes con la misma confirmación.
+async function eliminarTicketsEnLotes(tickets, password) {
+  const total = { tickets_eliminados: 0, registros_eliminados: 0 };
+  for (let i = 0; i < tickets.length; i += 400) {
+    try {
+      const r = await apiSend("/admin/eliminar-tickets", "POST", { tickets: tickets.slice(i, i + 400), password });
+      total.tickets_eliminados += r.tickets_eliminados;
+      total.registros_eliminados += r.registros_eliminados;
+    } catch (e) {
+      if (total.tickets_eliminados > 0) throw new Error(`Se eliminaron ${total.tickets_eliminados} ticket(s) antes del error: ${e.message}`);
+      throw e;
+    }
+  }
+  return total;
+}
+
+document.getElementById("cl_btn_eliminar").addEventListener("click", async () => {
+  const tickets = [...clSeleccion];
+  if (tickets.length === 0) return;
+  const filas = document.querySelectorAll("#cl_table .cl-check:checked").length;
+  const detalle = tickets.length <= 8 ? ` (${tickets.map(formatearTicket).join(", ")})` : "";
+  const texto = `Vas a eliminar ${tickets.length} ticket(s)${detalle}, con sus ${filas} fila(s) de detalle y todo su historial (log). Esta acción no se puede deshacer.`;
+  const res = await pedirClave(texto, (password) => eliminarTicketsEnLotes(tickets, password));
+  if (!res) return;
+  pizarraDatos = []; reporteDatos = [];            // los dashboards se recargan al abrirlos
+  await cargarConsulta();
+  showMsg(document.getElementById("cl_contador"), `Se eliminaron ${res.tickets_eliminados} ticket(s) (${res.registros_eliminados} registro(s) de detalle).`, true);
+});
 
 document.getElementById("cl_btn_filtrar").addEventListener("click", cargarConsulta);
 
@@ -1372,6 +1460,10 @@ function aplicarPermisosRol() {
   if (document.querySelector(".tab-btn.active")?.classList.contains("hidden")) {
     document.querySelector(`.tab-btn[data-tab="${permitidas[0]}"]`)?.click();
   }
+
+  const esAdminCl = currentUser.rol === "administrador";
+  document.getElementById("cl_table").classList.toggle("cl-admin", esAdminCl);
+  document.getElementById("cl_btn_eliminar").classList.toggle("hidden", !esAdminCl);
 
   if (currentUser.rol === "administrador") {
     cargarUsuarios();
@@ -1610,6 +1702,15 @@ function initCatalogosUI() {
 let pizarraDatos = [];
 let reporteDatos = [];
 
+// Estados "activos" de la Pizarra y el Reporte (valor especial del filtro "Estado del Ticket").
+const ESTADOS_ACTIVOS = ["EN CURSO (ASIGNADO)", "EN OBSERVACIÓN"];
+const VALOR_ACTIVOS = "__ACTIVOS__";
+const ETIQUETA_ACTIVOS = "Activos (En curso + En observación)";
+function coincideFiltro(f, flt, v) {
+  if (flt.id === "estado_ticket" && v === VALOR_ACTIVOS) return ESTADOS_ACTIVOS.includes(f.estado_ticket);
+  return String(f[flt.campo] ?? "") === String(v);
+}
+
 const FILTROS_CASCADA = [
   { id: "estado_ticket", campo: "estado_ticket" },
   { id: "tipo_falla", campo: "categoria_afectacion" },
@@ -1625,7 +1726,9 @@ const FILTROS_CASCADA = [
 function initFiltrosGenerico(prefix) {
   llenarSelectSimple(`${prefix}_mes`, MESES.map((m,i)=>({value:i+1,label:m})), "Todos");
   llenarSelectSimple(`${prefix}_grupo_horario`, ["MAÑANA","TARDE","NOCHE"].map((g)=>({value:g,label:g})), "Todos");
-  llenarSelectSimple(`${prefix}_estado_ticket`, LOOKUPS.estados_ticket.map((e)=>({value:e.nombre,label:e.nombre})), "Todos");
+  llenarSelectSimple(`${prefix}_estado_ticket`,
+    [{ value: VALOR_ACTIVOS, label: ETIQUETA_ACTIVOS }, ...LOOKUPS.estados_ticket.map((e)=>({value:e.nombre,label:e.nombre}))], "Todos");
+  document.getElementById(`${prefix}_estado_ticket`).value = VALOR_ACTIVOS;   // por defecto: solo tickets activos
   llenarSelectSimple(`${prefix}_afectacion`, LOOKUPS.afectaciones.map((a)=>({value:a.nombre,label:a.nombre})), "Todas");
   llenarSelectSimple(`${prefix}_tipo_falla`, LOOKUPS.categorias.map((c)=>({value:c.nombre,label:c.nombre})), "Todos");
   llenarSelectSimple(`${prefix}_unidad`, LOOKUPS.unidades_resolutorias.map((u)=>({value:u.nombre,label:u.nombre})), "Todas");
@@ -1650,7 +1753,7 @@ function filasQueCoincidenExcepto(filas, prefix, idExcluir) {
     if (flt.id === idExcluir) return true;
     const v = valorFiltro(prefix, flt.id);
     if (!v) return true;
-    return String(f[flt.campo] ?? "") === String(v);
+    return coincideFiltro(f, flt, v);
   }));
 }
 
@@ -1667,39 +1770,66 @@ function actualizarCascada(prefix, datosCompletos) {
     const actual = select.value;
     const placeholder = select.options[0] ? select.options[0].textContent : "Todos";
     const ordenados = Array.from(valores.entries()).sort((a, b) => String(a[1]).localeCompare(String(b[1]), "es"));
-    select.innerHTML = `<option value="">${placeholder}</option>` +
+    const extraActivos = flt.id === "estado_ticket"
+      ? `<option value="${VALOR_ACTIVOS}" ${VALOR_ACTIVOS === actual ? "selected" : ""}>${ETIQUETA_ACTIVOS}</option>` : "";
+    select.innerHTML = `<option value="">${placeholder}</option>` + extraActivos +
       ordenados.map(([v, l]) => `<option value="${v}" ${v === actual ? "selected" : ""}>${l}</option>`).join("");
     if (![...select.options].some((o) => o.value === actual)) select.value = "";
   });
 }
 
-function filtrarDatos(filas, prefix) {
+// sinEstado = true: aplica todos los filtros MENOS el de Estado del Ticket (lo usan las tarjetas de estado,
+// que siempre deben mostrar el conteo de cada estado aunque la vista esté en "Activos").
+function filtrarDatos(filas, prefix, sinEstado = false) {
   const textoTicket = document.getElementById(`${prefix}_ticket`).value.trim();
   return filas.filter((f) => {
     if (textoTicket && !String(f.ticket_cmr).includes(textoTicket)) return false;
     return FILTROS_CASCADA.every((flt) => {
+      if (sinEstado && flt.id === "estado_ticket") return true;
       const v = valorFiltro(prefix, flt.id);
       if (!v) return true;
-      return String(f[flt.campo] ?? "") === String(v);
+      return coincideFiltro(f, flt, v);
     });
   });
+}
+
+// Avisos visibles en el dashboard (para que un fallo en una pieza nunca deje todo en blanco sin explicación).
+function avisoDash(prefix, texto, reiniciar = false) {
+  const barra = document.getElementById(`${prefix}_semaforo_bar`);
+  if (!barra) return;
+  let aviso = document.getElementById(`${prefix}_aviso`);
+  if (!aviso) {
+    aviso = document.createElement("div");
+    aviso.id = `${prefix}_aviso`;
+    aviso.className = "db-aviso hidden";
+    barra.parentNode.insertBefore(aviso, barra);
+  }
+  if (reiniciar) { aviso.innerHTML = ""; aviso.classList.add("hidden"); return; }
+  if (![...aviso.children].some((d) => d.textContent === texto)) {
+    const d = document.createElement("div"); d.textContent = texto; aviso.appendChild(d);
+  }
+  aviso.classList.remove("hidden");
 }
 
 function aplicarFiltros(prefix) {
   const datosCompletos = prefix === "piz" ? pizarraDatos : reporteDatos;
   const filtrados = filtrarDatos(datosCompletos, prefix);
-  renderKpisGenerico(filtrados, prefix);
-  renderSemaforoBar(filtrados, `${prefix}_semaforo_bar`);
-  renderTop5PorEstado(filtrados, `${prefix}_top5_estado`);
-  renderChartUnidad(filtrados, `${prefix}_chart_unidad`);
-  renderChartOficina(filtrados, `${prefix}_chart_oficina`);
-  renderChartDesglose(filtrados, `${prefix}_chart_desglose`);
-  if (prefix === "piz") {
-    renderTablaPizarra(filtrados);
-  } else {
-    renderTablaReporte(filtrados);
-  }
-  actualizarCascada(prefix, datosCompletos);
+  avisoDash(prefix, "", true);
+  // Cada pieza va por separado: si una falla, las demás se dibujan igual.
+  const paso = (nombre, fn) => {
+    try { fn(); } catch (e) {
+      console.error(`Dashboard (${prefix}) - ${nombre}:`, e);
+      avisoDash(prefix, `No se pudo dibujar "${nombre}": ${e.message}`);
+    }
+  };
+  paso("tarjetas de estado", () => renderKpisGenerico(filtrarDatos(datosCompletos, prefix, true), prefix));
+  paso("semáforo", () => renderSemaforoBar(filtrados, `${prefix}_semaforo_bar`));
+  paso("top 5 por estado", () => renderTop5PorEstado(filtrados, `${prefix}_top5_estado`));
+  paso("tabla de tickets", () => (prefix === "piz" ? renderTablaPizarra(filtrados) : renderTablaReporte(filtrados)));
+  paso("gráfica de unidades", () => renderChartUnidad(filtrados, `${prefix}_chart_unidad`));
+  paso("gráfica de oficinas", () => renderChartOficina(filtrados, `${prefix}_chart_oficina`));
+  paso("desglose de activos", () => renderChartDesglose(filtrados, `${prefix}_chart_desglose`));
+  paso("filtros", () => actualizarCascada(prefix, datosCompletos));
 }
 
 function ticketsUnicos(filas) {
@@ -1775,6 +1905,41 @@ function destruirChart(canvasId) {
   if (chartInstances[canvasId]) { chartInstances[canvasId].destroy(); delete chartInstances[canvasId]; }
 }
 
+function escHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function htmlFallbackBarras(items) {
+  const max = Math.max(1, ...items.map((i) => i.valor));
+  return `<div class="db-fb-contenedor">${items.map((i) =>
+    `<div class="db-fb-row"><span class="db-fb-lbl" title="${escHtml(i.etiqueta)}">${escHtml(i.etiqueta)}</span>` +
+    `<span class="db-fb-bar"><i style="width:${(i.valor / max) * 100}%;background:${i.color}"></i></span><b>${i.valor}</b></div>`).join("")}</div>`;
+}
+function htmlFallbackDona(items) {
+  const total = items.reduce((s, i) => s + i.valor, 0);
+  let acum = 0;
+  const tramos = total ? items.map((i) => { const ini = acum; acum += (i.valor / total) * 100; return `${i.color} ${ini}% ${acum}%`; }).join(",") : "#e6e0ee 0 100%";
+  return `<div class="db-fb-contenedor"><div class="db-fb-dona" style="background:conic-gradient(${tramos})"></div>` +
+    `<div class="db-fb-leyenda">${items.map((i) => `<span><i style="background:${i.color}"></i>${escHtml(i.etiqueta)}: <b>${i.valor}</b></span>`).join("")}</div></div>`;
+}
+// Dibuja con Chart.js; si la librería no está o falla, muestra la misma información en modo simple
+// (barras/dona en HTML) y deja un aviso visible con el motivo.
+function crearChartSeguro(canvasId, el, fallback, config) {
+  const wrap = el.parentElement;
+  let alt = wrap.querySelector(".db-fb-alt");
+  try {
+    if (typeof Chart === "undefined") throw new Error("la librería de gráficas (Chart.js) no se cargó");
+    chartInstances[canvasId] = new Chart(el.getContext("2d"), config);
+    el.style.display = "";
+    if (alt) alt.remove();
+  } catch (e) {
+    console.error(`Gráfica ${canvasId}:`, e);
+    el.style.display = "none";
+    if (!alt) { alt = document.createElement("div"); alt.className = "db-fb-alt"; alt.style.height = "100%"; wrap.appendChild(alt); }
+    alt.innerHTML = fallback.tipo === "dona" ? htmlFallbackDona(fallback.items) : htmlFallbackBarras(fallback.items);
+    avisoDash(canvasId.split("_")[0], `Las gráficas se muestran en modo simple (${e.message}).`);
+  }
+}
+
 function renderSemaforoBar(filas, contId = "piz_semaforo_bar") {
   const unicos = ticketsUnicos(filas);
   const cont = document.getElementById(contId);
@@ -1810,7 +1975,7 @@ function renderChartUnidad(filas, canvasId = "piz_chart_unidad") {
   destruirChart(canvasId);
   const el = document.getElementById(canvasId);
   if (!el) return;
-  chartInstances[canvasId] = new Chart(el.getContext("2d"), {
+  crearChartSeguro(canvasId, el, { tipo: "barras", items: etiquetas.map((e, i) => ({ etiqueta: e, valor: valores[i], color: colores[i] })) }, {
     type: "bar",
     data: { labels: etiquetas, datasets: [{ data: valores, backgroundColor: colores, borderRadius: 15, barThickness: 18 }] },
     options: {
@@ -1845,7 +2010,7 @@ function renderChartOficina(filas, canvasId = "piz_chart_oficina") {
   destruirChart(canvasId);
   const el = document.getElementById(canvasId);
   if (!el) return;
-  chartInstances[canvasId] = new Chart(el.getContext("2d"), {
+  crearChartSeguro(canvasId, el, { tipo: "barras", items: etiquetas.map((e, i) => ({ etiqueta: e, valor: valores[i], color: colores[i] })) }, {
     type: "bar",
     data: { labels: etiquetas, datasets: [{ data: valores, backgroundColor: colores, borderRadius: 15 }] },
     options: {
@@ -1877,7 +2042,7 @@ function renderChartDesglose(filas, canvasId) {
   destruirChart(canvasId);
   const el = document.getElementById(canvasId);
   if (!el) return;
-  chartInstances[canvasId] = new Chart(el.getContext("2d"), {
+  crearChartSeguro(canvasId, el, { tipo: "dona", items: cfg.map((c, i) => ({ etiqueta: c.label, valor: valores[i], color: c.color })) }, {
     type: "doughnut",
     data: { labels: cfg.map((c) => c.label), datasets: [{ data: valores, backgroundColor: cfg.map((c) => c.color), borderWidth: 0 }] },
     options: {
