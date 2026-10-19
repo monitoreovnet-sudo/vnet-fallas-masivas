@@ -129,6 +129,9 @@
   background: var(--db-white); border: 1px solid #d0d0d0; border-radius: 6px;
   padding: 8px 10px; text-align: left;
 }
+/* Día · Mes · Año: tres selectores que comparten una sola celda de la cuadrícula de filtros */
+.db-filtro-fecha { display: grid; grid-template-columns: 0.9fr 1.7fr 1.2fr; gap: 6px; min-width: 0; }
+.db-filtro-fecha select { min-width: 0; width: 100%; padding-left: 8px; padding-right: 22px; background-position: right 6px center; }
 .db-bloque6 {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

@@ -2062,11 +2062,17 @@ const FILTROS_CASCADA = [
   { id: "oficina", campo: "oficina_id", labelCampo: "oficina_nombre" },
   { id: "semaforo", campo: "semaforo" },
   { id: "grupo_horario", campo: "grupo_horario" },
-  { id: "mes", campo: "mes_apertura" },
+  // Fecha de apertura: tres filtros entrelazados entre sí y con todos los demás. Las opciones salen de los datos cargados.
+  { id: "dia", campo: "dia_apertura", numerico: true },
+  { id: "mes", campo: "mes_apertura", numerico: true, etiqueta: (m) => MESES[Number(m) - 1] || m },
+  { id: "anio", campo: "anio_apertura", numerico: true },
 ];
 
 function initFiltrosGenerico(prefix) {
-  llenarSelectSimple(`${prefix}_mes`, MESES.map((m,i)=>({value:i+1,label:m})), "Todos");
+  // Día / Mes / Año se llenan con lo que existe en los datos (actualizarCascada); aquí solo el texto inicial
+  llenarSelectSimple(`${prefix}_dia`, [], "Día");
+  llenarSelectSimple(`${prefix}_mes`, [], "Mes");
+  llenarSelectSimple(`${prefix}_anio`, [], "Año");
   llenarSelectSimple(`${prefix}_grupo_horario`, ["MAÑANA","TARDE","NOCHE"].map((g)=>({value:g,label:g})), "Todos");
   llenarSelectSimple(`${prefix}_estado_ticket`,
     [{ value: VALOR_ACTIVOS, label: ETIQUETA_ACTIVOS }, ...LOOKUPS.estados_ticket.map((e)=>({value:e.nombre,label:e.nombre}))], "Todos");
@@ -2106,12 +2112,13 @@ function actualizarCascada(prefix, datosCompletos) {
     disponibles.forEach((f) => {
       const val = f[flt.campo];
       if (val === null || val === undefined || val === "") return;
-      valores.set(String(val), flt.labelCampo ? f[flt.labelCampo] : val);
+      valores.set(String(val), flt.labelCampo ? f[flt.labelCampo] : flt.etiqueta ? flt.etiqueta(val) : val);
     });
     const select = document.getElementById(`${prefix}_${flt.id}`);
     const actual = select.value;
     const placeholder = select.options[0] ? select.options[0].textContent : "Todos";
-    const ordenados = Array.from(valores.entries()).sort((a, b) => String(a[1]).localeCompare(String(b[1]), "es"));
+    const ordenados = Array.from(valores.entries()).sort((a, b) =>
+      flt.numerico ? Number(a[0]) - Number(b[0]) : String(a[1]).localeCompare(String(b[1]), "es"));
     const extraActivos = flt.id === "estado_ticket"
       ? `<option value="${VALOR_ACTIVOS}" ${VALOR_ACTIVOS === actual ? "selected" : ""}>${ETIQUETA_ACTIVOS}</option>` : "";
     select.innerHTML = `<option value="">${placeholder}</option>` + extraActivos +
