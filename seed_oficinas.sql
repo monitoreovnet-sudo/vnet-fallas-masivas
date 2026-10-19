@@ -89,9 +89,22 @@ INSERT INTO oficinas (codigo, nombre, estado, localidad) VALUES
 ('VLR', 'VLR - VALERA', 'TRUJILLO', 'VALERA'),
 ('SGU', 'SGU - SAN AGUSTIN', 'DISTRITO CAPITAL', 'CARACAS');
 
--- Oficina comodín: usada cuando la categoría no es Soporte Técnico
--- (Internet/Pley), o cuando el soporte no aplica a una oficina/localidad real.
--- El "1." al inicio del nombre es intencional: así queda primera al ordenar
--- alfabéticamente en los combos.
+-- Oficinas reales que aparecen en la base de datos pero faltaban en la lista canónica.
 INSERT INTO oficinas (codigo, nombre, estado, localidad) VALUES
-('SOP', '1. Soporte técnico, pero no aplica', NULL, NULL);
+('ACA', 'ACA - ACARIGUA', 'PORTUGUESA', 'ACARIGUA'),
+('BCS', 'BCS - BARRANCAS', 'BARINAS', 'BARINAS');
+
+-- Oficinas ESPECIALES: no son oficinas físicas. Se eligen en el paso "Tipo de
+-- ubicación" (1. Soporte Técnico pero no aplica / ENLACE / TRAMO) o se asignan
+-- automáticamente según el Tipo (CENTRAL TELEFÓNICA, HERRAMIENTAS VNET,
+-- MERCADEO, PAGOS). Estado y Localidad = su propio nombre (igual que CDA, CDC,
+-- CORP, MASIVO en la lista canónica). El "1." inicial las ordena de primero.
+INSERT INTO oficinas (codigo, nombre, estado, localidad, tipo) VALUES
+('SOP', '1. Soporte Técnico pero no aplica', '1. Soporte Técnico pero no aplica', '1. Soporte Técnico pero no aplica', 'especial'),
+('ENLACE', 'ENLACE', 'ENLACE', 'ENLACE', 'especial'),
+('TRAMO', 'TRAMO', 'TRAMO', 'TRAMO', 'especial'),
+('CENTRAL', 'CENTRAL TELEFÓNICA', 'CENTRAL TELEFÓNICA', 'CENTRAL TELEFÓNICA', 'especial'),
+('HERRAM', 'HERRAMIENTAS VNET', 'HERRAMIENTAS VNET', 'HERRAMIENTAS VNET', 'especial'),
+('MERCAD', 'MERCADEO', 'MERCADEO', 'MERCADEO', 'especial'),
+('PAGOS', 'PAGOS', 'PAGOS', 'PAGOS', 'especial');
+

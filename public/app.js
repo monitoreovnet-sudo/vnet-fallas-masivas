@@ -85,11 +85,11 @@ async function loadLookups() {
   fillSelect(document.getElementById("c_unidad_resolutoria"), LOOKUPS.unidades_resolutorias, { valueKey: "nombre" });
   fillSelect(document.getElementById("c_categoria"), LOOKUPS.categorias, { valueKey: "id" });
   fillSelect(document.getElementById("c_comentario"), comentariosParaCategoria(""), { valueKey: "nombre" });
-  fillSelect(document.getElementById("add_oficina_select"), LOOKUPS.oficinas, { valueKey: "id" });
+  fillSelect(document.getElementById("add_oficina_select"), oficinasReales(), { valueKey: "id" });
 
   fillSelect(document.getElementById("mc_estado"), LOOKUPS.estados_ticket, { valueKey: "nombre" });
 
-  actualizarVisibilidadOficinas();
+  actualizarModoUbicacion();
   initFiltrosConsulta();
   initFiltrosPizarra();
   initFiltrosGenerico("rep");
@@ -101,7 +101,8 @@ document.getElementById("c_categoria").addEventListener("change", (e) => {
   const afectaciones = LOOKUPS.afectaciones.filter((a) => String(a.categoria_id) === String(catId));
   fillSelect(document.getElementById("c_afectacion"), afectaciones, { valueKey: "nombre" });
   fillSelect(document.getElementById("c_comentario"), comentariosParaCategoria(catId), { valueKey: "nombre" });
-  actualizarVisibilidadOficinas();
+  document.getElementById("c_ubicacion_tipo").value = "";   // cada Tipo empieza con su propia elección de ubicación
+  actualizarModoUbicacion();
 });
 
 // Comentarios que aplican a una categoría: los ligados a ella + los genéricos
@@ -110,30 +111,112 @@ function comentariosParaCategoria(catId) {
   return LOOKUPS.comentarios.filter((c) => !c.categoria_id || String(c.categoria_id) === String(catId));
 }
 
-// Nombre exacto de la categoría que habilita el flujo de Oficinas/OLT.
-const CATEGORIA_INTERNET_PLEY = "Soporte Técnico (Internet / Pley)";
-// Nombre exacto de la oficina comodín (sin localidad, para soporte que no aplica a una oficina real).
-const OFICINA_COMODIN_NOMBRE = "1. Soporte técnico, pero no aplica";
-
-function categoriaEsInternetPley() {
+// ---------------------------------------------------------------
+// CREAR TICKET: Tipo -> Tipo de ubicación -> (Oficinas | Enlace/Tramo | solo conteos)
+// ---------------------------------------------------------------
+function categoriaSeleccionada() {
   const catId = document.getElementById("c_categoria").value;
-  const cat = LOOKUPS.categorias.find((c) => String(c.id) === String(catId));
-  return !!cat && cat.nombre === CATEGORIA_INTERNET_PLEY;
+  return (LOOKUPS.categorias || []).find((c) => String(c.id) === String(catId)) || null;
+}
+// "SOPORTE TÉCNICO" (también reconoce el nombre viejo "Soporte Técnico (Internet / Pley)")
+function categoriaEsSoporte() {
+  const cat = categoriaSeleccionada();
+  return !!cat && normTxt(cat.nombre).startsWith("SOPORTE TEC");
+}
+function oficinasReales() {
+  return (LOOKUPS.oficinas || []).filter((o) => (o.tipo || "oficina") === "oficina");
+}
+function modoUbicacion() {
+  return document.getElementById("c_ubicacion_tipo").value;   // "", NO_APLICA, ENLACE, TRAMO, OFICINA
 }
 
-function oficinaComodinId() {
-  const of = (LOOKUPS.oficinas || []).find((o) => o.nombre === OFICINA_COMODIN_NOMBRE);
-  return of ? String(of.id) : null;
-}
+function actualizarModoUbicacion() {
+  const cat = categoriaSeleccionada();
+  const esSoporte = categoriaEsSoporte();
+  const modo = modoUbicacion();
+  const mostrar = (id, visible) => document.getElementById(id).classList.toggle("hidden", !visible);
+  const esEnlaceTramo = esSoporte && (modo === "ENLACE" || modo === "TRAMO");
 
-// Muestra/oculta "Oficinas afectadas" según la categoría, y muestra los
-// campos alternos (Nro Afectados / Nro Reportaron a nivel de ticket)
-// cuando la categoría NO es Soporte Técnico (Internet/Pley).
-function actualizarVisibilidadOficinas() {
-  const esInternet = categoriaEsInternetPley();
-  document.getElementById("oficinas_section").classList.toggle("hidden", !esInternet);
-  document.getElementById("otros_categoria_block").classList.toggle("hidden", esInternet);
+  mostrar("ubicacion_tipo_block", esSoporte);
+  mostrar("oficinas_section", esSoporte && modo === "OFICINA");
+  mostrar("enlace_section", esEnlaceTramo);
+  // Conteos a nivel de ticket: "no aplica" y los Tipos no técnicos (CENTRAL TELEFÓNICA, PAGOS, ...)
+  mostrar("otros_categoria_block", !!cat && (!esSoporte || modo === "NO_APLICA"));
+  if (esEnlaceTramo) {
+    document.getElementById("enlace_titulo").textContent = modo === "ENLACE" ? "Enlace afectado" : "Tramo afectado";
+    renderEnlace();
+  }
 }
+document.getElementById("c_ubicacion_tipo").addEventListener("change", actualizarModoUbicacion);
+
+// ---- ENLACE / TRAMO: varios OLT, cada uno con su Ubicación ----
+function nuevaFilaEnlace() {
+  return { olt: "", ubicacion: "", nro_afectados: 0, no_reportaron: 0 };
+}
+let enlaceState = [nuevaFilaEnlace()];
+
+function renderEnlace() {
+  const cont = document.getElementById("enlace_container");
+  const datalist = document.getElementById("enlace_olts_datalist");
+  datalist.innerHTML = "";
+  ["NO INDICADO", "N/A", ...(LOOKUPS.olts || []).map((o) => o.codigo)].forEach((v) => {
+    const opt = document.createElement("option");
+    opt.value = v;
+    datalist.appendChild(opt);
+  });
+
+  cont.innerHTML = "";
+  enlaceState.forEach((fila, idx) => {
+    const box = document.createElement("div");
+    box.className = "tree-box tree-olt";
+    box.innerHTML = `
+      <div class="tree-header">
+        <strong>OLT ${idx + 1}</strong>
+        <button type="button" class="btn-secondary btn-remove">Quitar</button>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>OLT <small>(escribe para buscar, o elige NO INDICADO / N/A)</small></label>
+          <input type="text" list="enlace_olts_datalist" class="en-olt" /></div>
+        <div class="field"><label>Ubicación</label><select class="en-ubicacion"></select></div>
+        <div class="field"><label>Nro de afectados</label><input type="number" min="0" class="en-afectados" /></div>
+        <div class="field"><label>Nro Personas que reportaron la falla</label><input type="number" min="0" class="en-reportaron" /></div>
+      </div>`;
+
+    const inOlt = box.querySelector(".en-olt");
+    const selUbi = box.querySelector(".en-ubicacion");
+    const inAfe = box.querySelector(".en-afectados");
+    const inRep = box.querySelector(".en-reportaron");
+
+    inOlt.value = fila.olt;
+    inAfe.value = fila.nro_afectados;
+    inRep.value = fila.no_reportaron;
+
+    const opt0 = document.createElement("option");
+    opt0.value = ""; opt0.textContent = "Seleccione:";
+    selUbi.appendChild(opt0);
+    oficinasReales().forEach((o) => {
+      const opt = document.createElement("option");
+      opt.value = o.nombre; opt.textContent = o.nombre;
+      selUbi.appendChild(opt);
+    });
+    selUbi.value = fila.ubicacion;
+
+    inOlt.addEventListener("input", () => { fila.olt = inOlt.value; });
+    selUbi.addEventListener("change", () => { fila.ubicacion = selUbi.value; });
+    inAfe.addEventListener("input", () => { fila.nro_afectados = Number(inAfe.value || 0); });
+    inRep.addEventListener("input", () => { fila.no_reportaron = Number(inRep.value || 0); });
+    box.querySelector(".btn-remove").addEventListener("click", () => {
+      enlaceState.splice(idx, 1);
+      if (enlaceState.length === 0) enlaceState.push(nuevaFilaEnlace());
+      renderEnlace();
+    });
+    cont.appendChild(box);
+  });
+}
+document.getElementById("btn_add_enlace_olt").addEventListener("click", () => {
+  enlaceState.push(nuevaFilaEnlace());
+  renderEnlace();
+});
 
 // ---------------------------------------------------------------
 // CREAR TICKET: árbol anidado Oficina -> OLT -> Tarjeta -> Puerto
@@ -159,24 +242,17 @@ document.getElementById("btn_add_oficina").addEventListener("click", async () =>
     return;
   }
   const nombre = select.selectedOptions[0].textContent;
-  const esComodin = String(oficinaId) === oficinaComodinId();
 
   let oltsCatalogo = [];
-  if (!esComodin) {
-    try {
-      const data = await apiSend("/lookups", "POST", { oficina_id: oficinaId });
-      oltsCatalogo = data.olts.map((o) => o.codigo);
-    } catch (e) { /* si falla el autocompletado no bloquea el flujo */ }
-  }
+  try {
+    const data = await apiSend("/lookups", "POST", { oficina_id: oficinaId });
+    oltsCatalogo = data.olts.map((o) => o.codigo);
+  } catch (e) { /* si falla el autocompletado no bloquea el flujo */ }
 
   oficinasState.push({
     oficina_id: oficinaId,
     nombre,
-    es_comodin: esComodin,
     olts_catalogo: oltsCatalogo,
-    // Solo se usan cuando es_comodin = true (sin OLT/Tarjeta/Puerto).
-    comodin_no_reportaron: 0,
-    comodin_nro_afectados: 0,
     olts: Array.from({ length: NUM_OLTS_POR_OFICINA }, () => ({
       texto: "", sector: "DESCONOCIDO", edificio: "DESCONOCIDO", no_reportaron: 0, tarjetas: {},
     })),
@@ -244,28 +320,6 @@ function renderOficinas() {
     box.querySelector(".btn-remove").addEventListener("click", () => removeOficina(oIdx));
 
     const oltsGrid = box.querySelector(".olts-grid");
-
-    // Oficina comodín: sin OLT/Tarjeta/Puerto, solo dos campos simples.
-    if (of.es_comodin) {
-      oltsGrid.innerHTML = `
-        <div class="field">
-          <label>Nro de afectados</label>
-          <input type="number" min="0" class="comodin-nro-afectados" value="${of.comodin_nro_afectados}" />
-        </div>
-        <div class="field">
-          <label>Nro Personas que reportaron la falla</label>
-          <input type="number" min="0" class="comodin-no-reportaron" value="${of.comodin_no_reportaron}" />
-        </div>
-      `;
-      oltsGrid.querySelector(".comodin-nro-afectados").addEventListener("input", (e) => {
-        of.comodin_nro_afectados = Number(e.target.value || 0);
-      });
-      oltsGrid.querySelector(".comodin-no-reportaron").addEventListener("input", (e) => {
-        of.comodin_no_reportaron = Number(e.target.value || 0);
-      });
-      cont.appendChild(box);
-      return;
-    }
 
     const datalistId = `olts-datalist-${oIdx}`;
     const datalist = document.createElement("datalist");
@@ -387,25 +441,12 @@ function renderOficinas() {
   });
 }
 
-// Convierte el árbol en la lista plana que espera la API: una fila por
-// cada combinación Oficina + OLT + Tarjeta + Puerto. La oficina comodín
-// genera una única fila sintética (sin OLT/Tarjeta/Puerto reales).
-function flattenOficinas() {
+// CREAR-PURE-START
+// Convierte el árbol Oficina > OLT > Tarjeta > Puerto en la lista plana que espera la API:
+// una fila por cada combinación Oficina + OLT + Tarjeta + Puerto.
+function flattenOficinasPuro(oficinasState) {
   const puertos = [];
   for (const of of oficinasState) {
-    if (of.es_comodin) {
-      puertos.push({
-        oficina_id: of.oficina_id,
-        olt: "N/A",
-        tarjeta: "N/A",
-        puerto: "N/A",
-        sector: "DESCONOCIDO",
-        edificio: "DESCONOCIDO",
-        no_clientes_reportaron: Number(of.comodin_no_reportaron || 0),
-        nro_clientes_afectados: Number(of.comodin_nro_afectados || 0),
-      });
-      continue;
-    }
     for (const olt of of.olts) {
       if (!olt.texto.trim()) continue;
       for (const tarjetaNombre of Object.keys(olt.tarjetas)) {
@@ -428,25 +469,87 @@ function flattenOficinas() {
   return puertos;
 }
 
-// Cuando la categoría NO es Soporte Técnico (Internet/Pley), no hay
-// oficinas ni OLT: se genera una única fila sintética con los campos
-// alternos a nivel de ticket.
-function construirPuertosSinOficina() {
-  return [{
-    oficina_id: null,
-    olt: "N/A",
-    tarjeta: "N/A",
-    puerto: "N/A",
-    sector: "DESCONOCIDO",
-    edificio: "DESCONOCIDO",
-    no_clientes_reportaron: Number(document.getElementById("c_otros_no_reportaron").value || 0),
-    nro_clientes_afectados: Number(document.getElementById("c_otros_nro_afectados").value || 0),
+// Reglas de ubicación al crear un ticket:
+//  - Tipo NO técnico (CENTRAL TELEFÓNICA, HERRAMIENTAS VNET, MERCADEO, PAGOS): OFICINA = ese Tipo, todo lo demás N/A.
+//  - SOPORTE TÉCNICO + "1. Soporte Técnico pero no aplica": OFICINA = esa opción, todo lo demás N/A.
+//  - SOPORTE TÉCNICO + ENLACE / TRAMO: OFICINA = ENLACE|TRAMO; una fila por OLT (NO INDICADO / N/A también valen),
+//    la UBICACIÓN (oficina donde está el OLT) va en "sector"; Tarjeta, Puerto y Edificio = N/A.
+//  - SOPORTE TÉCNICO + OFICINA: árbol de siempre (sin cambios).
+function construirPuertosSegunModo(ctx) {
+  const { categoria, esSoporte, modo, oficinas, oficinasState, enlaceState, conteos } = ctx;
+  const especialDe = (nombre) => {
+    const n = normTxt(nombre);
+    return (oficinas || []).find((o) => o.tipo === "especial" && normTxt(o.nombre) === n) || null;
+  };
+  const faltaEspecial = (nombre) =>
+    new Error(`No existe la oficina especial "${nombre}" en el catálogo. Aplica la migración 015 y recarga la página.`);
+  const unico = (oficina) => [{
+    oficina_id: oficina.id,
+    olt: "N/A", tarjeta: "N/A", puerto: "N/A", sector: "N/A", edificio: "N/A",
+    no_clientes_reportaron: Number(conteos.no_reportaron || 0),
+    nro_clientes_afectados: Number(conteos.nro_afectados || 0),
   }];
+
+  if (!categoria) throw new Error("Seleccione el Tipo (categoría de la afectación).");
+
+  if (!esSoporte) {
+    const of = especialDe(categoria.nombre);
+    if (!of) throw faltaEspecial(categoria.nombre);
+    return unico(of);
+  }
+
+  if (!modo) throw new Error("Seleccione el Tipo de ubicación.");
+
+  if (modo === "NO_APLICA") {
+    const of = especialDe("1. Soporte Técnico pero no aplica");
+    if (!of) throw faltaEspecial("1. Soporte Técnico pero no aplica");
+    return unico(of);
+  }
+
+  if (modo === "ENLACE" || modo === "TRAMO") {
+    const of = especialDe(modo);
+    if (!of) throw faltaEspecial(modo);
+    const filas = [];
+    enlaceState.forEach((f, idx) => {
+      const olt = String(f.olt || "").trim();
+      if (!olt && !f.ubicacion) return;                 // fila vacía: se ignora
+      if (!olt || !f.ubicacion) throw new Error(`Completa el OLT y la Ubicación en la fila ${idx + 1} del ${modo}.`);
+      filas.push({
+        oficina_id: of.id,
+        olt, tarjeta: "N/A", puerto: "N/A", sector: f.ubicacion, edificio: "N/A",
+        no_clientes_reportaron: Number(f.no_reportaron || 0),
+        nro_clientes_afectados: Number(f.nro_afectados || 0),
+      });
+    });
+    if (filas.length === 0) throw new Error(`Agrega al menos un OLT con su Ubicación para el ${modo}.`);
+    return filas;
+  }
+
+  if (modo === "OFICINA") {
+    const filas = flattenOficinasPuro(oficinasState);
+    if (filas.length === 0) throw new Error("Agrega al menos una oficina, con al menos un OLT, tarjeta y puerto.");
+    return filas;
+  }
+
+  throw new Error("Tipo de ubicación no válido.");
 }
+// CREAR-PURE-END
 
 document.getElementById("btn_crear_ticket").addEventListener("click", async () => {
   const msg = document.getElementById("crear_msg");
   try {
+    const puertos = construirPuertosSegunModo({
+      categoria: categoriaSeleccionada(),
+      esSoporte: categoriaEsSoporte(),
+      modo: modoUbicacion(),
+      oficinas: LOOKUPS.oficinas,
+      oficinasState,
+      enlaceState,
+      conteos: {
+        nro_afectados: document.getElementById("c_otros_nro_afectados").value,
+        no_reportaron: document.getElementById("c_otros_no_reportaron").value,
+      },
+    });
     const payload = {
       ticket_cmr: document.getElementById("c_ticket_cmr").value.trim(),
       tickets_vinculados: document.getElementById("c_tickets_vinculados").value.trim(),
@@ -458,15 +561,15 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
       afectacion: document.getElementById("c_afectacion").value,
       comentario: document.getElementById("c_comentario").value,
       descripcion: document.getElementById("c_descripcion").value,
-      puertos: categoriaEsInternetPley() ? flattenOficinas() : construirPuertosSinOficina(),
+      puertos,
     };
-    if (payload.puertos.length === 0) {
-      throw new Error("Agrega al menos una oficina, con al menos un OLT, tarjeta y puerto.");
-    }
     const res = await apiSend("/tickets", "POST", payload);
     showMsg(msg, `Ticket ${res.ticket_cmr} creado correctamente (#${res.id}) con ${payload.puertos.length} puerto(s).`, true);
     oficinasState = [];
+    enlaceState = [nuevaFilaEnlace()];
     renderOficinas();
+    document.getElementById("c_ubicacion_tipo").value = "";
+    actualizarModoUbicacion();
     document.getElementById("c_ticket_cmr").value = "";
     document.getElementById("c_otros_no_reportaron").value = "0";
     document.getElementById("c_otros_nro_afectados").value = "0";
@@ -1837,54 +1940,220 @@ document.getElementById("btn_logout").addEventListener("click", async () => {
 });
 
 // ---------------------------------------------------------------
-// REPOSITORIO: importar tickets históricos desde CSV/XLSX
+// REPOSITORIO: importar tickets desde CSV/XLSX
 // ---------------------------------------------------------------
-const MAP_TIPO_REPO = {
-  "SOPORTE TÉCNICO": "Soporte Técnico (Internet / Pley)",
-  "SOPORTE TECNICO": "Soporte Técnico (Internet / Pley)",
-  "Soporte Técnico (Internet / Pley)": "Soporte Técnico (Internet / Pley)",
-  "CENTRAL TELEFÓNICA": "Central Telefónica",
-  "PAGOS": "Pagos",
-  "HERRAMIENTAS VNET": "Herramientas VNET",
-};
-function normTipoRepo(v) {
-  if (!v) return null;
-  const s = String(v).trim();
-  return MAP_TIPO_REPO[s] || s;
+// REPO-PURE-START
+// Texto en mayúsculas, sin acentos ni signos (salvo el guion), espacios colapsados.
+function normTxt(s) {
+  return String(s === null || s === undefined ? "" : s)
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
-function normUnidadRepo(v) {
-  return v ? String(v).trim().toUpperCase() : null;
+function vacioRepo(v) {
+  return v === null || v === undefined || (typeof v === "string" && v.trim() === "");
 }
+function textoORepo(v, def = "DESCONOCIDO") {
+  const s = vacioRepo(v) ? "" : String(v).trim();
+  return s || def;
+}
+// Números de ticket: solo dígitos ("28014402.0" -> "28014402")
 function limpiarNumeroRepo(v) {
-  if (v === null || v === undefined || v === "") return null;
+  if (vacioRepo(v)) return null;
   let s = String(v).trim();
   if (s.endsWith(".0")) s = s.slice(0, -2);
   s = s.replace(/[^0-9]/g, "");
   return s || null;
 }
+// Conteos de clientes: "DESCONOCIDO", vacío o texto raro -> 0
+function numeroRepo(v) {
+  if (vacioRepo(v)) return 0;
+  if (typeof v === "number") return isFinite(v) ? Math.trunc(v) : 0;
+  const n = parseFloat(String(v).replace(/[^\d.-]/g, ""));
+  return isFinite(n) ? Math.trunc(n) : 0;
+}
+
+// Fechas -> "YYYY-MM-DDTHH:MM:SS" (hora tal cual, sin zona horaria). Acepta:
+//  - serial de Excel (número)
+//  - texto "d/m/yyyy h:mm:ss a. m./p. m." (formato de tu Excel; día primero)
+//  - texto ISO "yyyy-mm-dd[ T]hh:mm[:ss]"
+//  - objeto Date
 function fechaRepoAIso(v) {
-  if (v === null || v === undefined || v === "") return null;
-  let d = v instanceof Date ? v : new Date(v);
-  if (isNaN(d.getTime())) return null;
+  if (vacioRepo(v)) return null;
   const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const armar = (y, mo, d, h = 0, mi = 0, se = 0) => {
+    if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || se > 59) return null;
+    return `${y}-${pad(mo)}-${pad(d)}T${pad(h)}:${pad(mi)}:${pad(se)}`;
+  };
+  if (v instanceof Date) {
+    if (isNaN(v.getTime())) return null;
+    return armar(v.getFullYear(), v.getMonth() + 1, v.getDate(), v.getHours(), v.getMinutes(), v.getSeconds());
+  }
+  if (typeof v === "number") {                       // serial de Excel (días desde 1899-12-30)
+    if (!isFinite(v) || v < 1) return null;
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.round(v * 86400) * 1000);
+    return armar(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds());
+  }
+  const t = String(v).replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (m) return armar(+m[1], +m[2], +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+  m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?: (\d{1,2}):(\d{2})(?::(\d{2}))?\s*(?:([ap])\.?\s*m\.?)?)?$/i);
+  if (m) {
+    let d = +m[1], mo = +m[2];
+    if (mo > 12 && d <= 12) { const x = d; d = mo; mo = x; }   // venía mes/día
+    let h = +(m[4] || 0);
+    const ap = (m[7] || "").toLowerCase();
+    if (ap === "p" && h < 12) h += 12;
+    if (ap === "a" && h === 12) h = 0;
+    return armar(+m[3], mo, d, h, +(m[5] || 0), +(m[6] || 0));
+  }
+  return null;
 }
-function codigoOficinaRepo(oficinaTexto) {
-  if (!oficinaTexto) return null;
-  const m = String(oficinaTexto).trim().match(/^([A-Z0-9]{2,6})\s*-\s*/);
-  if (!m) return null;
-  const cod = m[1];
-  return (LOOKUPS.oficinas || []).some((o) => o.codigo === cod) ? cod : null;
+
+// Convierte las filas leídas del archivo en tickets + puertos listos para enviar.
+// ctx = { oficinas: LOOKUPS.oficinas, categorias: LOOKUPS.categorias }
+function construirRegistrosRepo(filasCrudas, ctx) {
+  const oficinas = ctx.oficinas || [];
+  const idxNombre = new Map();
+  const idxCodigo = new Map();
+  oficinas.forEach((o) => {
+    idxNombre.set(normTxt(o.nombre), o);
+    if (!idxCodigo.has(o.codigo)) idxCodigo.set(o.codigo, o);
+  });
+  const resolverOficina = (txt) => {
+    if (vacioRepo(txt)) return null;
+    const porNombre = idxNombre.get(normTxt(txt));
+    if (porNombre) return porNombre;
+    const m = String(txt).trim().match(/^([A-Za-z0-9]{2,6})\s*-\s*/);
+    return m ? idxCodigo.get(m[1].toUpperCase()) || null : null;
+  };
+  // "TBY-TABAY" -> nombre del catálogo "TBY - TABAY" (solo oficinas reales)
+  const resolverUbicacion = (txt) => {
+    if (vacioRepo(txt)) return "N/A";
+    const of = resolverOficina(txt);
+    return of && (of.tipo || "oficina") === "oficina" ? of.nombre : String(txt).trim();
+  };
+  const categorias = ctx.categorias || [];
+  const normalizarTipo = (raw) => {
+    if (vacioRepo(raw)) return null;
+    const n = normTxt(raw);
+    const exacta = categorias.find((c) => normTxt(c.nombre) === n);
+    if (exacta) return exacta.nombre;
+    if (n.startsWith("SOPORTE TEC")) {
+      const soporte = categorias.find((c) => normTxt(c.nombre).startsWith("SOPORTE TEC"));
+      if (soporte) return soporte.nombre;
+    }
+    return String(raw).trim().toUpperCase();
+  };
+
+  const ticketsMap = new Map();
+  const puertos = [];
+  const vistas = new Set();
+  const stats = { invalidas: 0, sinOficina: 0, fechasIlegibles: 0, duplicadas: 0 };
+
+  filasCrudas.forEach((filaCruda) => {
+    const f = {};
+    for (const [k, v] of Object.entries(filaCruda)) f[normTxt(k)] = v;
+    const col = (...nombres) => {
+      for (const n of nombres) {
+        const v = f[normTxt(n)];
+        if (!vacioRepo(v)) return v;
+      }
+      return null;
+    };
+
+    const ticketCmr = limpiarNumeroRepo(col("Title"));
+    if (!ticketCmr) { stats.invalidas += 1; return; }
+
+    // ---- datos del ticket (el primer valor no vacío de sus filas) ----
+    const rawFechas = {
+      fecha_apertura_cda: col("FECHA DE CREACION DEL CDA"),
+      fecha_apertura_cmr: col("FECHA DE CREACION DEL CMR", "FECHA DE CREACION DEL CRM"),
+      fecha_solucion_cmr: col("FECHA DE SOLUCION DEL CMR", "FECHA DE SOLUCION DEL CRM"),
+      fecha_solucion_cda: col("FECHA DE SOLUCION DEL CDA"),
+    };
+    const textoONull = (v) => (vacioRepo(v) ? null : String(v).trim());
+    const candidato = {
+      ticket_cmr: ticketCmr,
+      tickets_vinculados: limpiarNumeroRepo(col("Tickets Vinculados")),
+      estado_ticket: vacioRepo(col("ESTADO DEL TICKET")) ? null : String(col("ESTADO DEL TICKET")).trim().toUpperCase(),
+      unidad_resolutoria: vacioRepo(col("UNIDAD RESOLUTORIA")) ? null : String(col("UNIDAD RESOLUTORIA")).trim().toUpperCase(),
+      categoria_afectacion: normalizarTipo(col("TIPO")),
+      afectacion: textoONull(col("AFECTACION")),
+      comentario: textoONull(col("COMENTARIO")),
+      descripcion: textoONull(col("DESCRIPCION")),
+      avance_cmr: textoONull(col("AVANCE DEL CMR")),
+    };
+    for (const k of Object.keys(rawFechas)) candidato[k] = fechaRepoAIso(rawFechas[k]);
+
+    let ticket = ticketsMap.get(ticketCmr);
+    if (!ticket) {
+      ticket = candidato;
+      ticketsMap.set(ticketCmr, ticket);
+      for (const k of Object.keys(rawFechas)) {
+        if (!vacioRepo(rawFechas[k]) && !candidato[k]) stats.fechasIlegibles += 1;
+      }
+    } else {
+      for (const k of Object.keys(candidato)) if (ticket[k] === null || ticket[k] === undefined) ticket[k] = candidato[k];
+    }
+
+    // ---- fila de detalle (OFICINA / OLT / TARJETA / PUERTO ...) ----
+    const oficinaTxt = col("OFICINA");
+    const of = resolverOficina(oficinaTxt);
+    if (!vacioRepo(oficinaTxt) && !of) stats.sinOficina += 1;
+
+    let olt, tarjeta, puerto, sector, edificio;
+    const especial = of && of.tipo === "especial" ? normTxt(of.nombre) : null;
+    if (especial === "ENLACE" || especial === "TRAMO") {
+      olt = textoORepo(col("OLT"), "N/A");
+      tarjeta = "N/A"; puerto = "N/A"; edificio = "N/A";
+      sector = resolverUbicacion(col("UBICACION"));
+    } else if (especial) {
+      olt = tarjeta = puerto = sector = edificio = "N/A";
+    } else {
+      olt = textoORepo(col("OLT"));
+      tarjeta = textoORepo(col("Tarjeta"));
+      puerto = textoORepo(col("PUERTO"));
+      sector = textoORepo(col("UBICACION"));
+      edificio = textoORepo(col("NOMBRE DEL EDIFICIO (SI APLICA)"));
+    }
+
+    const registro = {
+      ticket_cmr: ticketCmr,
+      oficina_id: of ? of.id : null,
+      olt, tarjeta, puerto, sector, edificio,
+      no_clientes_reportaron: numeroRepo(col("N° CLIENTES QUE REPORTARON FALLA")),
+      nro_clientes_afectados: numeroRepo(col("CANTIDAD DE CLIENTES AFECTADOS")),
+      estado_puerto: textoORepo(col("ESTADO DEL TICKET"), "CERRADO").toUpperCase(),
+    };
+    const clave = [ticketCmr, registro.oficina_id, olt, tarjeta, puerto, sector, edificio,
+      registro.no_clientes_reportaron, registro.nro_clientes_afectados].join("|");
+    if (vistas.has(clave)) { stats.duplicadas += 1; return; }
+    vistas.add(clave);
+    puertos.push(registro);
+  });
+
+  const tickets = Array.from(ticketsMap.values()).map((t) => ({ ...t, estado_ticket: t.estado_ticket || "CERRADO" }));
+  return { tickets, puertos, stats };
 }
-function normalizarFilaRepo(filaCruda) {
-  const limpia = {};
-  for (const [k, v] of Object.entries(filaCruda)) limpia[String(k).trim()] = v;
-  return limpia;
+
+// Reparte tickets (con sus puertos) en lotes para no mandar todo en una sola petición.
+function dividirEnLotesRepo(tickets, puertos, tam = 100) {
+  const porTicket = new Map();
+  puertos.forEach((p) => {
+    if (!porTicket.has(p.ticket_cmr)) porTicket.set(p.ticket_cmr, []);
+    porTicket.get(p.ticket_cmr).push(p);
+  });
+  const lotes = [];
+  for (let i = 0; i < tickets.length; i += tam) {
+    const t = tickets.slice(i, i + tam);
+    lotes.push({ tickets: t, puertos: t.flatMap((x) => porTicket.get(x.ticket_cmr) || []) });
+  }
+  return lotes;
 }
-function textoORepo(v, def = "DESCONOCIDO") {
-  const s = v === null || v === undefined ? "" : String(v).trim();
-  return s || def;
-}
+// REPO-PURE-END
 
 async function leerArchivoRepositorio(file) {
   if (file.name.toLowerCase().endsWith(".csv")) {
@@ -1892,7 +2161,7 @@ async function leerArchivoRepositorio(file) {
     return XLSX.read(texto, { type: "string" });
   }
   const buffer = await file.arrayBuffer();
-  return XLSX.read(buffer, { type: "array", cellDates: true });
+  return XLSX.read(buffer, { type: "array" });   // sin cellDates: las fechas llegan como serial y se convierten sin zona horaria
 }
 
 let repoParsed = { tickets: [], puertos: [] };
@@ -1908,58 +2177,18 @@ async function analizarArchivoRepositorio() {
     const wb = await leerArchivoRepositorio(file);
     const hoja = wb.Sheets[wb.SheetNames[0]];
     const filasCrudas = XLSX.utils.sheet_to_json(hoja, { defval: null });
-
-    const ticketsMap = new Map();
-    const puertos = [];
-    let invalidas = 0;
-    let sinOficina = 0;
-
-    filasCrudas.forEach((filaCruda) => {
-      const f = normalizarFilaRepo(filaCruda);
-      const ticketCmr = limpiarNumeroRepo(f["Title"]);
-      if (!ticketCmr) { invalidas += 1; return; }
-
-      if (!ticketsMap.has(ticketCmr)) {
-        ticketsMap.set(ticketCmr, {
-          ticket_cmr: ticketCmr,
-          tickets_vinculados: limpiarNumeroRepo(f["Tickets Vinculados"]),
-          fecha_apertura_cda: fechaRepoAIso(f["FECHA DE CREACION DEL CDA"]),
-          fecha_apertura_cmr: fechaRepoAIso(f["FECHA DE CREACION DEL CMR"]),
-          estado_ticket: textoORepo(f["ESTADO DEL TICKET"], "CERRADO"),
-          unidad_resolutoria: normUnidadRepo(f["UNIDAD RESOLUTORIA"]),
-          categoria_afectacion: normTipoRepo(f["TIPO"]),
-          afectacion: f["AFECTACIÓN"] || null,
-          comentario: f["COMENTARIO"] || null,
-          descripcion: f["DESCRIPCION"] || null,
-          avance_cmr: f["AVANCE DEL CMR"] || null,
-          fecha_solucion_cmr: fechaRepoAIso(f["FECHA DE SOLUCION DEL CMR"]),
-          fecha_solucion_cda: fechaRepoAIso(f["FECHA DE SOLUCION DEL CDA"]),
-        });
-      }
-
-      const codOficina = codigoOficinaRepo(f["OFICINA"]);
-      if (f["OFICINA"] && !codOficina) sinOficina += 1;
-
-      puertos.push({
-        ticket_cmr: ticketCmr,
-        oficina_codigo: codOficina,
-        olt: textoORepo(f["OLT"]),
-        tarjeta: textoORepo(f["Tarjeta"]),
-        puerto: textoORepo(f["PUERTO"]),
-        sector: textoORepo(f["UBICACIÓN"]),
-        edificio: textoORepo(f["NOMBRE DEL EDIFICIO (SI APLICA)"]),
-        no_clientes_reportaron: Number(f["N° CLIENTES QUE REPORTARON FALLA"] || 0),
-        nro_clientes_afectados: Number(f["CANTIDAD DE CLIENTES AFECTADOS"] || 0),
-        estado_puerto: textoORepo(f["ESTADO DEL TICKET"], "CERRADO"),
-      });
+    const { tickets, puertos, stats } = construirRegistrosRepo(filasCrudas, {
+      oficinas: LOOKUPS.oficinas,
+      categorias: LOOKUPS.categorias,
     });
+    repoParsed = { tickets, puertos };
 
-    repoParsed = { tickets: Array.from(ticketsMap.values()), puertos };
-
-    document.getElementById("repo_prev_tickets").textContent = repoParsed.tickets.length;
-    document.getElementById("repo_prev_puertos").textContent = repoParsed.puertos.length;
-    document.getElementById("repo_prev_sin_oficina").textContent = sinOficina;
-    document.getElementById("repo_prev_invalidas").textContent = invalidas;
+    document.getElementById("repo_prev_tickets").textContent = tickets.length;
+    document.getElementById("repo_prev_puertos").textContent = puertos.length;
+    document.getElementById("repo_prev_sin_oficina").textContent = stats.sinOficina;
+    document.getElementById("repo_prev_invalidas").textContent = stats.invalidas;
+    document.getElementById("repo_prev_duplicadas").textContent = stats.duplicadas;
+    document.getElementById("repo_prev_fechas").textContent = stats.fechasIlegibles;
     document.getElementById("repo_preview").classList.remove("hidden");
     showMsg(msg, "Archivo analizado correctamente. Revisa el resumen y confirma para importar.", true);
   } catch (err) {
@@ -1973,30 +2202,40 @@ document.getElementById("repo_btn_importar").addEventListener("click", async () 
   const cont = document.getElementById("repo_resultado");
   const btn = document.getElementById("repo_btn_importar");
   btn.disabled = true;
-  btn.textContent = "Importando...";
   cont.innerHTML = "";
-  try {
-    const data = await apiSend("/admin/importar", "POST", repoParsed);
-    cont.innerHTML = `
-      <div class="ticket-card">
-        <h3>Importación completada</h3>
-        <div class="kv">
-          <div><span>Tickets recibidos:</span> ${data.tickets_recibidos}</div>
-          <div><span>Tickets nuevos insertados:</span> ${data.tickets_insertados}</div>
-          <div><span>Tickets que ya existían:</span> ${data.tickets_ya_existian}</div>
-          <div><span>Puertos recibidos:</span> ${data.puertos_recibidos}</div>
-          <div><span>Puertos nuevos insertados:</span> ${data.puertos_insertados}</div>
-          <div><span>Puertos que ya existían:</span> ${data.puertos_ya_existian}</div>
-          <div><span>Puertos sin ticket válido:</span> ${data.puertos_sin_ticket}</div>
-          <div><span>Puertos con oficina no reconocida:</span> ${data.puertos_sin_oficina_reconocida}</div>
-        </div>
-      </div>`;
-  } catch (err) {
-    cont.innerHTML = `<div class="msg error">${err.message}</div>`;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "2. Confirmar e Importar";
+
+  const total = { tickets_recibidos: 0, tickets_insertados: 0, tickets_ya_existian: 0, puertos_recibidos: 0,
+    puertos_insertados: 0, puertos_ya_existian: 0, puertos_sin_ticket: 0, puertos_sin_oficina_reconocida: 0 };
+  const lotes = dividirEnLotesRepo(repoParsed.tickets, repoParsed.puertos, 100);
+  let error = null;
+  for (let i = 0; i < lotes.length; i++) {
+    btn.textContent = `Importando ${i + 1} de ${lotes.length}...`;
+    try {
+      const r = await apiSend("/admin/importar", "POST", lotes[i]);
+      for (const k of Object.keys(total)) total[k] += r[k] || 0;
+    } catch (err) {
+      error = `Se detuvo en el lote ${i + 1} de ${lotes.length}: ${err.message}. Lo ya importado quedó guardado; puedes volver a subir el archivo y continuará sin duplicar.`;
+      break;
+    }
   }
+
+  cont.innerHTML = `
+    ${error ? `<div class="msg error">${error}</div>` : ""}
+    <div class="ticket-card">
+      <h3>${error ? "Importación incompleta" : "Importación completada"}</h3>
+      <div class="kv">
+        <div><span>Tickets recibidos:</span> ${total.tickets_recibidos}</div>
+        <div><span>Tickets nuevos insertados:</span> ${total.tickets_insertados}</div>
+        <div><span>Tickets que ya existían (no se tocan):</span> ${total.tickets_ya_existian}</div>
+        <div><span>Filas de detalle recibidas:</span> ${total.puertos_recibidos}</div>
+        <div><span>Filas de detalle nuevas insertadas:</span> ${total.puertos_insertados}</div>
+        <div><span>Filas omitidas (el ticket ya tenía detalle):</span> ${total.puertos_ya_existian}</div>
+        <div><span>Filas sin ticket válido:</span> ${total.puertos_sin_ticket}</div>
+        <div><span>Filas con oficina no reconocida:</span> ${total.puertos_sin_oficina_reconocida}</div>
+      </div>
+    </div>`;
+  btn.disabled = false;
+  btn.textContent = "2. Confirmar e Importar";
 });
 
 iniciarSesionApp();

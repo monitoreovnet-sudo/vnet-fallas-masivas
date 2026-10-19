@@ -5,7 +5,8 @@ export async function onRequestGet({ env }) {
 
   const [oficinas, categorias, afectaciones, comentarios, unidades, estadosTicket, estadosPuerto, olts] =
     await Promise.all([
-      db.prepare("SELECT id, codigo, nombre, estado, localidad FROM oficinas WHERE activo = 1 ORDER BY nombre").all(),
+      // SELECT * (incluye "tipo" si la migración 015 ya se aplicó; funciona igual antes de aplicarla)
+      db.prepare("SELECT * FROM oficinas WHERE activo = 1 ORDER BY nombre").all(),
       db.prepare("SELECT id, nombre FROM catalogo_categorias ORDER BY orden, nombre").all(),
       db.prepare("SELECT id, categoria_id, nombre FROM catalogo_afectaciones ORDER BY orden, nombre").all(),
       db.prepare("SELECT id, categoria_id, nombre FROM catalogo_comentarios ORDER BY orden, nombre").all(),

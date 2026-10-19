@@ -102,7 +102,28 @@
     </div>
 
     <hr />
-    <div id="oficinas_section">
+    <div id="ubicacion_tipo_block" class="hidden">
+      <div class="field" style="max-width:420px;">
+        <label>Tipo de ubicación</label>
+        <select id="c_ubicacion_tipo">
+          <option value="">Seleccione:</option>
+          <option value="NO_APLICA">1. Soporte Técnico pero no aplica</option>
+          <option value="ENLACE">ENLACE</option>
+          <option value="TRAMO">TRAMO</option>
+          <option value="OFICINA">OFICINA</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="enlace_section" class="hidden">
+      <h3 id="enlace_titulo">Enlace afectado</h3>
+      <p class="hint">Agrega cada OLT afectado y la Ubicación (oficina) donde está. Tarjeta, Puerto y Edificio se guardan como N/A.</p>
+      <datalist id="enlace_olts_datalist"></datalist>
+      <div id="enlace_container"></div>
+      <button id="btn_add_enlace_olt" class="btn-secondary" type="button">+ Agregar OLT</button>
+    </div>
+
+    <div id="oficinas_section" class="hidden">
       <h3>Oficinas afectadas</h3>
       <p class="hint">Agrega cada oficina donde ocurrió la falla. Dentro de cada oficina podrás registrar sus OLTs, y dentro de cada OLT sus Tarjetas y Puertos.</p>
 
@@ -502,11 +523,12 @@
   <section id="tab-repositorio" class="tab-panel">
     <h2>Repositorio</h2>
     <p class="hint">
-      Sube un archivo <strong>.csv</strong> o <strong>.xlsx</strong> con las mismas columnas de la base de datos original
-      (Title, Tickets Vinculados, AFECTACIÓN, UNIDAD RESOLUTORIA, TIPO, ESTADO DEL TICKET, OLT, Tarjeta, PUERTO, OFICINA,
-      NOMBRE DEL EDIFICIO (SI APLICA), UBICACIÓN, FECHA DE CREACION DEL CRM/CDA, FECHA DE SOLUCION DEL CRM/CDA,
-      CANTIDAD DE CLIENTES AFECTADOS, N° CLIENTES QUE REPORTARON FALLA, COMENTARIO, AVANCE DEL CMR, DESCRIPCION).
-      Es seguro subir el mismo archivo más de una vez: lo que ya esté importado no se duplica.
+      Sube un archivo <strong>.csv</strong> o <strong>.xlsx</strong> con las columnas de la base de datos:
+      Title, Tickets Vinculados, AFECTACIÓN, UNIDAD RESOLUTORIA, TIPO, ESTADO DEL TICKET, OLT, Tarjeta, PUERTO, OFICINA,
+      NOMBRE DEL EDIFICIO (SI APLICA), UBICACIÓN, FECHA DE CREACION DEL CMR, FECHA DE CREACION DEL CDA,
+      FECHA DE SOLUCION DEL CMR, FECHA DE SOLUCION DEL CDA, CANTIDAD DE CLIENTES AFECTADOS,
+      N° CLIENTES QUE REPORTARON FALLA, COMENTARIO, AVANCE DEL CMR, DESCRIPCION.
+      Los tickets que ya existen no se modifican y nada se duplica, así que es seguro subir el mismo archivo más de una vez.
     </p>
 
     <div class="field">
@@ -522,6 +544,8 @@
         <div><span>Filas de detalle (OLT/Tarjeta/Puerto):</span> <strong id="repo_prev_puertos">0</strong></div>
         <div><span>Filas sin oficina reconocida:</span> <strong id="repo_prev_sin_oficina">0</strong></div>
         <div><span>Filas con Ticket inválido (se omiten):</span> <strong id="repo_prev_invalidas">0</strong></div>
+        <div><span>Filas repetidas dentro del archivo (se omiten):</span> <strong id="repo_prev_duplicadas">0</strong></div>
+        <div><span>Fechas que no se pudieron leer:</span> <strong id="repo_prev_fechas">0</strong></div>
       </div>
       <button id="repo_btn_importar" class="btn-primary" type="button">2. Confirmar e Importar</button>
     </div>

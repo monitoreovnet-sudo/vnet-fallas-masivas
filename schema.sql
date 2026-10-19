@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS oficinas (
   nombre TEXT NOT NULL UNIQUE,       -- ej. "BNO - BOCONO"
   estado TEXT,                       -- provincia/estado
   localidad TEXT,
-  activo INTEGER NOT NULL DEFAULT 1
+  activo INTEGER NOT NULL DEFAULT 1,
+  tipo TEXT NOT NULL DEFAULT 'oficina'   -- 'oficina' (real) | 'especial' (ENLACE, TRAMO, No aplica, tipos no técnicos)
 );
 
 CREATE TABLE IF NOT EXISTS olts (

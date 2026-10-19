@@ -4,35 +4,35 @@
 -- ============================================================
 
 INSERT INTO catalogo_categorias (nombre, orden) VALUES
-('Soporte Técnico (Internet / Pley)', 1),
-('Central Telefónica', 2),
-('Pagos', 3),
-('Herramientas VNET', 4),
-('Control de Cambios', 5);
+('SOPORTE TÉCNICO', 1),
+('CENTRAL TELEFÓNICA', 2),
+('HERRAMIENTAS VNET', 3),
+('MERCADEO', 4),
+('PAGOS', 5);
 
 INSERT INTO catalogo_afectaciones (categoria_id, nombre, orden) VALUES
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Soporte Técnico (Internet / Pley)'), 'SIN CONEXIÓN', 1),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Soporte Técnico (Internet / Pley)'), 'INTERMITENCIAS', 2),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Soporte Técnico (Internet / Pley)'), 'DEGRADACIÓN', 3),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Soporte Técnico (Internet / Pley)'), 'SIN ACCESO A PÁGINAS', 4),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Soporte Técnico (Internet / Pley)'), 'FALLA DE NAVEGACIÓN', 5),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Soporte Técnico (Internet / Pley)'), 'CAPACIDAD', 6),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Soporte Técnico (Internet / Pley)'), 'PÉRDIDA DE GESTIÓN OLT', 7),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Soporte Técnico (Internet / Pley)'), 'PLEY', 8),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Soporte Técnico (Internet / Pley)'), 'VPN', 9),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Soporte Técnico (Internet / Pley)'), 'VENTANA DE MANTENIMIENTO', 10),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Central Telefónica'), 'FALLA EN LLAMADAS', 1),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Central Telefónica'), 'CENTRAL TELEFÓNICA', 2),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Pagos'), 'PORTAL DE PAGOS', 1),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Pagos'), 'CAJA POS', 2),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Pagos'), 'FACTURACIÓN', 3),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Pagos'), 'MÉTODO DE PAGO NO DISPONIBLE', 4),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Herramientas VNET'), 'ARADIAL', 1),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Herramientas VNET'), 'GLPI', 2),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Herramientas VNET'), 'TOOLBOX', 3),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Herramientas VNET'), 'NICE', 4),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Herramientas VNET'), 'CXONE', 5),
-((SELECT id FROM catalogo_categorias WHERE nombre = 'Control de Cambios'), 'VENTANA DE MANTENIMIENTO', 1);
+((SELECT id FROM catalogo_categorias WHERE nombre = 'SOPORTE TÉCNICO'), 'SIN CONEXIÓN', 1),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'SOPORTE TÉCNICO'), 'INTERMITENCIAS', 2),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'SOPORTE TÉCNICO'), 'DEGRADACIÓN', 3),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'SOPORTE TÉCNICO'), 'SIN ACCESO A PÁGINAS', 4),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'SOPORTE TÉCNICO'), 'FALLA DE NAVEGACIÓN', 5),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'SOPORTE TÉCNICO'), 'CAPACIDAD', 6),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'SOPORTE TÉCNICO'), 'PÉRDIDA DE GESTIÓN OLT', 7),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'SOPORTE TÉCNICO'), 'PLEY', 8),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'SOPORTE TÉCNICO'), 'VPN', 9),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'SOPORTE TÉCNICO'), 'VENTANA DE MANTENIMIENTO', 10),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'CENTRAL TELEFÓNICA'), 'FALLA EN LLAMADAS', 1),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'CENTRAL TELEFÓNICA'), 'CENTRAL TELEFÓNICA', 2),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'PAGOS'), 'PORTAL DE PAGOS', 1),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'PAGOS'), 'CAJA POS', 2),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'PAGOS'), 'FACTURACIÓN', 3),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'PAGOS'), 'MÉTODO DE PAGO NO DISPONIBLE', 4),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'HERRAMIENTAS VNET'), 'ARADIAL', 1),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'HERRAMIENTAS VNET'), 'GLPI', 2),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'HERRAMIENTAS VNET'), 'TOOLBOX', 3),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'HERRAMIENTAS VNET'), 'NICE', 4),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'HERRAMIENTAS VNET'), 'CXONE', 5),
+((SELECT id FROM catalogo_categorias WHERE nombre = 'MERCADEO'), 'PORTAL WEB VNET', 1);
 
 INSERT INTO catalogo_comentarios (nombre, orden) VALUES
 ('NINGUNO', 1),
@@ -53,7 +53,9 @@ INSERT INTO catalogo_unidades_resolutorias (nombre, orden) VALUES
 ('CONTROL DE CAMBIOS', 5),
 ('MIGURA', 6),
 ('NETUNO', 7),
-('HELPDESK', 8);
+('HELPDESK', 8),
+('SISTEMAS', 9),
+('MERCADEO', 10);
 
 INSERT INTO catalogo_estados_ticket (nombre, orden) VALUES
 ('EN CURSO (ASIGNADO)', 1),
