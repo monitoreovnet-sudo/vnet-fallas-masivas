@@ -110,6 +110,7 @@
           <option value="NO_APLICA">1. Soporte Técnico pero no aplica</option>
           <option value="ENLACE">ENLACE</option>
           <option value="TRAMO">TRAMO</option>
+          <option value="TRONCAL">TRONCAL</option>
           <option value="OFICINA">OFICINA</option>
         </select>
       </div>
@@ -167,7 +168,7 @@
       <div class="field field-btn">
         <div class="search-row">
           <button id="mc_btn_masivo" class="btn-secondary" type="button">MASIVO</button>
-          <button id="mc_btn_puertos" class="btn-secondary" type="button">POR PUERTOS</button>
+          <button id="mc_btn_puertos" class="btn-secondary" type="button">POR OLT / PUERTOS</button>
         </div>
       </div>
     </div>
@@ -253,6 +254,57 @@
         <tbody></tbody>
       </table>
       <button id="e4_btn_guardar" class="btn-primary">Cerrar Puertos Marcados</button>
+    </div>
+
+    <!-- ENLACE / TRAMO / TRONCAL: pantalla propia (MASIVO o POR OLT, activo o cerrado) -->
+    <div id="mc_enlace" class="hidden">
+      <hr />
+      <h3 id="me_titulo"></h3>
+      <p class="hint" id="me_hint"></p>
+      <datalist id="me_olts_datalist"></datalist>
+
+      <div id="me_masivo_block" class="hidden">
+        <p class="hint">Lo que llenes aquí se aplica a TODOS los OLT del ticket. Lo que dejes vacío no se modifica.</p>
+        <div class="grid-2">
+          <div class="field"><label>OLT</label><input id="me_m_olt" list="me_olts_datalist" placeholder="No modificar" /></div>
+          <div class="field"><label>Ubicación</label><select id="me_m_ubicacion"></select></div>
+          <div class="field"><label>Nro de afectados</label><input id="me_m_afectados" type="number" min="0" placeholder="No modificar" /></div>
+          <div class="field"><label>Nro Personas que reportaron la falla</label><input id="me_m_reportaron" type="number" min="0" placeholder="No modificar" /></div>
+        </div>
+      </div>
+
+      <div id="me_porolt_block" class="hidden">
+        <p class="hint" id="me_porolt_hint"></p>
+        <div class="table-scroll">
+          <table class="rows-table" id="me_table">
+            <thead>
+              <tr><th id="me_th_cerrar">Cerrar</th><th>OLT</th><th>Ubicación</th><th>Nro de afectados</th><th>Nro que reportaron</th><th>Cierre actual</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <h4>Datos del ticket</h4>
+      <div class="grid-2">
+        <div class="field">
+          <label>Unidad Resolutoria</label>
+          <select id="me_unidad"></select>
+        </div>
+      </div>
+      <div id="me_bloque_apertura" class="grid-2 hidden">
+        <div class="field"><label>Fecha Apertura CMR</label><input id="me_apertura_cmr" type="datetime-local" /></div>
+        <div class="field"><label>Fecha Apertura CDA</label><input id="me_apertura_cda" type="datetime-local" /></div>
+      </div>
+      <div id="me_bloque_cierre" class="grid-2 hidden">
+        <div class="field"><label id="me_lbl_cierre_cmr">Fecha de Cierre CMR</label><input id="me_cierre_cmr" type="datetime-local" /></div>
+        <div class="field"><label id="me_lbl_cierre_cda">Fecha de Cierre CDA</label><input id="me_cierre_cda" type="datetime-local" /></div>
+      </div>
+      <div id="me_bloque_avance" class="field hidden">
+        <label>Avance del CMR</label>
+        <textarea id="me_avance" rows="2" placeholder="Avance..."></textarea>
+      </div>
+      <button id="me_btn_guardar" class="btn-primary" type="button">Guardar</button>
     </div>
 
     <div id="mc_msg" class="msg"></div>

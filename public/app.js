@@ -127,7 +127,7 @@ function oficinasReales() {
   return (LOOKUPS.oficinas || []).filter((o) => (o.tipo || "oficina") === "oficina");
 }
 function modoUbicacion() {
-  return document.getElementById("c_ubicacion_tipo").value;   // "", NO_APLICA, ENLACE, TRAMO, OFICINA
+  return document.getElementById("c_ubicacion_tipo").value;   // "", NO_APLICA, ENLACE, TRAMO, TRONCAL, OFICINA
 }
 
 function actualizarModoUbicacion() {
@@ -135,7 +135,7 @@ function actualizarModoUbicacion() {
   const esSoporte = categoriaEsSoporte();
   const modo = modoUbicacion();
   const mostrar = (id, visible) => document.getElementById(id).classList.toggle("hidden", !visible);
-  const esEnlaceTramo = esSoporte && (modo === "ENLACE" || modo === "TRAMO");
+  const esEnlaceTramo = esSoporte && TIPOS_ENLACE.includes(modo);
 
   mostrar("ubicacion_tipo_block", esSoporte);
   mostrar("oficinas_section", esSoporte && modo === "OFICINA");
@@ -143,13 +143,13 @@ function actualizarModoUbicacion() {
   // Conteos a nivel de ticket: "no aplica" y los Tipos no técnicos (CENTRAL TELEFÓNICA, PAGOS, ...)
   mostrar("otros_categoria_block", !!cat && (!esSoporte || modo === "NO_APLICA"));
   if (esEnlaceTramo) {
-    document.getElementById("enlace_titulo").textContent = modo === "ENLACE" ? "Enlace afectado" : "Tramo afectado";
+    document.getElementById("enlace_titulo").textContent = TITULO_ENLACE[modo];
     renderEnlace();
   }
 }
 document.getElementById("c_ubicacion_tipo").addEventListener("change", actualizarModoUbicacion);
 
-// ---- ENLACE / TRAMO: varios OLT, cada uno con su Ubicación ----
+// ---- ENLACE / TRAMO / TRONCAL: varios OLT, cada uno con su Ubicación ----
 function nuevaFilaEnlace() {
   return { olt: "", ubicacion: "", nro_afectados: 0, no_reportaron: 0 };
 }
@@ -442,6 +442,9 @@ function renderOficinas() {
 }
 
 // CREAR-PURE-START
+// Tipos de ubicación "lineales": se eligen varios OLT, cada uno con su Ubicación (oficina real).
+const TIPOS_ENLACE = ["ENLACE", "TRAMO", "TRONCAL"];
+const TITULO_ENLACE = { ENLACE: "Enlace afectado", TRAMO: "Tramo afectado", TRONCAL: "Troncal afectada" };
 // Convierte el árbol Oficina > OLT > Tarjeta > Puerto en la lista plana que espera la API:
 // una fila por cada combinación Oficina + OLT + Tarjeta + Puerto.
 function flattenOficinasPuro(oficinasState) {
@@ -472,7 +475,7 @@ function flattenOficinasPuro(oficinasState) {
 // Reglas de ubicación al crear un ticket:
 //  - Tipo NO técnico (CENTRAL TELEFÓNICA, HERRAMIENTAS VNET, MERCADEO, PAGOS): OFICINA = ese Tipo, todo lo demás N/A.
 //  - SOPORTE TÉCNICO + "1. Soporte Técnico pero no aplica": OFICINA = esa opción, todo lo demás N/A.
-//  - SOPORTE TÉCNICO + ENLACE / TRAMO: OFICINA = ENLACE|TRAMO; una fila por OLT (NO INDICADO / N/A también valen),
+//  - SOPORTE TÉCNICO + ENLACE / TRAMO / TRONCAL: OFICINA = ese tipo; una fila por OLT (NO INDICADO / N/A también valen),
 //    la UBICACIÓN (oficina donde está el OLT) va en "sector"; Tarjeta, Puerto y Edificio = N/A.
 //  - SOPORTE TÉCNICO + OFICINA: árbol de siempre (sin cambios).
 function construirPuertosSegunModo(ctx) {
@@ -482,7 +485,7 @@ function construirPuertosSegunModo(ctx) {
     return (oficinas || []).find((o) => o.tipo === "especial" && normTxt(o.nombre) === n) || null;
   };
   const faltaEspecial = (nombre) =>
-    new Error(`No existe la oficina especial "${nombre}" en el catálogo. Aplica la migración 015 y recarga la página.`);
+    new Error(`No existe la oficina especial "${nombre}" en el catálogo. Aplica las migraciones pendientes (015 y 016) y recarga la página.`);
   const unico = (oficina) => [{
     oficina_id: oficina.id,
     olt: "N/A", tarjeta: "N/A", puerto: "N/A", sector: "N/A", edificio: "N/A",
@@ -506,7 +509,7 @@ function construirPuertosSegunModo(ctx) {
     return unico(of);
   }
 
-  if (modo === "ENLACE" || modo === "TRAMO") {
+  if (TIPOS_ENLACE.includes(modo)) {
     const of = especialDe(modo);
     if (!of) throw faltaEspecial(modo);
     const filas = [];
@@ -588,6 +591,7 @@ let mcEscenario = null; // 1, 2, 3 o 4
 
 function mcOcultarEscenarios() {
   [1, 2, 3, 4].forEach((n) => document.getElementById(`mc_escenario_${n}`).classList.add("hidden"));
+  document.getElementById("mc_enlace").classList.add("hidden");
 }
 
 async function mcBuscarYMostrar(alcance) {
@@ -608,6 +612,10 @@ async function mcBuscarYMostrar(alcance) {
     msg.textContent = "";
 
     const esCerrado = estado === "CERRADO";
+    if (mcEsEnlace(mcPuertos)) {         // ENLACE / TRAMO / TRONCAL: pantalla propia
+      mcRenderEnlace(alcance, esCerrado, estado);
+      return;
+    }
     mcEscenario = esCerrado ? (alcance === "MASIVO" ? 3 : 4) : (alcance === "MASIVO" ? 1 : 2);
 
     if (mcEscenario === 1) mcRenderEscenario1();
@@ -785,6 +793,248 @@ document.getElementById("e4_btn_guardar").addEventListener("click", async () => 
     }
     await apiSend(`/tickets/${mcTicket.id}/puertos`, "PATCH", { puertos: seleccionados });
     showMsg(msg, `${seleccionados.length} registro(s) cerrados correctamente.`, true);
+  } catch (err) {
+    showMsg(msg, err.message, false);
+  }
+});
+
+
+// ---------------------------------------------------------------
+// MODIFICAR / CERRAR para tickets ENLACE / TRAMO / TRONCAL
+//   Por fila (OLT): OLT, Ubicación, Nro afectados, Nro que reportaron.
+//   Por ticket: estado, unidad resolutoria y fechas.
+//   Ticket activo  -> solo fechas de APERTURA.
+//   Ticket cerrado -> solo fechas de CIERRE.
+// ---------------------------------------------------------------
+// ENLACE-MOD-PURE-START
+const TIPOS_ENLACE_MOD = ["ENLACE", "TRAMO", "TRONCAL"];
+function mcTipoEnlace(puertos) {
+  const norm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toUpperCase();
+  const hallado = (puertos || []).map((p) => norm(p.oficina_nombre)).find((n) => TIPOS_ENLACE_MOD.includes(n));
+  return hallado || null;
+}
+function mcEsEnlace(puertos) { return !!mcTipoEnlace(puertos); }
+
+function enteroNoNegativo(v, etiqueta) {
+  const t = String(v ?? "").trim();
+  if (t === "") return null;
+  if (!/^\d+$/.test(t)) throw new Error(`${etiqueta} debe ser un número entero mayor o igual a 0.`);
+  return Number(t);
+}
+
+// Cambios por fila. entrada.filas: [{ olt, ubicacion, afectados, reportaron, cerrar }] (mismo orden que puertos).
+// En MASIVO se usa entrada.masivo = { olt, ubicacion, afectados, reportaron } (vacío = no modificar) para TODAS las filas.
+function construirCambiosFilasEnlace({ alcance, cerrado, puertos, filas, masivo, cierre }) {
+  const cambios = [];
+  const comparar = (p, nuevo) => {
+    const c = {};
+    if (nuevo.olt !== null && nuevo.olt !== undefined && String(nuevo.olt).trim() !== "" && String(nuevo.olt).trim() !== p.olt) c.olt = String(nuevo.olt).trim();
+    if (nuevo.ubicacion && nuevo.ubicacion !== p.sector) c.sector = nuevo.ubicacion;
+    if (nuevo.afectados !== null && nuevo.afectados !== undefined && Number(nuevo.afectados) !== Number(p.nro_clientes_afectados)) c.nro_clientes_afectados = Number(nuevo.afectados);
+    if (nuevo.reportaron !== null && nuevo.reportaron !== undefined && Number(nuevo.reportaron) !== Number(p.no_clientes_reportaron)) c.no_clientes_reportaron = Number(nuevo.reportaron);
+    return c;
+  };
+  if (alcance === "MASIVO") {
+    const m = {
+      olt: String(masivo.olt || "").trim(),
+      ubicacion: masivo.ubicacion || "",
+      afectados: enteroNoNegativo(masivo.afectados, "Nro de afectados"),
+      reportaron: enteroNoNegativo(masivo.reportaron, "Nro Personas que reportaron la falla"),
+    };
+    puertos.forEach((p) => {
+      const c = comparar(p, m);
+      if (Object.keys(c).length) cambios.push({ id: p.id, ...c });
+    });
+    return cambios;
+  }
+  puertos.forEach((p, i) => {
+    const f = filas[i] || {};
+    const nuevo = {
+      olt: f.olt,
+      ubicacion: f.ubicacion,
+      afectados: enteroNoNegativo(f.afectados, `Nro de afectados (fila ${i + 1})`),
+      reportaron: enteroNoNegativo(f.reportaron, `Nro que reportaron (fila ${i + 1})`),
+    };
+    if (String(nuevo.olt || "").trim() === "") throw new Error(`El OLT de la fila ${i + 1} no puede quedar vacío.`);
+    const c = comparar(p, nuevo);
+    if (cerrado && f.cerrar) {
+      if (!cierre.cmr || !cierre.cda) throw new Error("Indica ambas fechas de cierre (CMR y CDA) para las filas marcadas.");
+      c.estado_puerto = "CERRADO";
+      c.fecha_cierre_cmr = cierre.cmr;
+      c.fecha_cierre_cda = cierre.cda;
+    }
+    if (Object.keys(c).length) cambios.push({ id: p.id, ...c });
+  });
+  return cambios;
+}
+
+// Cambios a nivel de ticket. Devuelve { masivoBody, cerrarBody } (null si no aplica).
+function construirCambiosTicketEnlace({ ticket, alcance, cerrado, estado, unidad, apertura, cierre, avance, tocaFilas }) {
+  const masivoBody = {};
+  let cerrarBody = null;
+  const vTicket = (k) => toLocalInputValue(ticket[k]);
+  if (unidad && unidad !== (ticket.unidad_resolutoria || "")) masivoBody.unidad_resolutoria = unidad;
+
+  if (!cerrado) {
+    if (estado && estado !== ticket.estado_ticket) masivoBody.estado_ticket = estado;
+    if (apertura.cmr && apertura.cmr !== vTicket("fecha_apertura_cmr")) masivoBody.fecha_apertura_cmr = apertura.cmr;
+    if (apertura.cda && apertura.cda !== vTicket("fecha_apertura_cda")) masivoBody.fecha_apertura_cda = apertura.cda;
+    if (avance && String(avance).trim()) masivoBody.avance_cmr = String(avance).trim();
+  } else if (alcance === "MASIVO") {
+    if (!cierre.cmr || !cierre.cda) throw new Error("Indica ambas fechas de cierre (CMR y CDA).");
+    cerrarBody = { fecha_solucion_cmr: cierre.cmr, fecha_solucion_cda: cierre.cda };
+  }
+  return { masivoBody, cerrarBody };
+}
+// ENLACE-MOD-PURE-END
+
+let meCtx = null;   // { alcance, cerrado, estado, tipo }
+
+function meOpcionesUbicacion(select, actual, textoVacio) {
+  select.innerHTML = "";
+  const nombres = oficinasReales().map((o) => o.nombre);
+  if (textoVacio !== undefined) {
+    const o0 = document.createElement("option");
+    o0.value = ""; o0.textContent = textoVacio;
+    select.appendChild(o0);
+  }
+  if (actual && !nombres.includes(actual)) {      // conserva valores como "N/A" o nombres fuera del catálogo
+    const oa = document.createElement("option");
+    oa.value = actual; oa.textContent = actual;
+    select.appendChild(oa);
+  }
+  nombres.forEach((n) => {
+    const o = document.createElement("option");
+    o.value = n; o.textContent = n;
+    select.appendChild(o);
+  });
+  if (actual !== undefined) select.value = actual;
+}
+
+function mcRenderEnlace(alcance, cerrado, estado) {
+  const tipo = mcTipoEnlace(mcPuertos);
+  meCtx = { alcance, cerrado, estado, tipo };
+  const porOlt = alcance !== "MASIVO";
+
+  document.getElementById("me_titulo").textContent =
+    `${cerrado ? "Cierre" : "Modificación"} ${porOlt ? "por OLT" : "masiva"} — ${tipo}`;
+  document.getElementById("me_hint").textContent = cerrado
+    ? "Ticket cerrado: solo se pueden modificar las fechas de CIERRE (además de OLT, Ubicación, afectados y reportaron)."
+    : "Ticket activo: solo se puede modificar la fecha de APERTURA (además de OLT, Ubicación, afectados, reportaron y unidad).";
+
+  // lista de OLT para autocompletar
+  const dl = document.getElementById("me_olts_datalist");
+  dl.innerHTML = "";
+  ["NO INDICADO", "N/A", ...(LOOKUPS.olts || []).map((o) => o.codigo)].forEach((v) => {
+    const opt = document.createElement("option");
+    opt.value = v;
+    dl.appendChild(opt);
+  });
+
+  document.getElementById("me_masivo_block").classList.toggle("hidden", porOlt);
+  document.getElementById("me_porolt_block").classList.toggle("hidden", !porOlt);
+  document.getElementById("me_m_olt").value = "";
+  document.getElementById("me_m_afectados").value = "";
+  document.getElementById("me_m_reportaron").value = "";
+  meOpcionesUbicacion(document.getElementById("me_m_ubicacion"), "", "No modificar");
+
+  // tabla por OLT
+  const thCerrar = document.getElementById("me_th_cerrar");
+  thCerrar.classList.toggle("hidden", !cerrado);
+  document.getElementById("me_porolt_hint").textContent = cerrado
+    ? "Marca los OLT que se cerraron con las fechas de cierre de abajo. Puedes corregir también sus datos."
+    : "Edita solo las filas que necesites; se envían únicamente las que cambien.";
+  const tbody = document.querySelector("#me_table tbody");
+  tbody.innerHTML = "";
+  if (porOlt) {
+    mcPuertos.forEach((p, idx) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="${cerrado ? "" : "hidden"}"><input type="checkbox" class="me-cerrar" data-idx="${idx}" /></td>
+        <td><input class="me-olt" list="me_olts_datalist" data-idx="${idx}" /></td>
+        <td><select class="me-ubicacion" data-idx="${idx}"></select></td>
+        <td><input class="me-afectados" type="number" min="0" data-idx="${idx}" /></td>
+        <td><input class="me-reportaron" type="number" min="0" data-idx="${idx}" /></td>
+        <td class="hint"></td>`;
+      tr.querySelector(".me-olt").value = p.olt || "";
+      meOpcionesUbicacion(tr.querySelector(".me-ubicacion"), p.sector || "N/A");
+      tr.querySelector(".me-afectados").value = p.nro_clientes_afectados ?? 0;
+      tr.querySelector(".me-reportaron").value = p.no_clientes_reportaron ?? 0;
+      tr.lastElementChild.textContent = p.fecha_cierre_cmr ? `${p.estado_puerto} · ${toLocalInputValue(p.fecha_cierre_cmr).replace("T", " ")}` : (p.estado_puerto || "");
+      tbody.appendChild(tr);
+    });
+  }
+
+  // datos del ticket
+  fillSelect(document.getElementById("me_unidad"), LOOKUPS.unidades_resolutorias, { valueKey: "nombre", placeholder: "No modificar" });
+  document.getElementById("me_unidad").value = mcTicket.unidad_resolutoria || "";
+  document.getElementById("me_bloque_apertura").classList.toggle("hidden", cerrado);
+  document.getElementById("me_bloque_avance").classList.toggle("hidden", cerrado);
+  document.getElementById("me_bloque_cierre").classList.toggle("hidden", !cerrado);
+  document.getElementById("me_apertura_cmr").value = toLocalInputValue(mcTicket.fecha_apertura_cmr);
+  document.getElementById("me_apertura_cda").value = toLocalInputValue(mcTicket.fecha_apertura_cda);
+  document.getElementById("me_avance").value = "";
+  // en MASIVO se precargan las fechas de cierre actuales del ticket; por OLT se piden nuevas
+  document.getElementById("me_cierre_cmr").value = porOlt ? "" : toLocalInputValue(mcTicket.fecha_solucion_cmr);
+  document.getElementById("me_cierre_cda").value = porOlt ? "" : toLocalInputValue(mcTicket.fecha_solucion_cda);
+  document.getElementById("me_btn_guardar").textContent =
+    cerrado ? (porOlt ? "Cerrar OLT marcados" : "Cerrar Todo el Ticket") : (porOlt ? "Guardar Cambios por OLT" : "Aplicar a Todo el Ticket");
+  document.getElementById("mc_enlace").classList.remove("hidden");
+}
+
+document.getElementById("me_btn_guardar").addEventListener("click", async () => {
+  const msg = document.getElementById("mc_msg");
+  try {
+    const { alcance, cerrado, estado } = meCtx;
+    const porOlt = alcance !== "MASIVO";
+    const val = (id) => document.getElementById(id).value;
+    const cierre = { cmr: val("me_cierre_cmr"), cda: val("me_cierre_cda") };
+
+    const filas = [];
+    if (porOlt) {
+      const tbody = document.querySelector("#me_table tbody");
+      mcPuertos.forEach((_, idx) => {
+        const q = (c) => tbody.querySelector(`.${c}[data-idx="${idx}"]`);
+        filas.push({
+          olt: q("me-olt").value,
+          ubicacion: q("me-ubicacion").value,
+          afectados: q("me-afectados").value,
+          reportaron: q("me-reportaron").value,
+          cerrar: cerrado && q("me-cerrar").checked,
+        });
+      });
+    }
+    if (cerrado && porOlt && !filas.some((f) => f.cerrar) && (cierre.cmr || cierre.cda)) {
+      throw new Error("Marca al menos un OLT para cerrar con esas fechas.");
+    }
+
+    const cambiosFilas = construirCambiosFilasEnlace({
+      alcance, cerrado, puertos: mcPuertos, filas, cierre,
+      masivo: { olt: val("me_m_olt"), ubicacion: val("me_m_ubicacion"), afectados: val("me_m_afectados"), reportaron: val("me_m_reportaron") },
+    });
+    const { masivoBody, cerrarBody } = construirCambiosTicketEnlace({
+      ticket: mcTicket, alcance, cerrado, estado,
+      unidad: val("me_unidad"),
+      apertura: { cmr: val("me_apertura_cmr"), cda: val("me_apertura_cda") },
+      cierre, avance: val("me_avance"),
+    });
+
+    if (!cambiosFilas.length && !Object.keys(masivoBody).length && !cerrarBody) {
+      throw new Error("No hay cambios para guardar.");
+    }
+    if (Object.keys(masivoBody).length) await apiSend(`/tickets/${mcTicket.id}/masivo`, "PATCH", masivoBody);
+    if (cambiosFilas.length) await apiSend(`/tickets/${mcTicket.id}/puertos`, "PATCH", { puertos: cambiosFilas });
+    if (cerrarBody) await apiSend(`/tickets/${mcTicket.id}/cerrar`, "POST", cerrarBody);
+
+    const partes = [];
+    if (cambiosFilas.length) partes.push(`${cambiosFilas.length} OLT actualizado(s)`);
+    if (Object.keys(masivoBody).length) partes.push("datos del ticket actualizados");
+    if (cerrarBody) partes.push("ticket cerrado");
+    showMsg(msg, `Ticket ${mcTicket.ticket_cmr}: ${partes.join(", ")}.`, true);
+    // refresca los datos en pantalla con lo guardado
+    const data = await apiGet(`/tickets/${encodeURIComponent(mcTicket.ticket_cmr)}`);
+    mcTicket = data.ticket; mcPuertos = data.puertos;
+    mcRenderEnlace(meCtx.alcance, meCtx.cerrado, meCtx.estado);
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -2106,7 +2356,7 @@ function construirRegistrosRepo(filasCrudas, ctx) {
 
     let olt, tarjeta, puerto, sector, edificio;
     const especial = of && of.tipo === "especial" ? normTxt(of.nombre) : null;
-    if (especial === "ENLACE" || especial === "TRAMO") {
+    if (especial === "ENLACE" || especial === "TRAMO" || especial === "TRONCAL") {
       olt = textoORepo(col("OLT"), "N/A");
       tarjeta = "N/A"; puerto = "N/A"; edificio = "N/A";
       sector = resolverUbicacion(col("UBICACION"));

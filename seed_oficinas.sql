@@ -95,7 +95,7 @@ INSERT INTO oficinas (codigo, nombre, estado, localidad) VALUES
 ('BCS', 'BCS - BARRANCAS', 'BARINAS', 'BARINAS');
 
 -- Oficinas ESPECIALES: no son oficinas físicas. Se eligen en el paso "Tipo de
--- ubicación" (1. Soporte Técnico pero no aplica / ENLACE / TRAMO) o se asignan
+-- ubicación" (1. Soporte Técnico pero no aplica / ENLACE / TRAMO / TRONCAL) o se asignan
 -- automáticamente según el Tipo (CENTRAL TELEFÓNICA, HERRAMIENTAS VNET,
 -- MERCADEO, PAGOS). Estado y Localidad = su propio nombre (igual que CDA, CDC,
 -- CORP, MASIVO en la lista canónica). El "1." inicial las ordena de primero.
@@ -103,6 +103,7 @@ INSERT INTO oficinas (codigo, nombre, estado, localidad, tipo) VALUES
 ('SOP', '1. Soporte Técnico pero no aplica', '1. Soporte Técnico pero no aplica', '1. Soporte Técnico pero no aplica', 'especial'),
 ('ENLACE', 'ENLACE', 'ENLACE', 'ENLACE', 'especial'),
 ('TRAMO', 'TRAMO', 'TRAMO', 'TRAMO', 'especial'),
+('TRONCAL', 'TRONCAL', 'TRONCAL', 'TRONCAL', 'especial'),
 ('CENTRAL', 'CENTRAL TELEFÓNICA', 'CENTRAL TELEFÓNICA', 'CENTRAL TELEFÓNICA', 'especial'),
 ('HERRAM', 'HERRAMIENTAS VNET', 'HERRAMIENTAS VNET', 'HERRAMIENTAS VNET', 'especial'),
 ('MERCAD', 'MERCADEO', 'MERCADEO', 'MERCADEO', 'especial'),
