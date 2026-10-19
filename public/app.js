@@ -1320,7 +1320,7 @@ async function cargarConsulta() {
         <td><strong>${formatearTicket(f.ticket_cmr)}</strong></td>
         <td>${f.tickets_vinculados ? formatearTicket(f.tickets_vinculados) : "-"}</td>
         <td>${f.fecha_apertura_cda || "-"}</td>
-        <td>${f.fecha_apertura_cmr || "-"}</td>
+        <td>${formatearFechaHora(f.fecha_apertura_cmr)}</td>
         <td>${f.estado_ticket}</td>
         <td>${f.unidad_resolutoria || "-"}</td>
         <td>${f.categoria_afectacion || "-"}</td>
@@ -1938,6 +1938,23 @@ function hexARgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 const SEMAFORO_HEX = { VERDE: "#7ed957", AMARILLO: "#ffde59", NARANJA: "#ff914d", ROJO: "#ff3131" };
+// "2026-10-04T09:30:00" -> "04/10/2026 09:30" (sin conversión de zona horaria; si no se reconoce, se muestra tal cual)
+function formatearFechaHora(v) {
+  if (!v) return "-";
+  const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+  if (!m) return escHtml(String(v));
+  return `${m[3]}/${m[2]}/${m[1]}` + (m[4] ? ` ${m[4]}:${m[5]}` : "");
+}
+// 368.7 -> "15 días y 9 horas" | 28 -> "1 día y 4 horas" | 15 -> "15 horas"
+function formatearTiempoAbierto(h) {
+  if (h === null || h === undefined || h === "" || isNaN(Number(h))) return "-";
+  const total = Math.max(0, Math.round(Number(h)));
+  const dias = Math.floor(total / 24), horas = total % 24;
+  const txtH = `${horas} ${horas === 1 ? "hora" : "horas"}`;
+  if (dias === 0) return txtH;
+  const txtD = `${dias} ${dias === 1 ? "día" : "días"}`;
+  return horas === 0 ? txtD : `${txtD} y ${txtH}`;
+}
 function estiloTiempoAbierto(semaforo) {
   return semaforo ? `background:${hexARgba(SEMAFORO_HEX[semaforo], 0.5)};` : "";
 }
@@ -2163,8 +2180,8 @@ function renderTablaPizarra(filas) {
       <td>${f.olt}</td>
       <td>${f.tarjeta}</td>
       <td>${f.puerto}</td>
-      <td>${f.fecha_apertura_cmr || "-"}</td>
-      <td style="${estiloTiempoAbierto(f.semaforo)}">${f.horas_abierta !== null ? f.horas_abierta.toFixed(1) + " h" : "-"}</td>
+      <td>${formatearFechaHora(f.fecha_apertura_cmr)}</td>
+      <td style="${estiloTiempoAbierto(f.semaforo)}">${formatearTiempoAbierto(f.horas_abierta)}</td>
       <td>${f.estado_ticket}</td>
       <td>${f.afectacion || "-"}</td>
       <td>${f.nro_clientes_afectados}</td>
@@ -2283,9 +2300,9 @@ function renderTablaReporte(filas) {
       <td>${f.afectacion || "-"}</td>
       <td style="${estiloUnidad(f.unidad_resolutoria)}">${f.unidad_resolutoria || "-"}</td>
       <td>${f.estado_ticket}</td>
-      <td>${f.fecha_apertura_cmr || "-"}</td>
+      <td>${formatearFechaHora(f.fecha_apertura_cmr)}</td>
       <td>${f.grupo_horario || "-"}</td>
-      <td style="${estiloTiempoAbierto(f.semaforo)}">${f.horas_abierta !== null ? f.horas_abierta.toFixed(1) + " h" : "-"}</td>
+      <td style="${estiloTiempoAbierto(f.semaforo)}">${formatearTiempoAbierto(f.horas_abierta)}</td>
       <td>${f.nro_clientes_afectados}</td>
       <td>${f.region || "-"}</td>
       <td>${f.oficina_nombre || "-"}</td>
