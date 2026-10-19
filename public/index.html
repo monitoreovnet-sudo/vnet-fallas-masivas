@@ -577,6 +577,36 @@
       <thead><tr id="cat_thead_row"></tr></thead>
       <tbody></tbody>
     </table>
+
+    <hr />
+    <h2>Generador de reportes</h2>
+    <p class="hint">
+      Define qué columnas muestran la Pizarra de Monitoreo y el Reporte Diario, en qué orden, con qué ancho y con qué letra.
+      Arrastra las filas (☰) o usa las flechas para ordenar. Ancho vacío = automático. Los cambios se aplican a todos los usuarios al guardar
+      y también al PDF; las exportaciones CSV/XLSX no cambian.
+    </p>
+    <div class="rpt-barra">
+      <div class="field"><label>Informe</label>
+        <select id="rpt_select">
+          <option value="piz">Pizarra de Monitoreo</option>
+          <option value="rep">Reporte Diario de Fallas Masivas</option>
+        </select>
+      </div>
+      <button id="rpt_btn_guardar" class="btn-primary" type="button">Guardar configuración</button>
+      <button id="rpt_btn_restablecer" class="btn-secondary" type="button">Restablecer valores de fábrica</button>
+    </div>
+    <div id="rpt_msg" class="msg"></div>
+    <table class="rows-table rpt-config" id="rpt_table">
+      <thead>
+        <tr><th></th><th>Visible</th><th>Título de la columna</th><th>Ancho (px)</th><th>Tamaño</th><th>Estilo</th><th>Orden</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p class="hint" id="rpt_aviso_ancho"></p>
+    <h3>Vista previa</h3>
+    <div class="db-table-scroll rpt-preview">
+      <table class="rows-table db-tabla-maestra" id="rpt_preview"><thead></thead><tbody></tbody></table>
+    </div>
   </section>
 
   <!-- ===================== REPOSITORIO (solo administrador) ===================== -->

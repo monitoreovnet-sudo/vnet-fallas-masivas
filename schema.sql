@@ -162,3 +162,11 @@ CREATE TABLE IF NOT EXISTS registros_eliminados (
   eliminado_por TEXT NOT NULL,
   eliminado_en TEXT NOT NULL
 );
+
+-- Generador de reportes: configuración de columnas por informe (la edita el administrador).
+CREATE TABLE IF NOT EXISTS config_reportes (
+  reporte TEXT PRIMARY KEY,
+  config TEXT NOT NULL,
+  actualizado_por TEXT,
+  actualizado_en TEXT
+);

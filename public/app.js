@@ -103,6 +103,7 @@ let LOOKUPS = null;
 
 async function loadLookups() {
   LOOKUPS = await apiGet("/lookups");
+  await cargarConfigReportes();
 
   fillSelect(document.getElementById("c_estado_ticket"), LOOKUPS.estados_ticket, { valueKey: "nombre" });
   fillSelect(document.getElementById("c_unidad_resolutoria"), LOOKUPS.unidades_resolutorias, { valueKey: "nombre" });
@@ -1582,8 +1583,127 @@ function aplicarPermisosRol() {
   if (currentUser.rol === "administrador") {
     cargarUsuarios();
     initCatalogosUI();
+    rptCargarBorrador();
   }
 }
+
+// ---------------------------------------------------------------
+// ADMINISTRACIÓN: Generador de reportes (columnas de Pizarra y Reporte Diario)
+// ---------------------------------------------------------------
+let rptBorrador = [];   // configuración que se está editando (se aplica a la vista previa al instante)
+
+function rptPrefix() { return document.getElementById("rpt_select").value; }
+function rptDefs() { return REPORTES_COLUMNAS[rptPrefix()]; }
+
+function rptCargarBorrador() {
+  rptBorrador = columnasEfectivas(rptDefs(), REPORTES_CFG[rptPrefix()]).map((c) => ({ ...c }));
+  rptDibujar();
+}
+
+function rptFilasMuestra() {
+  const datos = rptPrefix() === "piz" ? pizarraDatos : reporteDatos;
+  if (datos && datos.length) return datos.slice(0, 3);
+  return [{ ticket_cmr: "334455", oficina_nombre: "Caracas - Chacao", olt: "CHA-OL-ZT-AC-001", tarjeta: "Tarjeta 4", puerto: "Puerto 12",
+    fecha_apertura_cmr: "2026-10-04T09:30:00", horas_abierta: 52.4, semaforo: "NARANJA", estado_ticket: "EN CURSO (ASIGNADO)", afectacion: "SIN CONEXIÓN",
+    nro_clientes_afectados: 120, no_clientes_reportaron: 15, unidad_resolutoria: "REPARACIONES", grupo_horario: "MAÑANA", region: "MIRANDA", avance_cmr: "Cuadrilla en sitio" }];
+}
+
+function rptDibujarVistaPrevia() {
+  const defs = rptDefs();
+  const filas = rptFilasMuestra();
+  const { thead, tbody } = htmlTablaDinamica(defs, rptBorrador, filas, (f) => ({ fila: 1 }));
+  const t = document.getElementById("rpt_preview");
+  t.tHead.innerHTML = thead;
+  t.tBodies[0].innerHTML = tbody;
+  const suma = rptBorrador.filter((c) => c.visible && c.ancho).reduce((a, c) => a + c.ancho, 0);
+  document.getElementById("rpt_aviso_ancho").textContent = suma > 1300
+    ? `Atención: los anchos fijos suman ${suma} px; en pantallas más angostas aparecerá scroll horizontal.` : "";
+}
+
+function rptDibujar() {
+  const tbody = document.querySelector("#rpt_table tbody");
+  const defs = new Map(rptDefs().map((d) => [d.id, d]));
+  tbody.innerHTML = "";
+  rptBorrador.forEach((c, i) => {
+    const tr = document.createElement("tr");
+    tr.draggable = true;
+    tr.dataset.i = i;
+    if (!c.visible) tr.classList.add("rpt-fila-oculta");
+    const tamanos = Array.from({ length: 17 }, (_, k) => k + 8).map((n) => `<option value="${n}" ${n === c.fontSize ? "selected" : ""}>${n}</option>`).join("");
+    tr.innerHTML = `
+      <td class="rpt-asa" title="Arrastra para reordenar">☰</td>
+      <td class="rpt-td-visible"><input type="checkbox" data-k="visible" ${c.visible ? "checked" : ""} title="Mostrar esta columna" /></td>
+      <td><input type="text" data-k="titulo" value="${escHtml(c.titulo)}" maxlength="60" title="Dato original: ${escHtml(defs.get(c.id).titulo)}" /></td>
+      <td><input type="number" data-k="ancho" min="30" max="900" step="5" placeholder="auto" value="${c.ancho ?? ""}" /></td>
+      <td><select data-k="fontSize">${tamanos}</select></td>
+      <td class="rpt-estilo">
+        <button type="button" data-t="negrita" class="${c.negrita ? "on" : ""}" title="Negrita"><b>N</b></button>
+        <button type="button" data-t="cursiva" class="${c.cursiva ? "on" : ""}" title="Cursiva"><i>K</i></button>
+        <button type="button" data-t="subrayado" class="${c.subrayado ? "on" : ""}" title="Subrayado"><u>S</u></button>
+      </td>
+      <td class="rpt-orden">
+        <button type="button" data-mv="-1" ${i === 0 ? "disabled" : ""} title="Subir">↑</button>
+        <button type="button" data-mv="1" ${i === rptBorrador.length - 1 ? "disabled" : ""} title="Bajar">↓</button>
+      </td>`;
+    // edición de campos
+    tr.querySelectorAll("[data-k]").forEach((el) => {
+      const k = el.dataset.k;
+      el.addEventListener(k === "visible" || k === "fontSize" ? "change" : "input", () => {
+        if (k === "visible") { c.visible = el.checked; tr.classList.toggle("rpt-fila-oculta", !c.visible); }
+        else if (k === "ancho") c.ancho = el.value === "" ? null : Math.max(30, Math.min(900, Math.round(Number(el.value))));
+        else if (k === "fontSize") c.fontSize = Number(el.value);
+        else if (k === "titulo") c.titulo = el.value.trim() || defs.get(c.id).titulo;
+        rptDibujarVistaPrevia();
+      });
+    });
+    tr.querySelectorAll("[data-t]").forEach((b) => b.addEventListener("click", () => {
+      c[b.dataset.t] = !c[b.dataset.t]; b.classList.toggle("on", c[b.dataset.t]); rptDibujarVistaPrevia();
+    }));
+    tr.querySelectorAll("[data-mv]").forEach((b) => b.addEventListener("click", () => rptMover(i, i + Number(b.dataset.mv))));
+    // arrastrar y soltar
+    tr.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/plain", String(i)); e.dataTransfer.effectAllowed = "move"; });
+    tr.addEventListener("dragover", (e) => { e.preventDefault(); tr.classList.add("rpt-fila-arrastre"); });
+    tr.addEventListener("dragleave", () => tr.classList.remove("rpt-fila-arrastre"));
+    tr.addEventListener("drop", (e) => {
+      e.preventDefault(); tr.classList.remove("rpt-fila-arrastre");
+      const desde = Number(e.dataTransfer.getData("text/plain"));
+      if (Number.isInteger(desde)) rptMover(desde, i);
+    });
+    tbody.appendChild(tr);
+  });
+  rptDibujarVistaPrevia();
+}
+
+function rptMover(desde, hasta) {
+  if (desde === hasta || hasta < 0 || hasta >= rptBorrador.length) return;
+  const [c] = rptBorrador.splice(desde, 1);
+  rptBorrador.splice(hasta, 0, c);
+  rptDibujar();
+}
+
+document.getElementById("rpt_select").addEventListener("change", rptCargarBorrador);
+document.getElementById("rpt_btn_guardar").addEventListener("click", async () => {
+  const msg = document.getElementById("rpt_msg");
+  const prefix = rptPrefix();
+  try {
+    const r = await apiSend("/admin/config-reportes", "PUT", { reporte: prefix, config: { columnas: rptBorrador } });
+    REPORTES_CFG[prefix] = r.config;
+    aplicarFiltros(prefix);   // vuelve a dibujar la tabla del informe con la nueva configuración
+    showMsg(msg, "Configuración guardada. Ya se aplica a todos los usuarios.", true);
+  } catch (err) { showMsg(msg, err.message, false); }
+});
+document.getElementById("rpt_btn_restablecer").addEventListener("click", async () => {
+  const msg = document.getElementById("rpt_msg");
+  const prefix = rptPrefix();
+  if (!confirm("¿Volver al orden y formato de fábrica de este informe?")) return;
+  try {
+    await apiSend(`/admin/config-reportes?reporte=${prefix}`, "DELETE", {});
+    REPORTES_CFG[prefix] = null;
+    rptCargarBorrador();
+    aplicarFiltros(prefix);
+    showMsg(msg, "Se restableció la configuración de fábrica.", true);
+  } catch (err) { showMsg(msg, err.message, false); }
+});
 
 // ---------------------------------------------------------------
 // ADMINISTRACIÓN: CRUD de usuarios
@@ -2232,27 +2352,130 @@ function colorPorNombreFactory(paleta) {
   };
 }
 
-function renderTablaPizarra(filas) {
+// ---------------------------------------------------------------
+// Generador de reportes: columnas de las tablas de Pizarra y Reporte Diario
+//   · REPORTES_COLUMNAS: catálogo de columnas disponibles (qué dato muestra cada una).
+//   · REPORTES_CFG: configuración guardada por el administrador (D1: tabla config_reportes).
+//     Si no hay configuración guardada se usa la de fábrica (el orden y formato de siempre).
+// ---------------------------------------------------------------
+// REPORTES-PURE-START
+const REPORTES_COLUMNAS = {
+  piz: [
+    { id: "fila", titulo: "Fila", nowrap: true, celda: (f, c) => [c.fila] },
+    { id: "ticket", titulo: "Title", nowrap: true, base: { fontSize: 14, negrita: true }, celda: (f) => [formatearTicket(f.ticket_cmr)] },
+    { id: "oficina", titulo: "Oficina", celda: (f) => [f.oficina_nombre || "-"] },
+    { id: "olt", titulo: "OLT", celda: (f) => [f.olt] },
+    { id: "tarjeta", titulo: "Tarjeta", celda: (f) => [f.tarjeta] },
+    { id: "puerto", titulo: "Puerto", celda: (f) => [f.puerto] },
+    { id: "apertura_cmr", titulo: "Apertura CMR", celda: (f) => [formatearFechaHora(f.fecha_apertura_cmr)] },
+    { id: "tiempo_abierto", titulo: "Tiempo Abierto CMR", celda: (f) => [formatearTiempoAbierto(f.horas_abierta), estiloTiempoAbierto(f.semaforo)] },
+    { id: "estado_ticket", titulo: "Estado del Ticket", celda: (f) => [f.estado_ticket] },
+    { id: "afectacion", titulo: "Afectación", celda: (f) => [f.afectacion || "-"] },
+    { id: "clientes_afectados", titulo: "N° Cltes Afectados", celda: (f) => [f.nro_clientes_afectados] },
+    { id: "clientes_reportaron", titulo: "N° Cltes Reportaron", celda: (f) => [f.no_clientes_reportaron] },
+    { id: "unidad_resolutoria", titulo: "Unidad Resolutoria", celda: (f) => [f.unidad_resolutoria || "-", estiloUnidad(f.unidad_resolutoria)] },
+  ],
+  rep: [
+    { id: "fila", titulo: "Fila", nowrap: true, celda: (f, c) => [c.fila] },
+    { id: "ticket", titulo: "Title", nowrap: true, base: { fontSize: 14, negrita: true }, celda: (f) => [formatearTicket(f.ticket_cmr)] },
+    { id: "tipo", titulo: "Tipo", celda: () => ["-"] },
+    { id: "afectacion", titulo: "Afectación", celda: (f) => [f.afectacion || "-"] },
+    { id: "unidad_resolutoria", titulo: "Unidad Resolutoria", celda: (f) => [f.unidad_resolutoria || "-", estiloUnidad(f.unidad_resolutoria)] },
+    { id: "estado_ticket", titulo: "Estado del Ticket", celda: (f) => [f.estado_ticket] },
+    { id: "apertura_cmr", titulo: "Apertura CMR", celda: (f) => [formatearFechaHora(f.fecha_apertura_cmr)] },
+    { id: "grupo_horario", titulo: "Grupo Horario CMR", celda: (f) => [f.grupo_horario || "-"] },
+    { id: "tiempo_abierto", titulo: "Tiempo Abierto CMR", celda: (f) => [formatearTiempoAbierto(f.horas_abierta), estiloTiempoAbierto(f.semaforo)] },
+    { id: "clientes_afectados", titulo: "N° Cltes Afectados", celda: (f) => [f.nro_clientes_afectados] },
+    { id: "region", titulo: "Estado", celda: (f) => [f.region || "-"] },
+    { id: "oficina", titulo: "Oficina", celda: (f) => [f.oficina_nombre || "-"] },
+    { id: "avance_cmr", titulo: "Avance CMR", celda: (f) => [f.avance_cmr || "-"] },
+  ],
+};
+
+// Valores de fábrica de una columna
+function columnaPorDefecto(def) {
+  const b = def.base || {};
+  return { id: def.id, visible: true, titulo: def.titulo, ancho: null, fontSize: b.fontSize || 12,
+    negrita: !!b.negrita, cursiva: false, subrayado: false };
+}
+// Mezcla la configuración guardada con el catálogo: respeta el orden guardado, ignora columnas que ya no existen
+// y agrega al final las columnas nuevas del catálogo que la configuración todavía no conoce.
+function columnasEfectivas(defs, guardada) {
+  const porId = new Map(defs.map((d) => [d.id, d]));
+  const salida = [];
+  const usados = new Set();
+  const entrada = guardada && Array.isArray(guardada.columnas) ? guardada.columnas : [];
+  for (const g of entrada) {
+    const def = porId.get(g.id);
+    if (!def || usados.has(g.id)) continue;
+    usados.add(g.id);
+    const base = columnaPorDefecto(def);
+    salida.push({
+      ...base,
+      visible: g.visible !== false,
+      titulo: g.titulo ? String(g.titulo) : base.titulo,
+      ancho: Number.isFinite(Number(g.ancho)) && g.ancho !== null ? Number(g.ancho) : null,
+      fontSize: Number.isFinite(Number(g.fontSize)) && g.fontSize !== null ? Number(g.fontSize) : base.fontSize,
+      negrita: !!g.negrita, cursiva: !!g.cursiva, subrayado: !!g.subrayado,
+    });
+  }
+  defs.forEach((d) => { if (!usados.has(d.id)) salida.push(columnaPorDefecto(d)); });
+  return salida;
+}
+function estiloCeldaDeColumna(c) {
+  const e = [];
+  if (c.fontSize) e.push(`font-size:${c.fontSize}px`);
+  e.push(`font-weight:${c.negrita ? 700 : 400}`);
+  e.push(`font-style:${c.cursiva ? "italic" : "normal"}`);
+  e.push(`text-decoration:${c.subrayado ? "underline" : "none"}`);
+  return e.join(";");
+}
+function estiloEncabezadoDeColumna(c) {
+  return c.ancho ? `width:${c.ancho}px;min-width:${c.ancho}px;max-width:${c.ancho}px` : "";
+}
+// Construye el HTML del encabezado y de las filas a partir de una configuración. Sin acceso al DOM (se prueba en Node).
+function htmlTablaDinamica(defs, columnas, filas, contexto) {
+  const porId = new Map(defs.map((d) => [d.id, d]));
+  const vis = columnas.filter((c) => c.visible && porId.has(c.id));
+  const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const thead = `<tr>${vis.map((c) => {
+    const d = porId.get(c.id);
+    return `<th class="${d.nowrap ? "col-nowrap" : ""}" data-col="${c.id}" style="${estiloEncabezadoDeColumna(c)}">${esc(c.titulo)}</th>`;
+  }).join("")}</tr>`;
+  const tbody = filas.map((f) => {
+    const ctx = contexto ? contexto(f) : {};
+    return `<tr>${vis.map((c) => {
+      const d = porId.get(c.id);
+      const [contenido, extra] = d.celda(f, ctx);
+      return `<td class="${d.nowrap ? "col-nowrap" : ""}" data-col="${c.id}" style="${estiloCeldaDeColumna(c)}${extra ? ";" + extra : ""}">${contenido}</td>`;
+    }).join("")}</tr>`;
+  }).join("");
+  return { thead, tbody };
+}
+// REPORTES-PURE-END
+
+let REPORTES_CFG = { piz: null, rep: null };
+async function cargarConfigReportes() {
+  try {
+    const c = await apiGet("/config-reportes");
+    REPORTES_CFG = { piz: c.piz || null, rep: c.rep || null };
+  } catch (err) {
+    console.warn("No se pudo leer la configuración de reportes; se usa la de fábrica.", err);
+  }
+}
+function renderTablaDinamica(prefix, filas) {
+  const defs = REPORTES_COLUMNAS[prefix];
+  const columnas = columnasEfectivas(defs, REPORTES_CFG[prefix]);
   const { ordenadas, filaPorTicket } = asignarFilaYColor(filas);
-  const tbody = document.querySelector("#piz_table tbody");
-  tbody.innerHTML = ordenadas.map((f) => `
-    <tr>
-      <td>${filaPorTicket.get(f.ticket_cmr)}</td>
-      <td><strong style="font-size:14px;">${formatearTicket(f.ticket_cmr)}</strong></td>
-      <td>${f.oficina_nombre || "-"}</td>
-      <td>${f.olt}</td>
-      <td>${f.tarjeta}</td>
-      <td>${f.puerto}</td>
-      <td>${formatearFechaHora(f.fecha_apertura_cmr)}</td>
-      <td style="${estiloTiempoAbierto(f.semaforo)}">${formatearTiempoAbierto(f.horas_abierta)}</td>
-      <td>${f.estado_ticket}</td>
-      <td>${f.afectacion || "-"}</td>
-      <td>${f.nro_clientes_afectados}</td>
-      <td>${f.no_clientes_reportaron}</td>
-      <td style="${estiloUnidad(f.unidad_resolutoria)}">${f.unidad_resolutoria || "-"}</td>
-    </tr>
-  `).join("");
-  ajustarAlturaTabla("piz_table");
+  const { thead, tbody } = htmlTablaDinamica(defs, columnas, ordenadas, (f) => ({ fila: filaPorTicket.get(f.ticket_cmr) }));
+  const tabla = document.getElementById(`${prefix}_table`);
+  tabla.tHead.innerHTML = thead;
+  tabla.tBodies[0].innerHTML = tbody;
+  ajustarAlturaTabla(`${prefix}_table`);
+}
+
+function renderTablaPizarra(filas) {
+  renderTablaDinamica("piz", filas);
 }
 
 
@@ -2270,7 +2493,7 @@ document.getElementById("piz_btn_actualizar").addEventListener("click", cargarPi
 
 // ---------------------------------------------------------------
 // Exportar PDF (descarga directa, A4 horizontal, a color) — html2canvas + jsPDF
-//   Página 1: filtros e indicadores · Página 2: gráficas · Página 3+: tabla completa
+//   Página 1: indicadores + filtros + gráficas · Página 2 en adelante: tabla completa
 // Nunca se modifica la pantalla: todo se hace sobre una copia del documento (onclone).
 // ---------------------------------------------------------------
 // Reparte filas en páginas sin partir ninguna: devuelve [[desde, hasta), ...]. Pura, probada en Node.
@@ -2343,31 +2566,28 @@ async function exportarPdfDashboard(prefix) {
       pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", M + (anchoUtil - w) / 2, M, w, h, undefined, "FAST");
     };
 
-    // Página 1: filtros aplicados + indicadores superiores
+    // Página 1: indicadores superiores, filtros aplicados y todas las gráficas
     btn.textContent = "Generando… (1)";
-    ponerImagen(await capturarBloques([".db-topbar", ".db-estado-row", ".db-resumen-row", ".db-filtros-grid", ".db-semaforo-wrap"]));
-    // Página 2: gráficas
-    btn.textContent = "Generando… (2)";
-    ponerImagen(await capturarBloques([".db-bloque6"]));
+    ponerImagen(await capturarBloques([".db-topbar", ".db-estado-row", ".db-resumen-row", ".db-filtros-grid", ".db-semaforo-wrap", ".db-bloque6"]));
 
     // Página 3 en adelante: tabla completa, sin filas partidas
     const filas = [...tabla.querySelectorAll("tbody tr")];
     if (filas.length) {
       const altoFilas = filas.map((f) => f.getBoundingClientRect().height);
       const altoCab = tabla.tHead.getBoundingClientRect().height + 2;
-      const anchoPx = contTabla.getBoundingClientRect().width;
+      const anchoPx = Math.max(contTabla.getBoundingClientRect().width, contTabla.scrollWidth);   // si hay columnas anchas, se captura todo el ancho
       const altoMaxPx = ((altoUtil * anchoPx) / anchoUtil) * 0.97;   // margen de seguridad
       const paginas = paginarFilasPdf(altoFilas, altoCab, altoMaxPx);
-      if (paginas.length > 60 && !confirm(`El PDF tendrá ${paginas.length + 2} páginas (${filas.length} filas) y puede tardar varios minutos. ¿Continuar?\n\nSugerencia: filtra primero para reducir la cantidad de filas.`)) return;
+      if (paginas.length > 60 && !confirm(`El PDF tendrá ${paginas.length + 1} páginas (${filas.length} filas) y puede tardar varios minutos. ¿Continuar?\n\nSugerencia: filtra primero para reducir la cantidad de filas.`)) return;
       for (let p = 0; p < paginas.length; p++) {
-        btn.textContent = `Generando… (${p + 3}/${paginas.length + 2})`;
+        btn.textContent = `Generando… (${p + 2}/${paginas.length + 1})`;
         const [desde, hasta] = paginas[p];
         const canvas = await window.html2canvas(contTabla, {
           ...base,
           onclone: (doc) => {
             const t = doc.getElementById(`${prefix}_table`);
             const c = t.closest(".db-table-scroll");
-            c.style.maxHeight = "none"; c.style.height = "auto"; c.style.overflow = "visible";
+            c.style.maxHeight = "none"; c.style.height = "auto"; c.style.overflow = "visible"; c.style.width = anchoPx + "px";
             t.querySelectorAll("thead th").forEach((th) => { th.style.position = "static"; });
             [...t.querySelectorAll("tbody tr")].forEach((tr, i) => { if (i < desde || i >= hasta) tr.remove(); });
           },
@@ -2484,26 +2704,7 @@ function renderTop5PorEstado(filas, tablaId) {
 }
 
 function renderTablaReporte(filas) {
-  const { ordenadas, filaPorTicket } = asignarFilaYColor(filas);
-  const tbody = document.querySelector("#rep_table tbody");
-  tbody.innerHTML = ordenadas.map((f) => `
-    <tr>
-      <td>${filaPorTicket.get(f.ticket_cmr)}</td>
-      <td><strong style="font-size:14px;">${formatearTicket(f.ticket_cmr)}</strong></td>
-      <td>-</td>
-      <td>${f.afectacion || "-"}</td>
-      <td style="${estiloUnidad(f.unidad_resolutoria)}">${f.unidad_resolutoria || "-"}</td>
-      <td>${f.estado_ticket}</td>
-      <td>${formatearFechaHora(f.fecha_apertura_cmr)}</td>
-      <td>${f.grupo_horario || "-"}</td>
-      <td style="${estiloTiempoAbierto(f.semaforo)}">${formatearTiempoAbierto(f.horas_abierta)}</td>
-      <td>${f.nro_clientes_afectados}</td>
-      <td>${f.region || "-"}</td>
-      <td>${f.oficina_nombre || "-"}</td>
-      <td>${f.avance_cmr || "-"}</td>
-    </tr>
-  `).join("");
-  ajustarAlturaTabla("rep_table");
+  renderTablaDinamica("rep", filas);
 }
 
 async function cargarReporte() {
