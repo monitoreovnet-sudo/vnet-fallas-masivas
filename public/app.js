@@ -54,9 +54,18 @@ function soloDigitos(input) {
 // Formatea un número de ticket con un espacio visual cada 3 dígitos
 // (de derecha a izquierda), únicamente para lectura en pantallas de
 // consulta/log/dashboard. Nunca se usa este valor para guardar ni buscar.
+// El Nº de ticket es el ÚNICO número que NO lleva separador de miles.
 function formatearTicket(numero) {
   if (!numero) return "";
-  return String(numero).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  return String(numero).trim();
+}
+// Separador de miles (punto, como en es-VE): 1234567 -> "1.234.567". Para métricas, nunca para el Nº de ticket.
+function formatearMiles(v) {
+  if (v === null || v === undefined || v === "") return "";
+  const n = Number(v);
+  if (!isFinite(n)) return String(v);
+  const s = String(Math.trunc(Math.abs(n))).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return (n < 0 ? "-" : "") + s;
 }
 
 // ---------------------------------------------------------------
@@ -111,7 +120,7 @@ async function loadLookups() {
   fillSelect(document.getElementById("c_comentario"), comentariosParaCategoria(""), { valueKey: "nombre" });
   fillSelect(document.getElementById("add_oficina_select"), oficinasReales(), { valueKey: "id" });
 
-  fillSelect(document.getElementById("mc_estado"), LOOKUPS.estados_ticket, { valueKey: "nombre" });
+  mcLlenarAccion();
 
   actualizarModoUbicacion();
   initFiltrosConsulta();
@@ -498,7 +507,7 @@ function flattenOficinasPuro(oficinasState) {
 
 // Reglas de ubicación al crear un ticket:
 //  - Tipo NO técnico (CENTRAL TELEFÓNICA, HERRAMIENTAS VNET, MERCADEO, PAGOS): OFICINA = ese Tipo, todo lo demás N/A.
-//  - SOPORTE TÉCNICO + "1. Soporte Técnico pero no aplica": OFICINA = esa opción, todo lo demás N/A.
+//  - SOPORTE TÉCNICO + "SOPORTE TÉCNICO PERO NO APLICA": OFICINA = esa opción, todo lo demás N/A.
 //  - SOPORTE TÉCNICO + ENLACE / TRAMO / TRONCAL: OFICINA = ese tipo; una fila por OLT (NO INDICADO / N/A también valen),
 //    la UBICACIÓN (oficina donde está el OLT) va en "sector"; Tarjeta, Puerto y Edificio = N/A.
 //  - SOPORTE TÉCNICO + OFICINA: árbol de siempre (sin cambios).
@@ -528,8 +537,8 @@ function construirPuertosSegunModo(ctx) {
   if (!modo) throw new Error("Seleccione el Tipo de ubicación.");
 
   if (modo === "NO_APLICA") {
-    const of = especialDe("1. Soporte Técnico pero no aplica");
-    if (!of) throw faltaEspecial("1. Soporte Técnico pero no aplica");
+    const of = especialDe("SOPORTE TÉCNICO PERO NO APLICA");
+    if (!of) throw faltaEspecial("SOPORTE TÉCNICO PERO NO APLICA");
     return unico(of);
   }
 
@@ -618,6 +627,78 @@ function mcOcultarEscenarios() {
   document.getElementById("mc_enlace").classList.add("hidden");
 }
 
+// Campo único "Cambio de Campo o Cierre de Ticket" (reemplaza al antiguo "Nuevo estado del ticket").
+//   CAMPO   -> solo se cambian campos (el estado no se toca)
+//   CERRADO -> cierre del ticket
+//   otro    -> cambio de estado a ese valor (EN OBSERVACIÓN, VENTANA DE MANTENIMIENTO, ...)
+const MC_ACCION_CAMPO = "CAMPO";
+function mcLlenarAccion() {
+  const sel = document.getElementById("mc_accion");
+  sel.innerHTML = "";
+  const add = (value, texto, grupo) => {
+    const o = document.createElement("option");
+    o.value = value; o.textContent = texto;
+    (grupo || sel).appendChild(o);
+  };
+  add(MC_ACCION_CAMPO, "Cambio de campo (mantener el estado)");
+  const estados = (LOOKUPS.estados_ticket || []).map((e) => e.nombre);
+  const otros = estados.filter((e) => e !== "CERRADO");
+  if (otros.length) {
+    const g = document.createElement("optgroup");
+    g.label = "Cambiar estado a";
+    otros.forEach((e) => add(e, e, g));
+    sel.appendChild(g);
+  }
+  add("CERRADO", "Cierre de ticket");
+  sel.value = MC_ACCION_CAMPO;
+}
+// { cerrado, estado }  (estado = null cuando solo se cambian campos)
+function mcAccionActual() {
+  const v = document.getElementById("mc_accion").value || MC_ACCION_CAMPO;
+  return { cerrado: v === "CERRADO", estado: v === MC_ACCION_CAMPO ? null : v };
+}
+function mcMoverAccion(slotId) {
+  document.getElementById(slotId).appendChild(document.getElementById("mc_accion_field"));
+}
+
+// Indicadores de lectura rápida del ticket seleccionado (la lógica de "clientes" sigue la de los tableros: 1.er registro)
+function mcRenderCards() {
+  const c = document.getElementById("mc_cards");
+  if (!mcTicket) { c.classList.add("hidden"); return; }
+  const p0 = mcPuertos[0] || {};
+  document.getElementById("mc_card_unidad").textContent = mcTicket.unidad_resolutoria || "-";
+  document.getElementById("mc_card_estado").textContent = mcTicket.estado_ticket || "-";
+  document.getElementById("mc_card_afectados").textContent = formatearMiles(p0.nro_clientes_afectados ?? 0);
+  document.getElementById("mc_card_reportaron").textContent = formatearMiles(p0.no_clientes_reportaron ?? 0);
+  c.classList.remove("hidden");
+}
+
+let mcAlcance = "MASIVO";
+// Vuelve a leer el ticket (tarjetas al día) y redibuja el formulario conservando la acción elegida
+async function mcRefrescarTicket() {
+  const data = await apiGet(`/tickets/${encodeURIComponent(mcTicket.ticket_cmr)}`);
+  mcTicket = data.ticket; mcPuertos = data.puertos;
+  mcRenderCards();
+  mcRenderSegunAccion();
+}
+// Dibuja el formulario que corresponde a (alcance, acción elegida)
+function mcRenderSegunAccion() {
+  mcOcultarEscenarios();
+  const { cerrado, estado } = mcAccionActual();
+  if (mcEsEnlace(mcPuertos)) {         // ENLACE / TRAMO / TRONCAL: pantalla propia
+    mcRenderEnlace(mcAlcance, cerrado, estado);
+    mcMoverAccion("mc_slot_5");
+    return;
+  }
+  mcEscenario = cerrado ? (mcAlcance === "MASIVO" ? 3 : 4) : (mcAlcance === "MASIVO" ? 1 : 2);
+  if (mcEscenario === 1) mcRenderEscenario1();
+  else if (mcEscenario === 2) mcRenderEscenario2();
+  else if (mcEscenario === 3) mcRenderEscenario3();
+  else mcRenderEscenario4();
+  mcMoverAccion(`mc_slot_${mcEscenario}`);
+}
+document.getElementById("mc_accion").addEventListener("change", () => { if (mcTicket) mcRenderSegunAccion(); });
+
 async function mcBuscarYMostrar(alcance) {
   const msg = document.getElementById("mc_msg_busqueda");
   const resultMsg = document.getElementById("mc_msg");
@@ -625,28 +706,20 @@ async function mcBuscarYMostrar(alcance) {
   mcOcultarEscenarios();
 
   const cmr = document.getElementById("mc_ticket").value.trim();
-  const estado = document.getElementById("mc_estado").value;
   if (!cmr) { showMsg(msg, "Ingrese el número de ticket.", false); return; }
-  if (!estado) { showMsg(msg, "Seleccione el nuevo estado del ticket.", false); return; }
 
   try {
     const data = await apiGet(`/tickets/${encodeURIComponent(cmr)}`);
     mcTicket = data.ticket;
     mcPuertos = data.puertos;
+    mcAlcance = alcance;
     msg.textContent = "";
-
-    const esCerrado = estado === "CERRADO";
-    if (mcEsEnlace(mcPuertos)) {         // ENLACE / TRAMO / TRONCAL: pantalla propia
-      mcRenderEnlace(alcance, esCerrado, estado);
-      return;
-    }
-    mcEscenario = esCerrado ? (alcance === "MASIVO" ? 3 : 4) : (alcance === "MASIVO" ? 1 : 2);
-
-    if (mcEscenario === 1) mcRenderEscenario1();
-    else if (mcEscenario === 2) mcRenderEscenario2();
-    else if (mcEscenario === 3) mcRenderEscenario3();
-    else mcRenderEscenario4();
+    document.getElementById("mc_accion").value = MC_ACCION_CAMPO;
+    mcRenderCards();
+    mcRenderSegunAccion();
   } catch (err) {
+    mcTicket = null;
+    mcRenderCards();
     showMsg(msg, err.message, false);
   }
 }
@@ -661,13 +734,28 @@ function mcRenderEscenario1() {
   document.getElementById("e1_fecha_cda").value = "";
   document.getElementById("e1_unidad_resolutoria").value = "";
   document.getElementById("e1_avance").value = "";
+  document.getElementById("e1_afectados").value = "";
+  document.getElementById("e1_reportaron").value = "";
   document.getElementById("mc_escenario_1").classList.remove("hidden");
 }
 
 document.getElementById("e1_btn_guardar").addEventListener("click", async () => {
   const msg = document.getElementById("mc_msg");
   try {
-    const body = { estado_ticket: document.getElementById("mc_estado").value };
+    const body = {};
+    const { estado: nuevoEstado } = mcAccionActual();
+    if (nuevoEstado) body.estado_ticket = nuevoEstado;
+    const conteo = (id, etiqueta) => {
+      const raw = document.getElementById(id).value.trim();
+      if (raw === "") return null;
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n < 0) throw new Error(`${etiqueta}: indica un número entero igual o mayor que 0.`);
+      return n;
+    };
+    const afectados = conteo("e1_afectados", "Cantidad de clientes afectados");
+    const reportaron = conteo("e1_reportaron", "Cantidad de clientes que reportaron");
+    if (afectados !== null) body.nro_clientes_afectados = afectados;
+    if (reportaron !== null) body.no_clientes_reportaron = reportaron;
     const fechaCmr = document.getElementById("e1_fecha_cmr").value;
     const fechaCda = document.getElementById("e1_fecha_cda").value;
     const unidad = document.getElementById("e1_unidad_resolutoria").value;
@@ -676,9 +764,11 @@ document.getElementById("e1_btn_guardar").addEventListener("click", async () => 
     if (fechaCda) body.fecha_apertura_cda = fechaCda;
     if (unidad) body.unidad_resolutoria = unidad;
     if (avance) body.avance_cmr = avance;
+    if (Object.keys(body).length === 0) throw new Error("No hay cambios para guardar: llena al menos un campo o elige otra acción.");
 
     await apiSend(`/tickets/${mcTicket.id}/masivo`, "PATCH", body);
     showMsg(msg, `Ticket ${mcTicket.ticket_cmr} actualizado correctamente (modificación masiva).`, true);
+    await mcRefrescarTicket();
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -745,6 +835,7 @@ document.getElementById("e2_btn_guardar").addEventListener("click", async () => 
   try {
     await apiSend(`/tickets/${mcTicket.id}/puertos`, "PATCH", { puertos: cambios });
     showMsg(msg, `${cambios.length} registro(s) actualizados correctamente.`, true);
+    await mcRefrescarTicket();
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -767,6 +858,7 @@ document.getElementById("e3_btn_guardar").addEventListener("click", async () => 
     }
     await apiSend(`/tickets/${mcTicket.id}/cerrar`, "POST", { fecha_solucion_cmr, fecha_solucion_cda });
     showMsg(msg, `Ticket ${mcTicket.ticket_cmr} cerrado correctamente (cierre masivo).`, true);
+    await mcRefrescarTicket();
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -817,6 +909,7 @@ document.getElementById("e4_btn_guardar").addEventListener("click", async () => 
     }
     await apiSend(`/tickets/${mcTicket.id}/puertos`, "PATCH", { puertos: seleccionados });
     showMsg(msg, `${seleccionados.length} registro(s) cerrados correctamente.`, true);
+    await mcRefrescarTicket();
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -1055,10 +1148,7 @@ document.getElementById("me_btn_guardar").addEventListener("click", async () => 
     if (Object.keys(masivoBody).length) partes.push("datos del ticket actualizados");
     if (cerrarBody) partes.push("ticket cerrado");
     showMsg(msg, `Ticket ${mcTicket.ticket_cmr}: ${partes.join(", ")}.`, true);
-    // refresca los datos en pantalla con lo guardado
-    const data = await apiGet(`/tickets/${encodeURIComponent(mcTicket.ticket_cmr)}`);
-    mcTicket = data.ticket; mcPuertos = data.puertos;
-    mcRenderEnlace(meCtx.alcance, meCtx.cerrado, meCtx.estado);
+    await mcRefrescarTicket();   // refresca tarjetas y formulario con lo guardado
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -1174,8 +1264,8 @@ function renderDetalle(editable, log) {
         <td>${campoSelect(`p_estado_${idx}`, estadosPuerto, p.estado_puerto)}</td>
       </tr>` : `
       <tr><td>${p.oficina_nombre || "-"}</td><td>${p.olt}</td><td>${p.sector}</td><td>${p.edificio}</td>
-      <td>${p.tarjeta}</td><td>${p.puerto}</td><td>${p.no_clientes_reportaron}</td>
-      <td>${p.nro_clientes_afectados}</td><td>${p.estado_puerto}</td></tr>`
+      <td>${p.tarjeta}</td><td>${p.puerto}</td><td>${formatearMiles(p.no_clientes_reportaron)}</td>
+      <td>${formatearMiles(p.nro_clientes_afectados)}</td><td>${p.estado_puerto}</td></tr>`
     ).join("")}</tbody>
   `;
   cont.appendChild(tbl);
@@ -1428,8 +1518,8 @@ async function cargarConsulta() {
         <td>${f.afectacion || "-"}</td>
         <td>${f.comentario || "-"}</td>
         <td>${f.descripcion || "-"}</td>
-        <td>${f.nro_clientes_afectados}</td>
-        <td>${f.no_clientes_reportaron}</td>
+        <td>${formatearMiles(f.nro_clientes_afectados)}</td>
+        <td>${formatearMiles(f.no_clientes_reportaron)}</td>
         <td>${f.oficina_nombre || "-"}</td>
         <td>${f.olt}</td>
         <td>${f.sector}</td>
@@ -1447,7 +1537,7 @@ async function cargarConsulta() {
       tbody.appendChild(tr);
     });
     clActualizarSeleccion();
-    contador.textContent = `${data.filas.length} registro(s) encontrados.`;
+    contador.textContent = `${formatearMiles(data.filas.length)} registro(s) encontrados.`;
   } catch (err) {
     tbody.innerHTML = `<tr><td colspan="21" class="msg error">${err.message}</td></tr>`;
   }
@@ -2196,13 +2286,13 @@ function renderKpisGenerico(filas, prefix) {
   const resuelto = unicos.filter((t) => t.estado_ticket === "RESUELTO").length;
   const cerrado = unicos.filter((t) => t.estado_ticket === "CERRADO").length;
 
-  document.getElementById(`${prefix}_kpi_curso`).textContent = curso;
-  document.getElementById(`${prefix}_kpi_observacion`).textContent = observacion;
-  document.getElementById(`${prefix}_kpi_ventana`).textContent = ventana;
-  document.getElementById(`${prefix}_kpi_resuelto`).textContent = resuelto;
-  document.getElementById(`${prefix}_kpi_cerrado`).textContent = cerrado;
-  document.getElementById(`${prefix}_kpi_activos`).textContent = curso + observacion + ventana;
-  document.getElementById(`${prefix}_kpi_gestionados`).textContent = resuelto + cerrado;
+  document.getElementById(`${prefix}_kpi_curso`).textContent = formatearMiles(curso);
+  document.getElementById(`${prefix}_kpi_observacion`).textContent = formatearMiles(observacion);
+  document.getElementById(`${prefix}_kpi_ventana`).textContent = formatearMiles(ventana);
+  document.getElementById(`${prefix}_kpi_resuelto`).textContent = formatearMiles(resuelto);
+  document.getElementById(`${prefix}_kpi_cerrado`).textContent = formatearMiles(cerrado);
+  document.getElementById(`${prefix}_kpi_activos`).textContent = formatearMiles(curso + observacion + ventana);
+  document.getElementById(`${prefix}_kpi_gestionados`).textContent = formatearMiles(resuelto + cerrado);
 }
 function renderKpisPizarra(filas) { renderKpisGenerico(filas, "piz"); }
 
@@ -2276,14 +2366,14 @@ function htmlFallbackBarras(items) {
   const max = Math.max(1, ...items.map((i) => i.valor));
   return `<div class="db-fb-contenedor">${items.map((i) =>
     `<div class="db-fb-row"><span class="db-fb-lbl" title="${escHtml(i.etiqueta)}">${escHtml(i.etiqueta)}</span>` +
-    `<span class="db-fb-bar"><i style="width:${(i.valor / max) * 100}%;background:${i.color}"></i></span><b>${i.valor}</b></div>`).join("")}</div>`;
+    `<span class="db-fb-bar"><i style="width:${(i.valor / max) * 100}%;background:${i.color}"></i></span><b>${formatearMiles(i.valor)}</b></div>`).join("")}</div>`;
 }
 function htmlFallbackDona(items) {
   const total = items.reduce((s, i) => s + i.valor, 0);
   let acum = 0;
   const tramos = total ? items.map((i) => { const ini = acum; acum += (i.valor / total) * 100; return `${i.color} ${ini}% ${acum}%`; }).join(",") : "#e6e0ee 0 100%";
   return `<div class="db-fb-contenedor"><div class="db-fb-dona" style="background:conic-gradient(${tramos})"></div>` +
-    `<div class="db-fb-leyenda">${items.map((i) => `<span><i style="background:${i.color}"></i>${escHtml(i.etiqueta)}: <b>${i.valor}</b></span>`).join("")}</div></div>`;
+    `<div class="db-fb-leyenda">${items.map((i) => `<span><i style="background:${i.color}"></i>${escHtml(i.etiqueta)}: <b>${formatearMiles(i.valor)}</b></span>`).join("")}</div></div>`;
 }
 // Dibuja con Chart.js; si la librería no está o falla, muestra la misma información en modo simple
 // (barras/dona en HTML) y deja un aviso visible con el motivo.
@@ -2296,6 +2386,12 @@ function ajustarScrollBarras(el, n) {
   const disponible = (wrap ? wrap.clientHeight : 0) - 16;
   const necesaria = n * 30 + 20;
   inner.style.height = necesaria > disponible && disponible > 0 ? necesaria + "px" : "100%";
+}
+// Etiqueta de tooltip con separador de miles (barras horizontales/verticales y dona)
+function tooltipMiles(ctx) {
+  const p = ctx.parsed;
+  const v = typeof p === "number" ? p : (ctx.chart.options.indexAxis === "y" ? p.x : p.y);
+  return `${ctx.label}: ${formatearMiles(v)}`;
 }
 function crearChartSeguro(canvasId, el, fallback, config) {
   const wrap = el.parentElement;
@@ -2326,7 +2422,7 @@ function renderSemaforoBar(filas, contId = "piz_semaforo_bar") {
   const conteos = cfg.map((c) => unicos.filter((t) => t.semaforo === c.color).length);
   cont.innerHTML = `
     <div class="db-semaforo-bar">
-      ${cfg.map((c, i) => `<div class="seg seg-${c.color}" style="flex-grow:${conteos[i]}"><span>${conteos[i]}</span></div>`).join("")}
+      ${cfg.map((c, i) => `<div class="seg seg-${c.color}" style="flex-grow:${conteos[i]}"><span>${formatearMiles(conteos[i])}</span></div>`).join("")}
     </div>
     <div class="db-semaforo-labels">
       ${cfg.map((c, i) => `<div style="flex-grow:${conteos[i]}">${c.label}</div>`).join("")}
@@ -2364,7 +2460,8 @@ function renderChartUnidad(filas, canvasId = "piz_chart_unidad") {
       },
       plugins: {
         legend: { display: false },
-        datalabels: { anchor: "end", align: "right", color: "#000", font: { family: FONT_DASH, weight: "bold", size: 12 } },
+        datalabels: { anchor: "end", align: "right", color: "#000", formatter: (v) => formatearMiles(v), font: { family: FONT_DASH, weight: "bold", size: 12 } },
+        tooltip: { callbacks: { label: tooltipMiles } },
       },
     },
   });
@@ -2399,7 +2496,8 @@ function renderChartOficina(filas, canvasId = "piz_chart_oficina") {
       },
       plugins: {
         legend: { display: false },
-        datalabels: { anchor: "end", align: "top", color: "#000", font: { family: FONT_DASH, weight: "bold", size: 11 } },
+        datalabels: { anchor: "end", align: "top", color: "#000", formatter: (v) => formatearMiles(v), font: { family: FONT_DASH, weight: "bold", size: 11 } },
+        tooltip: { callbacks: { label: tooltipMiles } },
       },
     },
   });
@@ -2436,10 +2534,11 @@ function renderChartDesglose(filas, canvasId) {
             valor: {
               anchor: "end", align: "end", offset: 8,
               color: "#000", font: { family: FONT_DASH, weight: "bold", size: 11 },
-              formatter: (v) => v,
+              formatter: (v) => formatearMiles(v),
             },
           },
         },
+        tooltip: { callbacks: { label: tooltipMiles } },
       },
     },
   });
@@ -2569,6 +2668,7 @@ function celdaDeColumna(clave, f, ctx) {
   const v = f[campo];
   const vacio = v === null || v === undefined || v === "";
   if (clave === "tickets.ticket_cmr") return [esc(formatearTicket(v))];
+  if (clave === "ticket_puertos.nro_clientes_afectados" || clave === "ticket_puertos.no_clientes_reportaron") return [vacio ? "-" : esc(formatearMiles(v))];
   if (clave === "calc.tiempo_cierre_horas") return [vacio ? "-" : Number(v).toFixed(1)];
   if (/\.(fecha_|creado_en|actualizado_en)/.test(clave)) return [vacio ? "-" : esc(formatearFechaHora(v))];
   if (clave === "tickets.unidad_resolutoria") return [vacio ? "-" : esc(v), estiloUnidad(v)];
@@ -2852,7 +2952,7 @@ function renderTop5PorEstado(filas, tablaId) {
 
   const tbody = document.querySelector(`#${tablaId} tbody`);
   if (!tbody) return;
-  tbody.innerHTML = filasTabla.map((f) => `<tr><td>${f.region}</td><td>${f.fallas}</td><td>${f.afectados}</td></tr>`).join("");
+  tbody.innerHTML = filasTabla.map((f) => `<tr><td>${f.region}</td><td>${formatearMiles(f.fallas)}</td><td>${formatearMiles(f.afectados)}</td></tr>`).join("");
 }
 
 function renderTablaReporte(filas) {
@@ -3066,6 +3166,7 @@ function construirRegistrosRepo(filasCrudas, ctx) {
   });
   const resolverOficina = (txt) => {
     if (vacioRepo(txt)) return null;
+    if (normTxt(txt) === "1 SOPORTE TECNICO PERO NO APLICA") txt = "SOPORTE TÉCNICO PERO NO APLICA";   // nombre anterior
     const porNombre = idxNombre.get(normTxt(txt));
     if (porNombre) return porNombre;
     const m = String(txt).trim().match(/^([A-Za-z0-9]{2,6})\s*-\s*/);

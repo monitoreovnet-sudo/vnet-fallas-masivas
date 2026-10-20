@@ -13,7 +13,11 @@ const CAMPOS_PERMITIDOS = [
   "fecha_apertura_cmr",
   "unidad_resolutoria",
   "oficina_id",
+  "nro_clientes_afectados",   // se aplican a TODOS los registros (ticket_puertos) del ticket
+  "no_clientes_reportaron",
 ];
+const PROPAGADOS = ["olt", "nro_clientes_afectados", "no_clientes_reportaron"];
+const CONTEOS = ["nro_clientes_afectados", "no_clientes_reportaron"];
 
 export async function onRequestPatch({ request, env, params }) {
   const db = env.DB;
@@ -31,9 +35,17 @@ export async function onRequestPatch({ request, env, params }) {
     return badRequest(`Ningún campo enviado es editable en modificación masiva. Permitidos: ${CAMPOS_PERMITIDOS.join(", ")}`);
   }
 
-  // "olt" es un caso especial: no es columna de tickets, se propaga a TODOS
+  for (const c of CONTEOS) {
+    if (campos.includes(c)) {
+      const n = Number(body[c]);
+      if (!Number.isInteger(n) || n < 0) return badRequest(`${c} debe ser un número entero igual o mayor que 0.`);
+      body[c] = n;
+    }
+  }
+
+  // "olt" y los conteos de clientes no son columnas de tickets: se propagan a TODOS
   // los ticket_puertos del ticket.
-  const camposTicket = campos.filter((c) => c !== "olt");
+  const camposTicket = campos.filter((c) => !PROPAGADOS.includes(c));
 
   if (camposTicket.length > 0) {
     const sets = camposTicket.map((c) => `${c} = ?`).join(", ");
@@ -73,6 +85,28 @@ export async function onRequestPatch({ request, env, params }) {
         campo: "olt",
         valor_anterior: p.olt,
         valor_nuevo: body.olt,
+        usuario_email: usuario,
+      });
+    }
+  }
+
+  for (const c of CONTEOS.filter((x) => campos.includes(x))) {
+    const anteriores = await db
+      .prepare(`SELECT id, ${c} AS valor FROM ticket_puertos WHERE ticket_id = ?`)
+      .bind(ticket.id)
+      .all();
+    await db.prepare(`UPDATE ticket_puertos SET ${c} = ?, actualizado_en = ? WHERE ticket_id = ?`)
+      .bind(body[c], nowIso(), ticket.id)
+      .run();
+    for (const p of anteriores.results) {
+      if (Number(p.valor) === body[c]) continue;
+      await logCambio(db, {
+        ticket_id: ticket.id,
+        ticket_puerto_id: p.id,
+        tipo_cambio: "masivo",
+        campo: c,
+        valor_anterior: p.valor,
+        valor_nuevo: body[c],
         usuario_email: usuario,
       });
     }

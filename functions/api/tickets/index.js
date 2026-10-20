@@ -105,7 +105,7 @@ export async function onRequestPost({ request, env }) {
   const ticketId = insertTicket.meta.last_row_id;
 
   // Integridad: oficinas especiales sin ubicación física => todo "N/A" (aunque el cliente envíe otra cosa)
-  const NOMBRES_NA = ["1. Soporte Técnico pero no aplica", "CENTRAL TELEFÓNICA", "HERRAMIENTAS VNET", "MERCADEO", "PAGOS"];
+  const NOMBRES_NA = ["SOPORTE TÉCNICO PERO NO APLICA", "CENTRAL TELEFÓNICA", "HERRAMIENTAS VNET", "MERCADEO", "PAGOS"];
   const { results: ofNA } = await db
     .prepare(`SELECT id FROM oficinas WHERE nombre IN (${NOMBRES_NA.map(() => "?").join(",")})`)
     .bind(...NOMBRES_NA)

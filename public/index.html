@@ -107,7 +107,7 @@
         <label>Tipo de ubicación</label>
         <select id="c_ubicacion_tipo">
           <option value="">Seleccione:</option>
-          <option value="NO_APLICA">1. Soporte Técnico pero no aplica</option>
+          <option value="NO_APLICA">SOPORTE TÉCNICO PERO NO APLICA</option>
           <option value="ENLACE">ENLACE</option>
           <option value="TRAMO">TRAMO</option>
           <option value="TRONCAL">TRONCAL</option>
@@ -156,14 +156,10 @@
   <section id="tab-modificar" class="tab-panel">
     <h2>Modificar / Cerrar Ticket</h2>
 
-    <div class="grid-3">
+    <div class="grid-2">
       <div class="field">
         <label>Número de Ticket</label>
         <input id="mc_ticket" placeholder="Ingrese el número de ticket" />
-      </div>
-      <div class="field">
-        <label>Nuevo Estado del Ticket</label>
-        <select id="mc_estado"></select>
       </div>
       <div class="field field-btn">
         <div class="search-row">
@@ -173,6 +169,22 @@
       </div>
     </div>
     <div id="mc_msg_busqueda" class="msg"></div>
+
+    <!-- Indicadores del ticket seleccionado -->
+    <div id="mc_cards" class="mc-cards hidden">
+      <div class="mc-card"><span class="mc-card-titulo">Unidad resolutoria</span><span class="mc-card-valor" id="mc_card_unidad">-</span></div>
+      <div class="mc-card"><span class="mc-card-titulo">Estado del ticket</span><span class="mc-card-valor" id="mc_card_estado">-</span></div>
+      <div class="mc-card"><span class="mc-card-titulo">Clientes afectados</span><span class="mc-card-valor" id="mc_card_afectados">-</span></div>
+      <div class="mc-card"><span class="mc-card-titulo">Nro. de clientes que reportaron</span><span class="mc-card-valor" id="mc_card_reportaron">-</span></div>
+    </div>
+
+    <!-- Campo único "Cambio de Campo o Cierre de Ticket": se reubica al final del formulario activo -->
+    <div id="mc_accion_holder" class="hidden">
+      <div class="field" id="mc_accion_field">
+        <label for="mc_accion">Cambio de Campo o Cierre de Ticket</label>
+        <select id="mc_accion"></select>
+      </div>
+    </div>
 
     <!-- Escenario 1: <> Cerrado + Masivo -->
     <div id="mc_escenario_1" class="hidden">
@@ -193,10 +205,21 @@
           <select id="e1_unidad_resolutoria"><option value="">No modificar</option></select>
         </div>
       </div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Cantidad de clientes afectados</label>
+          <input id="e1_afectados" type="number" min="0" step="1" placeholder="No modificar" />
+        </div>
+        <div class="field">
+          <label>Cantidad de clientes que reportaron</label>
+          <input id="e1_reportaron" type="number" min="0" step="1" placeholder="No modificar" />
+        </div>
+      </div>
       <div class="field">
         <label>Avance del CMR</label>
         <textarea id="e1_avance" rows="2" placeholder="Avance..."></textarea>
       </div>
+      <div id="mc_slot_1" class="mc-slot"></div>
       <button id="e1_btn_guardar" class="btn-primary">Aplicar a Todo el Ticket</button>
     </div>
 
@@ -211,6 +234,7 @@
         </thead>
         <tbody></tbody>
       </table>
+      <div id="mc_slot_2" class="mc-slot"></div>
       <button id="e2_btn_guardar" class="btn-primary">Guardar Cambios por Puerto</button>
     </div>
 
@@ -229,6 +253,7 @@
           <input id="e3_fecha_cda" type="datetime-local" />
         </div>
       </div>
+      <div id="mc_slot_3" class="mc-slot"></div>
       <button id="e3_btn_guardar" class="btn-primary">Cerrar Todo el Ticket</button>
     </div>
 
@@ -253,6 +278,7 @@
         </thead>
         <tbody></tbody>
       </table>
+      <div id="mc_slot_4" class="mc-slot"></div>
       <button id="e4_btn_guardar" class="btn-primary">Cerrar Puertos Marcados</button>
     </div>
 
@@ -304,6 +330,7 @@
         <label>Avance del CMR</label>
         <textarea id="me_avance" rows="2" placeholder="Avance..."></textarea>
       </div>
+      <div id="mc_slot_5" class="mc-slot"></div>
       <button id="me_btn_guardar" class="btn-primary" type="button">Guardar</button>
     </div>
 
