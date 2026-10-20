@@ -97,15 +97,15 @@ INSERT INTO oficinas (codigo, nombre, estado, localidad) VALUES
 -- Oficinas ESPECIALES: no son oficinas físicas. Se eligen en el paso "Tipo de
 -- ubicación" (1. Soporte Técnico pero no aplica / ENLACE / TRAMO / TRONCAL) o se asignan
 -- automáticamente según el Tipo (CENTRAL TELEFÓNICA, HERRAMIENTAS VNET,
--- MERCADEO, PAGOS). Estado y Localidad = su propio nombre (igual que CDA, CDC,
+-- MERCADEO, PAGOS). Estado y Localidad = 'N/A' en las 5 sin ubicación física (ENLACE/TRAMO/TRONCAL conservan su nombre; igual que CDA, CDC,
 -- CORP, MASIVO en la lista canónica). El "1." inicial las ordena de primero.
 INSERT INTO oficinas (codigo, nombre, estado, localidad, tipo) VALUES
-('SOP', '1. Soporte Técnico pero no aplica', '1. Soporte Técnico pero no aplica', '1. Soporte Técnico pero no aplica', 'especial'),
+('SOP', '1. Soporte Técnico pero no aplica', 'N/A', 'N/A', 'especial'),
 ('ENLACE', 'ENLACE', 'ENLACE', 'ENLACE', 'especial'),
 ('TRAMO', 'TRAMO', 'TRAMO', 'TRAMO', 'especial'),
 ('TRONCAL', 'TRONCAL', 'TRONCAL', 'TRONCAL', 'especial'),
-('CENTRAL', 'CENTRAL TELEFÓNICA', 'CENTRAL TELEFÓNICA', 'CENTRAL TELEFÓNICA', 'especial'),
-('HERRAM', 'HERRAMIENTAS VNET', 'HERRAMIENTAS VNET', 'HERRAMIENTAS VNET', 'especial'),
-('MERCAD', 'MERCADEO', 'MERCADEO', 'MERCADEO', 'especial'),
-('PAGOS', 'PAGOS', 'PAGOS', 'PAGOS', 'especial');
+('CENTRAL', 'CENTRAL TELEFÓNICA', 'N/A', 'N/A', 'especial'),
+('HERRAM', 'HERRAMIENTAS VNET', 'N/A', 'N/A', 'especial'),
+('MERCAD', 'MERCADEO', 'N/A', 'N/A', 'especial'),
+('PAGOS', 'PAGOS', 'N/A', 'N/A', 'especial');
 

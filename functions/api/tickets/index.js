@@ -104,6 +104,19 @@ export async function onRequestPost({ request, env }) {
 
   const ticketId = insertTicket.meta.last_row_id;
 
+  // Integridad: oficinas especiales sin ubicación física => todo "N/A" (aunque el cliente envíe otra cosa)
+  const NOMBRES_NA = ["1. Soporte Técnico pero no aplica", "CENTRAL TELEFÓNICA", "HERRAMIENTAS VNET", "MERCADEO", "PAGOS"];
+  const { results: ofNA } = await db
+    .prepare(`SELECT id FROM oficinas WHERE nombre IN (${NOMBRES_NA.map(() => "?").join(",")})`)
+    .bind(...NOMBRES_NA)
+    .all();
+  const idsNA = new Set((ofNA || []).map((o) => Number(o.id)));
+  for (const p of puertos) {
+    if (p.oficina_id && idsNA.has(Number(p.oficina_id))) {
+      p.olt = p.tarjeta = p.puerto = p.sector = p.edificio = "N/A";
+    }
+  }
+
   for (const p of puertos) {
     const ins = await db
       .prepare(

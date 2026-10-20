@@ -1,4 +1,4 @@
--- Migración 006: corrige Estado (región) y Localidad de las oficinas reales
+y-- Migración 006: corrige Estado (región) y Localidad de las oficinas reales
 -- con la lista canónica del negocio (86 oficinas). No borra ninguna oficina
 -- existente -- solo actualiza estado/localidad de las que coinciden por
 -- código, y agrega las que falten. Las entradas que no son oficinas reales
@@ -94,8 +94,6 @@ UPDATE oficinas SET nombre = 'LVR - VILLA DEL ROSARIO', estado = 'ZULIA', locali
 INSERT OR IGNORE INTO oficinas (codigo, nombre, estado, localidad) VALUES ('LVR', 'LVR - VILLA DEL ROSARIO', 'ZULIA', 'MACHIQUES');
 UPDATE oficinas SET nombre = 'LZT - LA AZULITA', estado = 'MERIDA', localidad = 'EL VIGIA' WHERE codigo = 'LZT';
 INSERT OR IGNORE INTO oficinas (codigo, nombre, estado, localidad) VALUES ('LZT', 'LZT - LA AZULITA', 'MERIDA', 'EL VIGIA');
-UPDATE oficinas SET nombre = 'MASIVO - MASIVO', estado = 'MASIVO', localidad = 'MASIVO' WHERE codigo = 'MASIVO';
-INSERT OR IGNORE INTO oficinas (codigo, nombre, estado, localidad) VALUES ('MASIVO', 'MASIVO - MASIVO', 'MASIVO', 'MASIVO');
 UPDATE oficinas SET nombre = 'MAT - LA FLORESTA', estado = 'MONAGAS', localidad = 'MATURIN' WHERE codigo = 'MAT';
 INSERT OR IGNORE INTO oficinas (codigo, nombre, estado, localidad) VALUES ('MAT', 'MAT - LA FLORESTA', 'MONAGAS', 'MATURIN');
 UPDATE oficinas SET nombre = 'MAZ - ZONA INDUSTRIAL', estado = 'MONAGAS', localidad = 'MATURIN' WHERE codigo = 'MAZ';
