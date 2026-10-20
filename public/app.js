@@ -627,49 +627,40 @@ function mcOcultarEscenarios() {
   document.getElementById("mc_enlace").classList.add("hidden");
 }
 
-// Campo único "Cambio de Campo o Cierre de Ticket" (reemplaza al antiguo "Nuevo estado del ticket").
-//   CAMPO   -> solo se cambian campos (el estado no se toca)
-//   CERRADO -> cierre del ticket
-//   otro    -> cambio de estado a ese valor (EN OBSERVACIÓN, VENTANA DE MANTENIMIENTO, ...)
-const MC_ACCION_CAMPO = "CAMPO";
-function mcLlenarAccion() {
-  const sel = document.getElementById("mc_accion");
-  sel.innerHTML = "";
-  const add = (value, texto, grupo) => {
-    const o = document.createElement("option");
-    o.value = value; o.textContent = texto;
-    (grupo || sel).appendChild(o);
-  };
-  add(MC_ACCION_CAMPO, "Cambio de campo (mantener el estado)");
-  const estados = (LOOKUPS.estados_ticket || []).map((e) => e.nombre);
-  const otros = estados.filter((e) => e !== "CERRADO");
-  if (otros.length) {
-    const g = document.createElement("optgroup");
-    g.label = "Cambiar estado a";
-    otros.forEach((e) => add(e, e, g));
-    sel.appendChild(g);
-  }
-  add("CERRADO", "Cierre de ticket");
-  sel.value = MC_ACCION_CAMPO;
-}
-// { cerrado, estado }  (estado = null cuando solo se cambian campos)
+// Paso 1: "Cambio de Campo o Cierre de Ticket" (al elegir, aparecen el Nº de ticket y los dos botones)
+//   CAMPO  -> indicadores + campos editables (masivo) o tabla por registro (puntual)
+//   CIERRE -> solo fechas de cierre (todo el ticket, o los registros marcados)
+function mcLlenarAccion() { document.getElementById("mc_accion").value = ""; }
 function mcAccionActual() {
-  const v = document.getElementById("mc_accion").value || MC_ACCION_CAMPO;
-  return { cerrado: v === "CERRADO", estado: v === MC_ACCION_CAMPO ? null : v };
+  const v = document.getElementById("mc_accion").value;
+  return { cerrado: v === "CIERRE", estado: v === "CIERRE" ? "CERRADO" : null, elegida: !!v };
 }
-function mcMoverAccion(slotId) {
-  document.getElementById(slotId).appendChild(document.getElementById("mc_accion_field"));
-}
+function mcFechaCorta(v) { return v ? formatearFechaHora(v) : "-"; }
 
-// Indicadores de lectura rápida del ticket seleccionado (la lógica de "clientes" sigue la de los tableros: 1.er registro)
+// Estados que se pueden asignar con "Cambio de campo" (CERRADO se hace por "Cierre de Ticket")
+function mcLlenarEstados(select, textoVacio, actual) {
+  select.innerHTML = "";
+  if (textoVacio) { const o = document.createElement("option"); o.value = ""; o.textContent = textoVacio; select.appendChild(o); }
+  (LOOKUPS.estados_ticket || []).map((e) => e.nombre).filter((n) => n !== "CERRADO").forEach((n) => {
+    const o = document.createElement("option"); o.value = n; o.textContent = n; select.appendChild(o);
+  });
+  if (actual !== undefined && actual !== null) select.value = actual;
+}
+// Indicadores de lectura rápida del ticket (solo en "Cambio de campo").
+// Los clientes siguen la lógica de los tableros (1.er registro del ticket).
 function mcRenderCards() {
   const c = document.getElementById("mc_cards");
-  if (!mcTicket) { c.classList.add("hidden"); return; }
+  if (!mcTicket || mcAccionActual().cerrado || !mcAccionActual().elegida) { c.classList.add("hidden"); return; }
   const p0 = mcPuertos[0] || {};
-  document.getElementById("mc_card_unidad").textContent = mcTicket.unidad_resolutoria || "-";
-  document.getElementById("mc_card_estado").textContent = mcTicket.estado_ticket || "-";
-  document.getElementById("mc_card_afectados").textContent = formatearMiles(p0.nro_clientes_afectados ?? 0);
-  document.getElementById("mc_card_reportaron").textContent = formatearMiles(p0.no_clientes_reportaron ?? 0);
+  const oficinas = [...new Set(mcPuertos.map((p) => p.oficina_nombre).filter(Boolean))];
+  const set = (id, v) => { document.getElementById(id).textContent = v; };
+  set("mc_card_apertura_cmr", mcFechaCorta(mcTicket.fecha_apertura_cmr));
+  set("mc_card_apertura_cda", mcFechaCorta(mcTicket.fecha_apertura_cda));
+  set("mc_card_oficina", oficinas.length ? oficinas.join(", ") : (mcTicket.oficina_nombre || "-"));
+  set("mc_card_unidad", mcTicket.unidad_resolutoria || "-");
+  set("mc_card_estado", mcTicket.estado_ticket || "-");
+  set("mc_card_afectados", formatearMiles(p0.nro_clientes_afectados ?? 0));
+  set("mc_card_reportaron", formatearMiles(p0.no_clientes_reportaron ?? 0));
   c.classList.remove("hidden");
 }
 
@@ -687,7 +678,6 @@ function mcRenderSegunAccion() {
   const { cerrado, estado } = mcAccionActual();
   if (mcEsEnlace(mcPuertos)) {         // ENLACE / TRAMO / TRONCAL: pantalla propia
     mcRenderEnlace(mcAlcance, cerrado, estado);
-    mcMoverAccion("mc_slot_5");
     return;
   }
   mcEscenario = cerrado ? (mcAlcance === "MASIVO" ? 3 : 4) : (mcAlcance === "MASIVO" ? 1 : 2);
@@ -695,9 +685,16 @@ function mcRenderSegunAccion() {
   else if (mcEscenario === 2) mcRenderEscenario2();
   else if (mcEscenario === 3) mcRenderEscenario3();
   else mcRenderEscenario4();
-  mcMoverAccion(`mc_slot_${mcEscenario}`);
 }
-document.getElementById("mc_accion").addEventListener("change", () => { if (mcTicket) mcRenderSegunAccion(); });
+// Al cambiar el paso 1 se limpia la pantalla: solo queda el Nº de ticket y los botones
+document.getElementById("mc_accion").addEventListener("change", () => {
+  mcTicket = null; mcPuertos = [];
+  mcOcultarEscenarios();
+  document.getElementById("mc_cards").classList.add("hidden");
+  document.getElementById("mc_msg").textContent = "";
+  document.getElementById("mc_msg_busqueda").textContent = "";
+  document.getElementById("mc_paso2").classList.toggle("hidden", !mcAccionActual().elegida);
+});
 
 async function mcBuscarYMostrar(alcance) {
   const msg = document.getElementById("mc_msg_busqueda");
@@ -706,6 +703,7 @@ async function mcBuscarYMostrar(alcance) {
   mcOcultarEscenarios();
 
   const cmr = document.getElementById("mc_ticket").value.trim();
+  if (!mcAccionActual().elegida) { showMsg(msg, "Elige primero: Cierre de Ticket o Cambio de Campo.", false); return; }
   if (!cmr) { showMsg(msg, "Ingrese el número de ticket.", false); return; }
 
   try {
@@ -714,7 +712,6 @@ async function mcBuscarYMostrar(alcance) {
     mcPuertos = data.puertos;
     mcAlcance = alcance;
     msg.textContent = "";
-    document.getElementById("mc_accion").value = MC_ACCION_CAMPO;
     mcRenderCards();
     mcRenderSegunAccion();
   } catch (err) {
@@ -733,6 +730,7 @@ function mcRenderEscenario1() {
   document.getElementById("e1_fecha_cmr").value = "";
   document.getElementById("e1_fecha_cda").value = "";
   document.getElementById("e1_unidad_resolutoria").value = "";
+  mcLlenarEstados(document.getElementById("e1_estado"), "No modificar", "");
   document.getElementById("e1_avance").value = "";
   document.getElementById("e1_afectados").value = "";
   document.getElementById("e1_reportaron").value = "";
@@ -743,7 +741,7 @@ document.getElementById("e1_btn_guardar").addEventListener("click", async () => 
   const msg = document.getElementById("mc_msg");
   try {
     const body = {};
-    const { estado: nuevoEstado } = mcAccionActual();
+    const nuevoEstado = document.getElementById("e1_estado").value;
     if (nuevoEstado) body.estado_ticket = nuevoEstado;
     const conteo = (id, etiqueta) => {
       const raw = document.getElementById(id).value.trim();
@@ -1037,7 +1035,7 @@ function mcRenderEnlace(alcance, cerrado, estado) {
     `${cerrado ? "Cierre" : "Modificación"} ${porOlt ? "por OLT" : "masiva"} — ${tipo}`;
   document.getElementById("me_hint").textContent = cerrado
     ? "Ticket cerrado: solo se pueden modificar las fechas de CIERRE (además de OLT, Ubicación, afectados y reportaron)."
-    : "Ticket activo: solo se puede modificar la fecha de APERTURA (además de OLT, Ubicación, afectados, reportaron y unidad).";
+    : "Ticket activo: solo se puede modificar la fecha de APERTURA (además de OLT, Ubicación, afectados, reportaron, estado y unidad).";
 
   // lista de OLT para autocompletar
   const dl = document.getElementById("me_olts_datalist");
@@ -1085,6 +1083,9 @@ function mcRenderEnlace(alcance, cerrado, estado) {
   // datos del ticket
   fillSelect(document.getElementById("me_unidad"), LOOKUPS.unidades_resolutorias, { valueKey: "nombre", placeholder: "No modificar" });
   document.getElementById("me_unidad").value = mcTicket.unidad_resolutoria || "";
+  document.getElementById("me_estado_field").classList.toggle("hidden", cerrado);
+  document.getElementById("me_unidad").parentElement.classList.toggle("hidden", cerrado);   // en el cierre solo se piden fechas
+  mcLlenarEstados(document.getElementById("me_estado"), "", mcTicket.estado_ticket || "");
   document.getElementById("me_bloque_apertura").classList.toggle("hidden", cerrado);
   document.getElementById("me_bloque_avance").classList.toggle("hidden", cerrado);
   document.getElementById("me_bloque_cierre").classList.toggle("hidden", !cerrado);
@@ -1130,8 +1131,8 @@ document.getElementById("me_btn_guardar").addEventListener("click", async () => 
       masivo: { olt: val("me_m_olt"), ubicacion: val("me_m_ubicacion"), afectados: val("me_m_afectados"), reportaron: val("me_m_reportaron") },
     });
     const { masivoBody, cerrarBody } = construirCambiosTicketEnlace({
-      ticket: mcTicket, alcance, cerrado, estado,
-      unidad: val("me_unidad"),
+      ticket: mcTicket, alcance, cerrado, estado: cerrado ? estado : val("me_estado"),
+      unidad: cerrado ? "" : val("me_unidad"),
       apertura: { cmr: val("me_apertura_cmr"), cda: val("me_apertura_cda") },
       cierre, avance: val("me_avance"),
     });

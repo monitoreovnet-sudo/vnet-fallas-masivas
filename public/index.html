@@ -156,34 +156,42 @@
   <section id="tab-modificar" class="tab-panel">
     <h2>Modificar / Cerrar Ticket</h2>
 
-    <div class="grid-2">
-      <div class="field">
-        <label>Número de Ticket</label>
-        <input id="mc_ticket" placeholder="Ingrese el número de ticket" />
-      </div>
-      <div class="field field-btn">
-        <div class="search-row">
-          <button id="mc_btn_masivo" class="btn-secondary" type="button">MASIVO</button>
-          <button id="mc_btn_puertos" class="btn-secondary" type="button">POR OLT / PUERTOS</button>
+    <!-- Paso 1: qué se quiere hacer (la pantalla solo muestra esto hasta elegir) -->
+    <div class="field mc-paso1">
+      <label for="mc_accion">Cambio de Campo o Cierre de Ticket</label>
+      <select id="mc_accion">
+        <option value="">Seleccione:</option>
+        <option value="CIERRE">Cierre de Ticket</option>
+        <option value="CAMPO">Cambio de Campo</option>
+      </select>
+    </div>
+
+    <!-- Paso 2: número de ticket y tipo de cambio -->
+    <div id="mc_paso2" class="hidden">
+      <div class="grid-2">
+        <div class="field">
+          <label>Número de Ticket</label>
+          <input id="mc_ticket" placeholder="Ingrese el número de ticket" />
+        </div>
+        <div class="field field-btn">
+          <div class="search-row">
+            <button id="mc_btn_masivo" class="btn-secondary" type="button">CAMBIO MASIVO</button>
+            <button id="mc_btn_puertos" class="btn-secondary" type="button">CAMBIO PUNTUAL</button>
+          </div>
         </div>
       </div>
+      <div id="mc_msg_busqueda" class="msg"></div>
     </div>
-    <div id="mc_msg_busqueda" class="msg"></div>
 
-    <!-- Indicadores del ticket seleccionado -->
+    <!-- Indicadores del ticket (solo en "Cambio de Campo") -->
     <div id="mc_cards" class="mc-cards hidden">
+      <div class="mc-card"><span class="mc-card-titulo">Fecha de apertura de CMR</span><span class="mc-card-valor" id="mc_card_apertura_cmr">-</span></div>
+      <div class="mc-card"><span class="mc-card-titulo">Fecha de apertura de CDA</span><span class="mc-card-valor" id="mc_card_apertura_cda">-</span></div>
+      <div class="mc-card"><span class="mc-card-titulo">Oficina</span><span class="mc-card-valor" id="mc_card_oficina">-</span></div>
       <div class="mc-card"><span class="mc-card-titulo">Unidad resolutoria</span><span class="mc-card-valor" id="mc_card_unidad">-</span></div>
       <div class="mc-card"><span class="mc-card-titulo">Estado del ticket</span><span class="mc-card-valor" id="mc_card_estado">-</span></div>
-      <div class="mc-card"><span class="mc-card-titulo">Clientes afectados</span><span class="mc-card-valor" id="mc_card_afectados">-</span></div>
-      <div class="mc-card"><span class="mc-card-titulo">Nro. de clientes que reportaron</span><span class="mc-card-valor" id="mc_card_reportaron">-</span></div>
-    </div>
-
-    <!-- Campo único "Cambio de Campo o Cierre de Ticket": se reubica al final del formulario activo -->
-    <div id="mc_accion_holder" class="hidden">
-      <div class="field" id="mc_accion_field">
-        <label for="mc_accion">Cambio de Campo o Cierre de Ticket</label>
-        <select id="mc_accion"></select>
-      </div>
+      <div class="mc-card"><span class="mc-card-titulo">Cantidad de clientes afectados</span><span class="mc-card-valor" id="mc_card_afectados">-</span></div>
+      <div class="mc-card"><span class="mc-card-titulo">Cantidad de clientes que reportaron</span><span class="mc-card-valor" id="mc_card_reportaron">-</span></div>
     </div>
 
     <!-- Escenario 1: <> Cerrado + Masivo -->
@@ -204,6 +212,10 @@
           <label>Unidad Resolutoria</label>
           <select id="e1_unidad_resolutoria"><option value="">No modificar</option></select>
         </div>
+        <div class="field">
+          <label>Estado del Ticket</label>
+          <select id="e1_estado"><option value="">No modificar</option></select>
+        </div>
       </div>
       <div class="grid-2">
         <div class="field">
@@ -219,7 +231,6 @@
         <label>Avance del CMR</label>
         <textarea id="e1_avance" rows="2" placeholder="Avance..."></textarea>
       </div>
-      <div id="mc_slot_1" class="mc-slot"></div>
       <button id="e1_btn_guardar" class="btn-primary">Aplicar a Todo el Ticket</button>
     </div>
 
@@ -234,7 +245,6 @@
         </thead>
         <tbody></tbody>
       </table>
-      <div id="mc_slot_2" class="mc-slot"></div>
       <button id="e2_btn_guardar" class="btn-primary">Guardar Cambios por Puerto</button>
     </div>
 
@@ -253,7 +263,6 @@
           <input id="e3_fecha_cda" type="datetime-local" />
         </div>
       </div>
-      <div id="mc_slot_3" class="mc-slot"></div>
       <button id="e3_btn_guardar" class="btn-primary">Cerrar Todo el Ticket</button>
     </div>
 
@@ -278,7 +287,6 @@
         </thead>
         <tbody></tbody>
       </table>
-      <div id="mc_slot_4" class="mc-slot"></div>
       <button id="e4_btn_guardar" class="btn-primary">Cerrar Puertos Marcados</button>
     </div>
 
@@ -317,6 +325,10 @@
           <label>Unidad Resolutoria</label>
           <select id="me_unidad"></select>
         </div>
+        <div class="field" id="me_estado_field">
+          <label>Estado del Ticket</label>
+          <select id="me_estado"></select>
+        </div>
       </div>
       <div id="me_bloque_apertura" class="grid-2 hidden">
         <div class="field"><label>Fecha Apertura CMR</label><input id="me_apertura_cmr" type="datetime-local" /></div>
@@ -330,7 +342,6 @@
         <label>Avance del CMR</label>
         <textarea id="me_avance" rows="2" placeholder="Avance..."></textarea>
       </div>
-      <div id="mc_slot_5" class="mc-slot"></div>
       <button id="me_btn_guardar" class="btn-primary" type="button">Guardar</button>
     </div>
 
