@@ -1,42 +1,41 @@
 :root {
-  --purple: #7b4fa5;
-  --purple-dark: #5e3b81;
-  --purple-light: #efe6f7;
-  --border: #d9cdea;
-  --text: #2c2233;
-  --bg: #f7f5fa;
-  --ok: #2e7d32;
-  --error: #c62828;
+  /* Sistema visual ATC (Experiencia al Cliente) */
+  --navy: #4A1259;
+  --navy-2: #6B1B7A;
+  --blue: #A6127A;
+  --teal: #00A99D;
+  --lime: #B7D433;
+  --purple: #6B1B7A;
+  --purple-dark: #4A1259;
+  --purple-light: #F3E9F7;
+  --border: #E7E1EE;
+  --text: #241B2E;
+  --muted: #7A7086;
+  --muted-2: #A79EB2;
+  --bg: #F7F5FA;
+  --card: #FFFFFF;
+  --ok: #1E9E64;
+  --warn: #D97706;
+  --error: #DC2626;
+  --shadow: 0 1px 2px rgba(74,18,89,0.07), 0 2px 6px rgba(74,18,89,0.07);
+  --radius: 12px;
+  --font: "Montserrat", "Segoe UI", Arial, Helvetica, sans-serif;
 }
 
 /* ---------- Rediseño de dashboards (Pizarra / Reporte) ----------
    Paleta y tipografía propias, aisladas del resto de la app con la
-   clase .dash-v2. Cuando llegue el archivo de la fuente Glacial
-   Indifference, se agrega aquí un @font-face y --db-font pasa a usarla
-   como primera opción (ya queda declarada, solo falta el archivo). */
-@font-face {
-  font-family: "Glacial Indifference";
-  src: url("assets/fonts/GlacialIndifference-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Glacial Indifference";
-  src: url("assets/fonts/GlacialIndifference-Bold.woff2") format("woff2");
-  font-weight: 700;
-  font-display: swap;
-}
+   clase .dash-v2. Tipografía: Montserrat (sistema visual ATC). */
 
 .dash-v2 {
-  --db-bg: #f0e6f8;
-  --db-primary: #9571cd;
-  --db-secondary: #baa3ed;
-  --db-tertiary: #e9e3ff;
-  --db-divider: #f0e6f8;
-  --db-text: #000000;
+  --db-bg: #F7F5FA;
+  --db-primary: #4A1259;
+  --db-secondary: #DCC8E6;
+  --db-tertiary: #F1E7F6;
+  --db-divider: #E7E1EE;
+  --db-text: #241B2E;
   --db-white: #ffffff;
-  --db-gris: #b3b3b3;
-  --db-font: "Glacial Indifference", "Quicksand", sans-serif;
+  --db-gris: #7A7086;
+  --db-font: "Montserrat", "Segoe UI", Arial, sans-serif;
   font-family: var(--db-font);
   background: var(--db-bg);
   color: var(--db-text);
@@ -55,7 +54,7 @@
 * { box-sizing: border-box; }
 
 .db-topbar {
-  background: var(--db-primary);
+  background: var(--db-secondary);   /* claro: los logos/títulos PNG son morados */
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -215,7 +214,7 @@
 
 body {
   margin: 0;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
   background: var(--bg);
   color: var(--text);
   overflow-x: hidden; /* protege contra el truco de full-bleed (100vw) de abajo */
@@ -510,10 +509,10 @@ input:focus, select:focus, textarea:focus {
   text-shadow: 0 1px 1px rgba(0,0,0,0.25);
   overflow: hidden;
 }
-.db-semaforo-bar .seg-VERDE { background: #7ed957; }
-.db-semaforo-bar .seg-AMARILLO { background: #ffde59; }
-.db-semaforo-bar .seg-NARANJA { background: #ff914d; }
-.db-semaforo-bar .seg-ROJO { background: #ff3131; }
+.db-semaforo-bar .seg-VERDE { background: #1E9E64; }
+.db-semaforo-bar .seg-AMARILLO { background: #EAB308; }
+.db-semaforo-bar .seg-NARANJA { background: #D97706; }
+.db-semaforo-bar .seg-ROJO { background: #DC2626; }
 
 .db-semaforo-labels {
   display: flex;
@@ -537,7 +536,7 @@ input:focus, select:focus, textarea:focus {
 .treemap-row { display: flex; height: 90px; border-radius: 4px; overflow: hidden; }
 .treemap-row .bloque {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  color: #2c2233; font-size: 11px; font-weight: 600; padding: 4px;
+  color: #241B2E; font-size: 11px; font-weight: 600; padding: 4px;
   border-right: 2px solid white; overflow: hidden;
 }
 .treemap-row .bloque .n { font-size: 16px; font-weight: 800; }
@@ -567,7 +566,7 @@ input:focus, select:focus, textarea:focus {
   border-radius: 10px;
   padding: 32px 28px;
   width: 320px;
-  box-shadow: 0 8px 24px rgba(60, 30, 90, 0.12);
+  box-shadow: 0 8px 24px rgba(74, 18, 89, 0.12);
 }
 .login-box h2 { margin-top: 4px; color: var(--purple-dark); font-size: 18px; }
 .login-box .btn-primary { width: 100%; margin-top: 6px; }
@@ -641,14 +640,14 @@ input:focus, select:focus, textarea:focus {
 /* ---- Consultar / Log: selección y eliminación (solo administrador) ---- */
 .cl-titulo-fila { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .cl-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.btn-danger { background: #c0392b; color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.btn-danger { background: #DC2626; color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
 .btn-danger:disabled { opacity: .5; cursor: not-allowed; }
 .cl-sel { display: none; width: 34px; text-align: center; }
 .cl-admin .cl-sel { display: table-cell; }
 tr.cl-fila-sel td { box-shadow: inset 0 0 0 9999px rgba(192, 57, 43, .16); }
 .modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: flex; align-items: center; justify-content: center; z-index: 9999; }
 .modal-box { background: #fff; border-radius: 12px; padding: 20px 22px; max-width: 440px; width: 92%; box-shadow: 0 10px 40px rgba(0, 0, 0, .3); }
-.modal-box h3 { margin-top: 0; color: #c0392b; }
+.modal-box h3 { margin-top: 0; color: #DC2626; }
 .modal-botones { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
 
 /* ---- Dashboards: avisos y gráficas en modo simple ---- */
@@ -672,18 +671,18 @@ tr.cl-fila-sel td { box-shadow: inset 0 0 0 9999px rgba(192, 57, 43, .16); }
 .rpt-config input[type="text"] { width: 100%; min-width: 150px; }
 .rpt-config input[type="number"] { width: 84px; }
 .rpt-config select { width: 76px; }
-.rpt-asa { cursor: grab; text-align: center; width: 28px; color: #7a5aa6; font-size: 16px; user-select: none; }
+.rpt-asa { cursor: grab; text-align: center; width: 28px; color: #6B1B7A; font-size: 16px; user-select: none; }
 .rpt-fila-oculta td:not(.rpt-asa):not(.rpt-td-visible) { opacity: .45; }
-.rpt-fila-arrastre { outline: 2px dashed var(--purple-dark, #5b2d8e); background: #f3ecfb; }
+.rpt-fila-arrastre { outline: 2px dashed var(--purple-dark, #4A1259); background: #f3ecfb; }
 .rpt-estilo, .rpt-orden { white-space: nowrap; }
 .rpt-estilo button, .rpt-orden button {
   min-width: 30px; height: 28px; border: 1px solid #c9b8e0; background: #fff; border-radius: 6px; cursor: pointer; font-family: inherit;
 }
-.rpt-estilo button.on { background: var(--purple-dark, #5b2d8e); color: #fff; border-color: transparent; }
+.rpt-estilo button.on { background: var(--purple-dark, #4A1259); color: #fff; border-color: transparent; }
 .rpt-orden button:disabled { opacity: .35; cursor: default; }
 .rpt-preview { max-height: none; margin: 8px 0 0; }
 .rpt-campo-agregar { min-width: 420px; flex: 1; }
 .rpt-td-alias { min-width: 220px; }
 .rpt-bd { display: block; font-size: 11px; color: #8a7aa3; font-family: ui-monospace, Consolas, monospace; margin-top: 2px; }
-.rpt-quitar { width: 28px; height: 28px; border: 1px solid #e3b8b4; background: #fff; color: #c0392b; border-radius: 6px; cursor: pointer; }
+.rpt-quitar { width: 28px; height: 28px; border: 1px solid #e3b8b4; background: #fff; color: #DC2626; border-radius: 6px; cursor: pointer; }
 .rpt-quitar:disabled { opacity: .35; cursor: default; }

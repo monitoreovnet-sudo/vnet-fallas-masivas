@@ -2206,12 +2206,12 @@ function renderKpisGenerico(filas, prefix) {
 }
 function renderKpisPizarra(filas) { renderKpisGenerico(filas, "piz"); }
 
-const FONT_DASH = '"Glacial Indifference", "Quicksand", sans-serif';
+const FONT_DASH = '"Montserrat", "Segoe UI", Arial, sans-serif';
 if (window.Chart && window.ChartDataLabels) Chart.register(ChartDataLabels);
 
 const COLORES_UNIDAD = {
-  "OLR": "#6cb0e9", "MIGURA": "#875fc5", "TECNOLOGÍA": "#f3b86b",
-  "VENTANA DE MANTENIMIENTO": "#ffde59", "REPARACIONES": "#7ed957",
+  "OLR": "#4A1259", "MIGURA": "#A6127A", "TECNOLOGÍA": "#00A99D",
+  "VENTANA DE MANTENIMIENTO": "#B7D433", "REPARACIONES": "#D97706",
 };
 const ORDEN_UNIDADES = ["OLR", "MIGURA", "TECNOLOGÍA", "VENTANA DE MANTENIMIENTO", "REPARACIONES"];
 
@@ -2221,7 +2221,7 @@ function mezclarColores(c1, c2, t) {
   return `rgb(${Math.round(r1 + (r2 - r1) * t)},${Math.round(g1 + (g2 - g1) * t)},${Math.round(b1 + (b2 - b1) * t)})`;
 }
 function colorGradienteOficinas(n) {
-  const stops = ["#6cb0e9", "#875fc5", "#c15fc9", "#ef5fa7", "#ff3131"];
+  const stops = ["#00A99D", "#B7D433", "#D97706", "#DC2626"];
   if (n <= 1) return [stops[0]];
   const resultado = [];
   for (let i = 0; i < n; i++) {
@@ -2235,7 +2235,7 @@ function hexARgba(hex, alpha) {
   const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r},${g},${b},${alpha})`;
 }
-const SEMAFORO_HEX = { VERDE: "#7ed957", AMARILLO: "#ffde59", NARANJA: "#ff914d", ROJO: "#ff3131" };
+const SEMAFORO_HEX = { VERDE: "#1E9E64", AMARILLO: "#EAB308", NARANJA: "#D97706", ROJO: "#DC2626" };
 // "2026-10-04T09:30:00" -> "04/10/2026 09:30" (sin conversión de zona horaria; si no se reconoce, se muestra tal cual)
 function formatearFechaHora(v) {
   if (!v) return "-";
@@ -2408,9 +2408,9 @@ function renderChartOficina(filas, canvasId = "piz_chart_oficina") {
 function renderChartDesglose(filas, canvasId) {
   const unicos = ticketsUnicos(filas);
   const cfg = [
-    { estado: "VENTANA DE MANTENIMIENTO", label: "Ventana de Mantenimiento", color: "#baa3ed" },
-    { estado: "EN CURSO (ASIGNADO)", label: "En Curso Asignado", color: "#ab48ae" },
-    { estado: "EN OBSERVACIÓN", label: "En Observación", color: "#9571cd" },
+    { estado: "VENTANA DE MANTENIMIENTO", label: "Ventana de Mantenimiento", color: "#00A99D" },
+    { estado: "EN CURSO (ASIGNADO)", label: "En Curso Asignado", color: "#A6127A" },
+    { estado: "EN OBSERVACIÓN", label: "En Observación", color: "#4A1259" },
   ];
   const valores = cfg.map((c) => unicos.filter((t) => t.estado_ticket === c.estado).length);
   const total = valores.reduce((a, b) => a + b, 0) || 1;
