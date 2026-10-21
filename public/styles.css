@@ -765,3 +765,9 @@ input:focus, select:focus, textarea:focus {
 #cic_top10_olt th { font-size: 14px; padding: 4px; }
 #cic_top10_olt td:first-child { font-size: 12px; padding: 3px 4px; word-break: break-all; }
 #cic_top10_olt td:not(:first-child) { font-size: 12px; padding: 3px 4px; }
+
+/* Orden por encabezado */
+.db-tabla-maestra thead th[data-col] { cursor: pointer; user-select: none; }
+.db-tabla-maestra thead th[data-col]:hover { filter: brightness(1.15); }
+.db-tabla-maestra thead th[data-orden="asc"]::after { content: " \25B2"; font-size: 9px; }
+.db-tabla-maestra thead th[data-orden="desc"]::after { content: " \25BC"; font-size: 9px; }

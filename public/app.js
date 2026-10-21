@@ -3260,13 +3260,54 @@ async function cargarConfigReportes() {
     console.warn("No se pudo leer la configuración de reportes; se usa la de fábrica.", err);
   }
 }
+// Orden por encabezado (como en Excel): clic alterna ascendente → descendente → sin orden. Es independiente en cada informe.
+const ORDEN_TABLA = { piz: null, rep: null, cic: null };
+function valorOrdenTabla(clave, f, filaPorTicket) {
+  if (clave === "calc.fila") return filaPorTicket.get(f.ticket_cmr);
+  if (clave === "calc.tipo") return null;
+  if (clave === "calc.tiempo_abierto") return f.horas_abierta;
+  const v = f[CAMPO_EN_FILA[clave] || clave];
+  if (v === null || v === undefined || v === "") return null;
+  if (clave === "tickets.ticket_cmr") return Number(v);
+  if (clave === "ticket_puertos.nro_clientes_afectados" || clave === "ticket_puertos.no_clientes_reportaron" || clave === "calc.tiempo_cierre_horas") return Number(v);
+  return v;
+}
+function ordenarFilasTabla(filas, ord, filaPorTicket) {
+  const m = ord.dir === "desc" ? -1 : 1;
+  return filas.map((f, i) => [f, i, valorOrdenTabla(ord.clave, f, filaPorTicket)]).sort((a, b) => {
+    const x = a[2], y = b[2];
+    const nx = x === null || x === undefined || (typeof x === "number" && Number.isNaN(x));
+    const ny = y === null || y === undefined || (typeof y === "number" && Number.isNaN(y));
+    if (nx || ny) return nx && ny ? a[1] - b[1] : nx ? 1 : -1; // vacíos siempre al final
+    const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), "es", { numeric: true, sensitivity: "base" });
+    return c ? c * m : a[1] - b[1];
+  }).map((r) => r[0]);
+}
+function alternarOrdenTabla(prefix, clave) {
+  const o = ORDEN_TABLA[prefix];
+  ORDEN_TABLA[prefix] = !o || o.clave !== clave ? { clave, dir: "asc" } : o.dir === "asc" ? { clave, dir: "desc" } : null;
+  renderTablaDinamica(prefix, datosTablaActual(prefix));
+}
+function datosTablaActual(prefix) { return ULTIMOS_FILTRADOS[prefix] || []; }
+const ULTIMOS_FILTRADOS = { piz: [], rep: [], cic: [] };
+document.addEventListener("click", (e) => {
+  const th = e.target.closest && e.target.closest("table.db-tabla-maestra thead th[data-col]");
+  if (!th) return;
+  const tabla = th.closest("table");
+  const m = /^(piz|rep|cic)_table$/.exec(tabla.id || "");
+  if (m) alternarOrdenTabla(m[1], th.dataset.col);
+});
 function renderTablaDinamica(prefix, filas) {
+  ULTIMOS_FILTRADOS[prefix] = filas;
   const columnas = columnasEfectivas(prefix, REPORTES_CFG[prefix]);
-  const { ordenadas, filaPorTicket } = asignarFilaYColor(filas);
+  const { ordenadas: base, filaPorTicket } = asignarFilaYColor(filas);
+  const ord = ORDEN_TABLA[prefix];
+  const ordenadas = ord && columnas.some((c) => c.visible && c.db_column_name === ord.clave) ? ordenarFilasTabla(base, ord, filaPorTicket) : base;
   const { thead, tbody } = htmlTablaDinamica(columnas, ordenadas, (f) => ({ fila: filaPorTicket.get(f.ticket_cmr) }));
   const tabla = document.getElementById(`${prefix}_table`);
   tabla.tHead.innerHTML = thead;
   tabla.tBodies[0].innerHTML = tbody;
+  if (ord) { const th = [...tabla.tHead.querySelectorAll("th")].find((t) => t.dataset.col === ord.clave); if (th) th.dataset.orden = ord.dir; }
   ajustarAlturaTabla(`${prefix}_table`);
 }
 // /consulta con las columnas extra que el informe necesita (las que la fila no trae por defecto)
