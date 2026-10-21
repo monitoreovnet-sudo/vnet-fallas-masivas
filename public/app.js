@@ -763,6 +763,17 @@ function mcLimpiarPantalla() {
   document.getElementById("mc_msg").textContent = "";
   document.getElementById("mc_msg_busqueda").textContent = "";
 }
+// Tras guardar un cambio con éxito: se vacía el número de ticket y se oculta el formulario (el mensaje de éxito queda
+// visible) para que nadie aplique por error otro cambio sobre el mismo ticket.
+function mcFinalizarCambio() {
+  const msg = document.getElementById("mc_msg");
+  const texto = msg.textContent, clase = msg.className;
+  mcLimpiarPantalla();
+  msg.textContent = texto; msg.className = clase;
+  const inp = document.getElementById("mc_ticket");
+  inp.value = "";
+  inp.focus();
+}
 // Al cambiar el paso 1 se limpia la pantalla: solo queda el Nº de ticket y el botón de buscar
 document.getElementById("mc_accion").addEventListener("change", () => {
   mcLimpiarPantalla();
@@ -852,7 +863,7 @@ document.getElementById("e1_btn_guardar").addEventListener("click", async () => 
 
     await apiSend(`/tickets/${mcTicket.id}/masivo`, "PATCH", body);
     showMsg(msg, `Ticket ${mcTicket.ticket_cmr} actualizado correctamente (modificación masiva).`, true);
-    await mcRefrescarTicket();
+    mcFinalizarCambio();
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -912,7 +923,7 @@ document.getElementById("e2_btn_guardar").addEventListener("click", async () => 
   try {
     await apiSend(`/tickets/${mcTicket.id}/puertos`, "PATCH", { puertos: [{ id: p.id, ...cambio }] });
     showMsg(msg, "Registro actualizado correctamente.", true);
-    await mcRefrescarTicket();
+    mcFinalizarCambio();
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -936,7 +947,7 @@ document.getElementById("e3_btn_guardar").addEventListener("click", async () => 
     const r = await apiSend(`/tickets/${mcTicket.id}/cerrar`, "POST", { fecha_cierre_cmr, fecha_cierre_cda });
     showMsg(msg, `Ticket ${mcTicket.ticket_cmr} cerrado correctamente (${r.registros} registro(s)).` + (r.fecha_solucion_cda_copiada ? " La Fecha de Solución del CDA estaba vacía y se llenó con la de cierre." : ""), true);
     pizarraDatos = []; reporteDatos = []; cicloDatos = [];
-    await mcRefrescarTicket();
+    mcFinalizarCambio();
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -988,7 +999,7 @@ document.getElementById("e4_btn_guardar").addEventListener("click", async () => 
     const r = await apiSend(`/tickets/${mcTicket.id}/resolver`, "POST", { alcance: "PUNTUAL", fecha_solucion_cmr, fecha_solucion_cda, registros });
     showMsg(msg, `Ticket ${mcTicket.ticket_cmr}: ${mcResumenSolucion(r)}`, true);
     pizarraDatos = []; reporteDatos = []; cicloDatos = [];
-    await mcRefrescarTicket();
+    mcFinalizarCambio();
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -1012,7 +1023,7 @@ document.getElementById("e5_btn_guardar").addEventListener("click", async () => 
     const r = await apiSend(`/tickets/${mcTicket.id}/resolver`, "POST", { alcance: "MASIVO", fecha_solucion_cmr, fecha_solucion_cda });
     showMsg(msg, `Ticket ${mcTicket.ticket_cmr}: ${mcResumenSolucion(r)}`, true);
     pizarraDatos = []; reporteDatos = []; cicloDatos = [];
-    await mcRefrescarTicket();
+    mcFinalizarCambio();
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -1253,7 +1264,7 @@ document.getElementById("me_btn_guardar").addEventListener("click", async () => 
     if (Object.keys(masivoBody).length) partes.push("datos del ticket actualizados");
     if (cerrarBody) partes.push("ticket cerrado");
     showMsg(msg, `Ticket ${mcTicket.ticket_cmr}: ${partes.join(", ")}.`, true);
-    await mcRefrescarTicket();   // refresca tarjetas y formulario con lo guardado
+    mcFinalizarCambio();   // refresca tarjetas y formulario con lo guardado
   } catch (err) {
     showMsg(msg, err.message, false);
   }
