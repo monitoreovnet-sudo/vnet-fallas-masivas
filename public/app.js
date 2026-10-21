@@ -2548,6 +2548,11 @@ function cargarInforme(prefix) { return prefix === "piz" ? cargarPizarra() : pre
 // Cada filtro admite varios valores a la vez (selección múltiple). Estado por informe: { id_del_filtro: Set de valores }.
 // Un Set vacío = sin filtro ("Todos"). El <select> nativo queda oculto y refleja el primer valor (lo usan las pruebas).
 const FILTRO_SEL = { piz: {}, rep: {}, cic: {} };
+// Filtro "Otros" del Top 5 por Estado: lista de Estados que lo forman ("" = Estado vacío). null = sin filtro.
+const OTROS_SEL = { piz: null, rep: null, cic: null };
+const OTROS_MIEMBROS = { piz: [], rep: [], cic: [] };      // los que forman "Otros" en el último dibujo del Top 5
+const regionDe = (f) => String(f.region ?? "").trim();
+function pasaOtros(f, prefix) { const o = OTROS_SEL[prefix]; return !o || o.has(regionDe(f)); }
 function selDe(prefix, id) { return FILTRO_SEL[prefix][id] || (FILTRO_SEL[prefix][id] = new Set()); }
 function coincideFiltro(f, flt, v) {
   return v.has(String(f[flt.campo] ?? ""));
@@ -2697,7 +2702,7 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.q
 
 function filasQueCoincidenExcepto(filas, prefix, idExcluir) {
   const texto = idExcluir === "ticket_sel" ? "" : soloDigitosTexto(document.getElementById(`${prefix}_ticket`).value);
-  return filas.filter((f) => (!texto || String(f.ticket_cmr).includes(texto)) && FILTROS_CASCADA.every((flt) => {
+  return filas.filter((f) => (!texto || String(f.ticket_cmr).includes(texto)) && (idExcluir === "region" || pasaOtros(f, prefix)) && FILTROS_CASCADA.every((flt) => {
     if (flt.id === idExcluir) return true;
     const v = valorFiltro(prefix, flt.id);
     if (!v.size) return true;
@@ -2734,6 +2739,7 @@ function filtrarDatos(filas, prefix, sinEstado = false) {
   const textoTicket = soloDigitosTexto(document.getElementById(`${prefix}_ticket`).value);   // acepta "334 455" o "334455"
   return filas.filter((f) => {
     if (textoTicket && !String(f.ticket_cmr).includes(textoTicket)) return false;
+    if (!pasaOtros(f, prefix)) return false;
     return FILTROS_CASCADA.every((flt) => {
       if (sinEstado && flt.id === "estado_ticket") return true;
       const v = valorFiltro(prefix, flt.id);
@@ -2762,6 +2768,7 @@ function avisoDash(prefix, texto, reiniciar = false) {
 }
 
 function aplicarFiltros(prefix) {
+  if (OTROS_SEL[prefix] && selDe(prefix, "region").size) OTROS_SEL[prefix] = null;   // elegir un Estado concreto reemplaza al filtro "Otros"
   const datosCompletos = datosInforme(prefix);
   const universo = universoInforme(prefix, datosCompletos);   // lo que muestran tabla, gráficas y filtros
   const filtrados = filtrarDatos(universo, prefix);
@@ -2779,7 +2786,8 @@ function aplicarFiltros(prefix) {
   paso("tabla de tickets", () => renderTablaDinamica(prefix, filtrados));
   paso("gráfica de unidades", () => renderChartUnidad(filtrados, `${prefix}_chart_unidad`));
   paso("gráfica de oficinas", () => renderChartOficina(filtrados, `${prefix}_chart_oficina`));
-  paso("desglose de activos", () => renderChartDesglose(filtrados, `${prefix}_chart_desglose`));
+  if (prefix === "cic") paso("top 10 de OLT", () => renderTop10Olt(filtrados, "cic_top10_olt"));
+  else paso("desglose de activos", () => renderChartDesglose(filtrados, `${prefix}_chart_desglose`));
   paso("filtros", () => actualizarCascada(prefix, universo));
 }
 
@@ -3468,43 +3476,77 @@ document.getElementById("piz_btn_csv").addEventListener("click", () => {
 // REPORTE DIARIO DE FALLAS MASIVAS
 // ---------------------------------------------------------------
 function renderTop5PorEstado(filas, tablaId) {
+  const prefix = tablaId.split("_")[0];
   const unicos = ticketsUnicos(filas);
+  const tbody = document.querySelector(`#${tablaId} tbody`);
+  const suma = (arr) => ({ fallas: arr.reduce((s, x) => s + x.fallas, 0), afectados: arr.reduce((s, x) => s + x.afectados, 0) });
+  const celdas = (f) => `<td>${escHtml(f.region)}</td><td>${formatearMiles(f.fallas)}</td><td>${formatearMiles(f.afectados)}</td>`;
+
+  // Con el filtro "Otros" activo se ve esa sola fila (resaltada) y el total, igual que con un Estado concreto.
+  if (OTROS_SEL[prefix]) {
+    const t = suma(unicos.map((u) => ({ fallas: 1, afectados: Number(u.nro_clientes_afectados || 0) })));
+    if (!tbody) return;
+    tbody.innerHTML = t.fallas > 0
+      ? `<tr class="db-filtrable db-fila-activa" data-otros="1" title="Doble clic para quitar el filtro"><td>Otros</td><td>${formatearMiles(t.fallas)}</td><td>${formatearMiles(t.afectados)}</td></tr>` +
+        `<tr>${celdas({ region: "Total", ...t })}</tr>`
+      : "";
+    return;
+  }
+
+  // Un Estado vacío, nulo o en blanco nunca es una fila propia: se suma a "Otros".
   const porEstado = {};
+  const vacios = { fallas: 0, afectados: 0 };
   unicos.forEach((t) => {
-    const region = t.region || "SIN ESTADO";
-    if (!porEstado[region]) porEstado[region] = { fallas: 0, afectados: 0 };
-    porEstado[region].fallas += 1;
-    porEstado[region].afectados += Number(t.nro_clientes_afectados || 0);
+    const region = regionDe(t);
+    const dest = region ? (porEstado[region] || (porEstado[region] = { fallas: 0, afectados: 0 })) : vacios;
+    dest.fallas += 1;
+    dest.afectados += Number(t.nro_clientes_afectados || 0);
   });
   const entradas = Object.entries(porEstado).sort((a, b) => b[1].fallas - a[1].fallas);
   const top5 = entradas.slice(0, 5).map(([region, v]) => ({ region, ...v }));
   const resto = entradas.slice(5);
-  const filasTabla = top5.map((f) => ({ ...f, filtrable: f.region !== "SIN ESTADO" }));
-  if (resto.length > 0) {
-    filasTabla.push({
-      region: "Otros",
-      fallas: resto.reduce((s, [, v]) => s + v.fallas, 0),
-      afectados: resto.reduce((s, [, v]) => s + v.afectados, 0),
-    });
-  }
-  const totalFallas = entradas.reduce((s, [, v]) => s + v.fallas, 0);
-  if (totalFallas > 0) {
-    filasTabla.push({
-      region: "Total",
-      fallas: totalFallas,
-      afectados: entradas.reduce((s, [, v]) => s + v.afectados, 0),
-    });
-  }
+  const otros = suma([...resto.map(([, v]) => v), vacios]);
+  OTROS_MIEMBROS[prefix] = [...resto.map(([r]) => r), ...(vacios.fallas > 0 ? [""] : [])];
 
+  const regionesActivas = selDe(prefix, "region");
+  const html = top5.filter((f) => f.fallas > 0 || f.afectados > 0).map((f) =>
+    `<tr class="db-filtrable ${regionesActivas.has(f.region) ? "db-fila-activa" : ""}" data-region="${escHtml(f.region)}" title="Doble clic para filtrar por este Estado">${celdas(f)}</tr>`);
+  if (otros.fallas > 0 || otros.afectados > 0) {
+    html.push(`<tr class="db-filtrable" data-otros="1" title="Doble clic para filtrar por Otros (Estados fuera del Top 5 y registros sin Estado)">${celdas({ region: "Otros", ...otros })}</tr>`);
+  }
+  const total = suma([...entradas.map(([, v]) => v), vacios]);
+  if (unicos.length > 0) html.push(`<tr>${celdas({ region: "Total", ...total })}</tr>`);
+  if (tbody) tbody.innerHTML = html.join("");
+}
+
+// Ciclo 2026: Top 10 de OLT afectadas. Fallas = tickets distintos con esa OLT; afectados = clientes afectados de ese ticket en esa OLT
+// (una vez por ticket y OLT). N/A, NO INDICADO y OLT vacía se agrupan en "Otros" junto con las OLT fuera del Top 10.
+function renderTop10Olt(filas, tablaId) {
   const tbody = document.querySelector(`#${tablaId} tbody`);
   if (!tbody) return;
-  const prefix = tablaId.split("_")[0];
-  const regionesActivas = selDe(prefix, "region");
-  // Las filas en cero no se muestran. Doble clic en un Estado lo usa como filtro (otro doble clic lo quita).
-  tbody.innerHTML = filasTabla.filter((f) => f.fallas > 0 || f.afectados > 0).map((f) =>
-    f.filtrable
-      ? `<tr class="db-filtrable ${regionesActivas.has(f.region) ? "db-fila-activa" : ""}" data-region="${escHtml(f.region)}" title="Doble clic para filtrar por este Estado"><td>${escHtml(f.region)}</td><td>${formatearMiles(f.fallas)}</td><td>${formatearMiles(f.afectados)}</td></tr>`
-      : `<tr><td>${escHtml(f.region)}</td><td>${formatearMiles(f.fallas)}</td><td>${formatearMiles(f.afectados)}</td></tr>`).join("");
+  const norm = (v) => String(v ?? "").trim();
+  const sinOlt = (o) => !o || ["N/A", "NO INDICADO"].includes(o.toUpperCase());
+  const pares = new Map();   // "ticket|olt" -> afectados (primer registro)
+  filas.forEach((f) => {
+    const k = `${f.ticket_cmr}|${norm(f.olt)}`;
+    if (!pares.has(k)) pares.set(k, { olt: norm(f.olt), afectados: Number(f.nro_clientes_afectados || 0) });
+  });
+  const porOlt = {}, otrosSin = { fallas: 0, afectados: 0 };
+  pares.forEach((v) => {
+    const dest = sinOlt(v.olt) ? otrosSin : (porOlt[v.olt] || (porOlt[v.olt] = { fallas: 0, afectados: 0 }));
+    dest.fallas += 1; dest.afectados += v.afectados;
+  });
+  const entradas = Object.entries(porOlt).sort((a, b) => b[1].fallas - a[1].fallas || b[1].afectados - a[1].afectados);
+  const top = entradas.slice(0, 10);
+  const resto = entradas.slice(10).map(([, v]) => v).concat([otrosSin]);
+  const otros = { fallas: resto.reduce((s, x) => s + x.fallas, 0), afectados: resto.reduce((s, x) => s + x.afectados, 0) };
+  const totalF = entradas.reduce((s, [, v]) => s + v.fallas, 0) + otrosSin.fallas;
+  const totalA = entradas.reduce((s, [, v]) => s + v.afectados, 0) + otrosSin.afectados;
+  const fila = (n, f, a, extra = "") => `<tr${extra}><td>${escHtml(n)}</td><td>${formatearMiles(f)}</td><td>${formatearMiles(a)}</td></tr>`;
+  const html = top.map(([o, v]) => fila(o, v.fallas, v.afectados));
+  if (otros.fallas > 0) html.push(fila("Otros", otros.fallas, otros.afectados));
+  if (totalF > 0) html.push(fila("Total", totalF, totalA));
+  tbody.innerHTML = html.join("");
 }
 
 function renderTablaReporte(filas) {
@@ -3527,7 +3569,7 @@ function filasResumenPorEstadoParaExcel(filas) {
   const unicos = ticketsUnicos(filas);
   const porEstado = {};
   unicos.forEach((t) => {
-    const region = t.region || "SIN ESTADO";
+    const region = regionDe(t) || "Otros";
     if (!porEstado[region]) porEstado[region] = { fallas: 0, afectados: 0 };
     porEstado[region].fallas += 1;
     porEstado[region].afectados += Number(t.nro_clientes_afectados || 0);
@@ -3617,6 +3659,7 @@ document.getElementById("cic_btn_csv").addEventListener("click", () => {
 // ---------------------------------------------------------------
 const SELECT_DE_GRAFICA = { unidad: "unidad", oficina: "oficina", desglose: "estado_ticket" };
 function aplicarFiltroDoble(prefix, selectId, valor) {
+  if (selectId === "region") OTROS_SEL[prefix] = null;
   if (!document.getElementById(`${prefix}_${selectId}`) || valor === undefined || valor === null || valor === "") return;
   const set = selDe(prefix, selectId), v = String(valor);
   const yaEsElUnico = set.size === 1 && set.has(v);
@@ -3627,6 +3670,15 @@ function aplicarFiltroDoble(prefix, selectId, valor) {
 document.addEventListener("dblclick", (e) => {
   const t = e.target;
   if (!t || !t.closest) return;
+  // Top 5 por Estado: fila "Otros" (Estados fuera del Top 5 + registros sin Estado)
+  const trOtros = t.closest("tr[data-otros]");
+  if (trOtros) {
+    const prefix = trOtros.closest("table").id.split("_")[0];
+    if (OTROS_SEL[prefix]) OTROS_SEL[prefix] = null;
+    else { selDe(prefix, "region").clear(); OTROS_SEL[prefix] = new Set(OTROS_MIEMBROS[prefix]); }
+    aplicarFiltros(prefix);
+    return;
+  }
   // Top 5 por Estado
   const trTop = t.closest("tr[data-region]");
   if (trTop) {
