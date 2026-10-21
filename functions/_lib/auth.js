@@ -111,6 +111,22 @@ export async function verificarTokenEdicion(token, email, env) {
   } catch { return false; }
 }
 
+// --- Permiso de 2 minutos para registrar un ticket que ya existe (se obtiene volviendo a escribir la contraseña) ---
+const DURACION_DUPLICADO_MS = 2 * 60 * 1000;
+export async function crearTokenDuplicado(email, cmr, env) {
+  const payloadB64 = base64UrlEncode(JSON.stringify({ email, cmr: String(cmr), uso: "ticket-duplicado", exp: Date.now() + DURACION_DUPLICADO_MS }));
+  return `${payloadB64}.${await firmar(payloadB64, env.SESSION_SECRET)}`;
+}
+export async function verificarTokenDuplicado(token, email, cmr, env) {
+  if (!token || typeof token !== "string" || !token.includes(".")) return false;
+  const [payloadB64, firma] = token.split(".");
+  if (firma !== (await firmar(payloadB64, env.SESSION_SECRET))) return false;
+  try {
+    const p = JSON.parse(base64UrlDecode(payloadB64));
+    return p.uso === "ticket-duplicado" && p.email === email && p.cmr === String(cmr) && p.exp > Date.now();
+  } catch { return false; }
+}
+
 export function parseCookies(request) {
   const header = request.headers.get("Cookie") || "";
   const cookies = {};

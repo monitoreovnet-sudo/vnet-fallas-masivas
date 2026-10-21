@@ -1,4 +1,5 @@
 import { json, badRequest, currentUserEmail, logCambio, nowIso } from "../../_lib/helpers.js";
+import { verificarTokenDuplicado } from "../../_lib/auth.js";
 
 // GET /api/tickets?cmr=326159&estado=EN+CURSO&oficina_id=3&limit=50
 export async function onRequestGet({ request, env }) {
@@ -69,7 +70,10 @@ export async function onRequestPost({ request, env }) {
   }
 
   const existing = await db.prepare("SELECT id FROM tickets WHERE ticket_cmr = ?").bind(String(ticket_cmr)).first();
-  if (existing) {
+  // Ticket repetido: solo se permite con el permiso de 2 minutos (contraseña re-escrita); en ese caso los registros
+  // (OLT/Tarjeta/Puerto) se AGREGAN al ticket existente y sus datos generales no se tocan.
+  const agregando = !!existing;
+  if (existing && !(await verificarTokenDuplicado(body.token_duplicado, usuario, ticket_cmr, env))) {
     return badRequest(`Ya existe un ticket registrado con el número ${ticket_cmr}.`);
   }
 
@@ -79,7 +83,7 @@ export async function onRequestPost({ request, env }) {
   // ticket_puertos.oficina_id.
   const oficinaPrincipal = oficina_id || (puertos.find((p) => p.oficina_id) || {}).oficina_id || null;
 
-  const insertTicket = await db
+  const insertTicket = agregando ? null : await db
     .prepare(
       `INSERT INTO tickets
         (ticket_cmr, tickets_vinculados, fecha_apertura_cda, fecha_apertura_cmr, estado_ticket,
@@ -102,7 +106,7 @@ export async function onRequestPost({ request, env }) {
     )
     .run();
 
-  const ticketId = insertTicket.meta.last_row_id;
+  const ticketId = agregando ? existing.id : insertTicket.meta.last_row_id;
 
   // Integridad: oficinas especiales sin ubicación física => todo "N/A" (aunque el cliente envíe otra cosa)
   const NOMBRES_NA = ["SOPORTE TÉCNICO PERO NO APLICA", "CENTRAL TELEFÓNICA", "HERRAMIENTAS VNET", "MERCADEO", "PAGOS"];
@@ -154,9 +158,11 @@ export async function onRequestPost({ request, env }) {
     tipo_cambio: "creacion",
     campo: "ticket",
     valor_anterior: null,
-    valor_nuevo: `Ticket ${ticket_cmr} creado con ${puertos.length} puerto(s)`,
+    valor_nuevo: agregando
+      ? `Ticket ${ticket_cmr} ya existía: se agregaron ${puertos.length} registro(s) con confirmación de contraseña`
+      : `Ticket ${ticket_cmr} creado con ${puertos.length} puerto(s)`,
     usuario_email: usuario,
   });
 
-  return json({ id: ticketId, ticket_cmr: String(ticket_cmr), creado_en: nowIso() }, 201);
+  return json({ id: ticketId, ticket_cmr: String(ticket_cmr), creado_en: nowIso(), agregado: agregando }, 201);
 }

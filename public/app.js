@@ -574,9 +574,63 @@ function construirPuertosSegunModo(ctx) {
 }
 // CREAR-PURE-END
 
+// ---------------------------------------------------------------
+// Aviso de ticket repetido (Crear Ticket): al salir del cuadro del ticket se busca en la BD.
+//   Si existe: alerta con "Validar" (muestra el Log del ticket), "Continuar" (pide la contraseña y da 2 minutos) y "Cancelar".
+// ---------------------------------------------------------------
+const DUP = { cmr: null, token: null, hasta: 0 };
+const dupVigente = (cmr) => DUP.cmr === cmr && DUP.token && Date.now() < DUP.hasta;
+function dupMostrarAviso(cmr) {
+  return new Promise((resolve) => {
+    const nombre = (currentUser && (currentUser.nombre || currentUser.email)) || "usuario";
+    const ov = document.createElement("div");
+    ov.id = "modal_dup"; ov.className = "modal-overlay";
+    ov.innerHTML = `<div class="modal-box"><h3>Ticket ya registrado</h3>` +
+      `<p>Atención <b>${escHtml(nombre)}</b> el ticket que desea crear ya se encuentra en la base de datos, por favor validar antes de proceder.</p>` +
+      `<div class="modal-botones"><button type="button" class="btn-secondary" id="dup_cancelar">Cancelar</button>` +
+      `<button type="button" class="btn-secondary" id="dup_validar">Validar</button>` +
+      `<button type="button" class="btn-primary" id="dup_continuar">Continuar</button></div></div>`;
+    document.body.appendChild(ov);
+    const cerrar = (r) => { ov.remove(); resolve(r); };
+    ov.querySelector("#dup_validar").addEventListener("click", () => abrirModalLog(cmr));
+    ov.querySelector("#dup_cancelar").addEventListener("click", () => cerrar("cancelar"));
+    ov.querySelector("#dup_continuar").addEventListener("click", () => cerrar("continuar"));
+  });
+}
+let dupRevisando = null;
+// true = se puede seguir con ese número; false = se canceló (el cuadro queda vacío). Si ya hay una revisión en curso
+// (el blur del cuadro y el clic en "Crear" llegan casi juntos) se espera a esa misma.
+function revisarTicketRepetido() {
+  const cmr = document.getElementById("c_ticket_cmr").value.trim();
+  if (!cmr || dupVigente(cmr)) return Promise.resolve(true);
+  if (!dupRevisando) dupRevisando = revisarTicketRepetidoInterno(cmr).finally(() => { dupRevisando = null; });
+  return dupRevisando;
+}
+async function revisarTicketRepetidoInterno(cmr) {
+  const input = document.getElementById("c_ticket_cmr");
+  {
+    try {
+    let r;
+    try { r = await apiGet(`/tickets/existe?cmr=${encodeURIComponent(cmr)}`); } catch { return true; } // si la búsqueda falla, el servidor igual rechaza el repetido
+    if (!r.existe) return true;
+    for (;;) {
+      const op = await dupMostrarAviso(cmr);
+      if (op === "cancelar") { input.value = ""; return false; }
+      const res = await pedirClave(`Para continuar con el ticket ${formatearTicket(cmr)} (ya existente) escribe tu contraseña. Podrás registrarlo durante los próximos 2 minutos.`,
+        (password) => apiSend("/auth/verificar-duplicado", "POST", { password, ticket_cmr: cmr }),
+        { titulo: "Confirmar ticket existente", boton: "Continuar", peligro: false });
+      if (res && res.token) { DUP.cmr = cmr; DUP.token = res.token; DUP.hasta = Date.now() + (res.minutos || 2) * 60000; return true; }
+      // clave cancelada: vuelve al aviso
+    }
+    } finally { /* nada */ }
+  }
+}
+document.getElementById("c_ticket_cmr").addEventListener("blur", () => { revisarTicketRepetido(); });
+
 document.getElementById("btn_crear_ticket").addEventListener("click", async () => {
   const msg = document.getElementById("crear_msg");
   try {
+    if (!(await revisarTicketRepetido())) throw new Error("Ticket cancelado: escribe otro número de ticket.");
     const puertos = construirPuertosSegunModo({
       categoria: categoriaSeleccionada(),
       esSoporte: categoriaEsSoporte(),
@@ -602,8 +656,12 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
       descripcion: document.getElementById("c_descripcion").value,
       puertos,
     };
+    if (dupVigente(payload.ticket_cmr)) payload.token_duplicado = DUP.token;
     const res = await apiSend("/tickets", "POST", payload);
-    showMsg(msg, `Ticket ${res.ticket_cmr} creado correctamente (#${res.id}) con ${payload.puertos.length} puerto(s).`, true);
+    DUP.cmr = null; DUP.token = null; DUP.hasta = 0;
+    showMsg(msg, res.agregado
+      ? `Ticket ${res.ticket_cmr} ya existía: se agregaron ${payload.puertos.length} registro(s) (#${res.id}).`
+      : `Ticket ${res.ticket_cmr} creado correctamente (#${res.id}) con ${payload.puertos.length} puerto(s).`, true);
     oficinasState = [];
     enlaceState = [nuevaFilaEnlace()];
     renderOficinas();
