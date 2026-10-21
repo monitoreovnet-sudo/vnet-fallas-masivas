@@ -48,6 +48,7 @@
     <button class="tab-btn" data-tab="modificar">Modificar / Cerrar Ticket</button>
     <button class="tab-btn" data-tab="pizarra">Pizarra de Monitoreo</button>
     <button class="tab-btn" data-tab="reporte">Reporte Diario</button>
+    <button class="tab-btn" data-tab="ciclo">Ciclo 2026</button>
     <button class="tab-btn" data-tab="consultar">Consultar / Log</button>
     <button class="tab-btn hidden" data-tab="admin" id="nav_admin">Administración</button>
     <button class="tab-btn hidden" data-tab="repositorio" id="nav_repositorio">Repositorio</button>
@@ -521,6 +522,92 @@
     </div>
   </section>
 
+  <!-- ===================== CICLO 2026 (tickets gestionados) ===================== -->
+  <section id="tab-ciclo" class="tab-panel dash-v2">
+    <div class="db-topbar">
+      <img src="assets/vnet-logo.png" alt="VNET" class="db-topbar-logo" />
+      <div class="db-topbar-texto">Ciclo 2026</div>
+      <img src="assets/atc-logo.png" alt="Gerencia General de ATC" class="db-topbar-logo" />
+    </div>
+    <div class="db-estado-row">
+      <div class="db-estado-card"><div class="titulo">En Curso Asignado</div><div class="valor" id="cic_kpi_curso">-</div></div>
+      <div class="db-estado-card"><div class="titulo">En Observación</div><div class="valor" id="cic_kpi_observacion">-</div></div>
+      <div class="db-estado-card"><div class="titulo">Ventana de Mantenimiento</div><div class="valor" id="cic_kpi_ventana">-</div></div>
+      <div class="db-estado-card"><div class="titulo">Resuelto</div><div class="valor" id="cic_kpi_resuelto">-</div></div>
+      <div class="db-estado-card"><div class="titulo">Cerrado</div><div class="valor" id="cic_kpi_cerrado">-</div></div>
+      <div class="db-acciones">
+        <button id="cic_btn_actualizar" class="db-btn-circular" type="button">Actualizar</button>
+        <div class="db-btns-exportar">
+          <button id="cic_btn_csv" class="db-btn-rect" type="button">Exportar csv</button>
+          <button id="cic_btn_excel" class="db-btn-rect" type="button">Exportar xlsx</button>
+          <button id="cic_btn_pdf" class="db-btn-rect" type="button">Exportar pdf</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="db-resumen-row">
+      <div class="db-resumen-card db-resumen-activos"><div class="titulo">Tickets Activos</div><div class="valor" id="cic_kpi_activos">-</div></div>
+      <div class="db-resumen-card db-resumen-gestionados"><div class="titulo">Tickets Gestionados</div><div class="valor" id="cic_kpi_gestionados">-</div></div>
+    </div>
+
+    <div id="cic_filtros" class="db-filtros-grid">
+      <div class="db-filtro-item"><label>N° Ticket</label><input id="cic_ticket" inputmode="numeric" placeholder="Número" /></div>
+      <div class="db-filtro-item"><label>Estado del Ticket</label><select id="cic_estado_ticket"></select></div>
+      <div class="db-filtro-item"><label>Tipo de Falla</label><select id="cic_tipo_falla"></select></div>
+      <div class="db-filtro-item"><label>Afectación</label><select id="cic_afectacion"></select></div>
+      <div class="db-filtro-item"><label>Unidad Resolutoria</label><select id="cic_unidad"></select></div>
+      <div class="db-filtro-item"><label>Estado</label><select id="cic_region"></select></div>
+      <div class="db-filtro-item"><label>Oficina</label><select id="cic_oficina"></select></div>
+      <div class="db-filtro-item"><label>Semáforo</label><select id="cic_semaforo"></select></div>
+      <div class="db-filtro-item"><label>Grupo Horario</label><select id="cic_grupo_horario"></select></div>
+      <div class="db-filtro-item db-filtro-fecha-item">
+        <label>Fecha de apertura</label>
+        <div class="db-filtro-fecha">
+          <select id="cic_dia" aria-label="Día"></select>
+          <select id="cic_mes" aria-label="Mes"></select>
+          <select id="cic_anio" aria-label="Año"></select>
+        </div>
+      </div>
+    </div>
+
+    <div id="cic_semaforo_bar" class="db-semaforo-wrap"></div>
+
+    <div class="db-bloque6">
+      <div class="db-col">
+        <div class="db-col-titulo">Top 5 de Afectados por Estado</div>
+        <div class="db-chart-wrap db-top5-box"><table class="db-top5-tabla" id="cic_top5_estado">
+          <thead><tr><th>Estado</th><th>N° Fallas</th><th>N° Afectados</th></tr></thead>
+          <tbody></tbody>
+        </table></div>
+      </div>
+      <div class="db-col">
+        <div class="db-col-titulo">Fallas por Unidades Resolutorias</div>
+        <div class="db-chart-wrap"><div class="db-chart-inner"><canvas id="cic_chart_unidad"></canvas></div></div>
+      </div>
+      <div class="db-col">
+        <div class="db-col-titulo">Fallas por Oficinas</div>
+        <div class="db-chart-wrap"><div class="db-chart-inner"><canvas id="cic_chart_oficina"></canvas></div></div>
+      </div>
+      <div class="db-col">
+        <div class="db-col-titulo">Desglose Tickets Gestionados</div>
+        <div class="db-chart-wrap"><div class="db-chart-inner"><canvas id="cic_chart_desglose"></canvas></div></div>
+      </div>
+    </div>
+
+    <div class="db-table-scroll">
+      <table class="rows-table db-tabla-maestra" id="cic_table">
+        <thead>
+          <tr>
+            <th>Fila</th><th>Title</th><th>Tipo</th><th>Afectación</th><th>Unidad Resolutoria</th>
+            <th>Estado del Ticket</th><th>Apertura CMR</th><th>Grupo Horario CMR</th>
+            <th>Tiempo Abierto CMR</th><th>N° Cltes Afectados</th><th>Estado</th><th>Oficina</th><th>Avance CMR</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
   <section id="tab-consultar" class="tab-panel full-bleed">
     <div class="cl-titulo-fila">
       <h2>Consultar / Log</h2>
@@ -633,7 +720,7 @@
     <hr />
     <h2>Generador de reportes</h2>
     <p class="hint">
-      Arma las columnas de la Pizarra de Monitoreo y del Reporte Diario con <strong>cualquier campo de la base de datos</strong>:
+      Arma las columnas de la Pizarra de Monitoreo, el Reporte Diario y el Ciclo 2026 con <strong>cualquier campo de la base de datos</strong>:
       agrégalos con el selector, ponles el <strong>nombre visible</strong> (alias) que quieras, ordénalos arrastrando las filas (☰) o con las flechas,
       y define ancho (vacío = automático) y letra. Al guardar se aplica a todos los usuarios y al PDF; las exportaciones CSV/XLSX no cambian.
     </p>
@@ -642,6 +729,7 @@
         <select id="rpt_select">
           <option value="piz">Pizarra de Monitoreo</option>
           <option value="rep">Reporte Diario de Fallas Masivas</option>
+          <option value="cic">Ciclo 2026</option>
         </select>
       </div>
       <button id="rpt_btn_guardar" class="btn-primary" type="button">Guardar configuración</button>

@@ -2,7 +2,7 @@ import { json, badRequest, requireAdmin, nowIso } from "../../_lib/helpers.js";
 import { asegurarTablaConfig, sanearConfigReporte, REPORTES_VALIDOS } from "../../_lib/config-reportes.js";
 import { clavesPermitidas } from "../../_lib/campos-reportes.js";
 
-// PUT /api/admin/config-reportes   Body: { reporte: "piz"|"rep", config: { columnas: [...] } }
+// PUT /api/admin/config-reportes   Body: { reporte: "piz"|"rep"|"cic", config: { columnas: [...] } }
 export async function onRequestPut({ request, env }) {
   const admin = await requireAdmin(request, env);
   const body = await request.json().catch(() => ({}));

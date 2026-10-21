@@ -4,7 +4,7 @@
 //                               visible, ancho, fontSize, negrita, cursiva, subrayado } ] }
 import { etiquetaSugerida } from "./campos-reportes.js";
 
-export const REPORTES_VALIDOS = ["piz", "rep"];
+export const REPORTES_VALIDOS = ["piz", "rep", "cic"];
 
 export async function asegurarTablaConfig(db) {
   await db.prepare(

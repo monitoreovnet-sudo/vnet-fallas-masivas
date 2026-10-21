@@ -54,10 +54,10 @@ function soloDigitos(input) {
 // Formatea un número de ticket con un espacio visual cada 3 dígitos
 // (de derecha a izquierda), únicamente para lectura en pantallas de
 // consulta/log/dashboard. Nunca se usa este valor para guardar ni buscar.
-// El Nº de ticket es el ÚNICO número que NO lleva separador de miles.
+// Ej.: 334455 -> "334 455" · 1234567 -> "1 234 567" (espacio, no punto: el Nº de ticket no lleva separador de miles).
 function formatearTicket(numero) {
   if (!numero) return "";
-  return String(numero).trim();
+  return String(numero).trim().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 // Separador de miles (punto, como en es-VE): 1234567 -> "1.234.567". Para métricas, nunca para el Nº de ticket.
 function formatearMiles(v) {
@@ -87,7 +87,7 @@ function ajustarAlturaTabla(tableId, maxFilas = FILAS_VISIBLES_TABLA) {
     cont.style.maxHeight = Math.ceil(alto) + "px";
   }
 }
-function ajustarTodasLasTablas() { ["piz_table", "rep_table"].forEach((id) => ajustarAlturaTabla(id)); }
+function ajustarTodasLasTablas() { ["piz_table", "rep_table", "cic_table"].forEach((id) => ajustarAlturaTabla(id)); }
 window.addEventListener("resize", ajustarTodasLasTablas);
 
 // ---------------------------------------------------------------
@@ -101,6 +101,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
     if (btn.dataset.tab === "pizarra" && pizarraDatos.length === 0) cargarPizarra();
     if (btn.dataset.tab === "reporte" && reporteDatos.length === 0) cargarReporte();
+    if (btn.dataset.tab === "ciclo" && cicloDatos.length === 0) cargarCiclo();
     ajustarTodasLasTablas();
   });
 });
@@ -126,6 +127,7 @@ async function loadLookups() {
   initFiltrosConsulta();
   initFiltrosPizarra();
   initFiltrosGenerico("rep");
+  initFiltrosGenerico("cic");
   cargarConsulta();
 }
 
@@ -1661,7 +1663,7 @@ document.getElementById("cl_btn_eliminar").addEventListener("click", async () =>
     return acum;
   });
   if (!res) return;
-  pizarraDatos = []; reporteDatos = [];            // los dashboards se recargan al abrirlos
+  pizarraDatos = []; reporteDatos = []; cicloDatos = [];            // los dashboards se recargan al abrirlos
   await cargarConsulta();
   const sueltosEl = sueltos.reduce((s, x) => s + x.ids.length, 0);
   const partes = [];
@@ -1685,10 +1687,10 @@ document.getElementById("q_btn_volver").addEventListener("click", () => {
 let currentUser = null;
 
 const TABS_POR_ROL = {
-  analista: ["pizarra", "reporte"],
-  especialista: ["crear", "modificar", "pizarra", "reporte"],
-  supervisor: ["crear", "modificar", "pizarra", "reporte", "consultar"],
-  administrador: ["crear", "modificar", "pizarra", "reporte", "consultar", "admin", "repositorio"],
+  analista: ["pizarra", "reporte", "ciclo"],
+  especialista: ["crear", "modificar", "pizarra", "reporte", "ciclo"],
+  supervisor: ["crear", "modificar", "pizarra", "reporte", "ciclo", "consultar"],
+  administrador: ["crear", "modificar", "pizarra", "reporte", "ciclo", "consultar", "admin", "repositorio"],
 };
 
 function aplicarPermisosRol() {
@@ -1775,7 +1777,7 @@ async function rptCargarBorrador() {
 async function rptActualizarMuestra() {
   const prefix = rptPrefix();
   const extras = extrasNecesarios(rptBorrador);
-  const datos = prefix === "piz" ? pizarraDatos : reporteDatos;
+  const datos = datosInforme(prefix);
   const tieneTodo = (fila) => extras.every((k) => k in fila);
   if (datos && datos.length && tieneTodo(datos[0])) { rptMuestra = datos.slice(0, 3); rptDibujarVistaPrevia(); return; }
   try {
@@ -1887,7 +1889,7 @@ document.getElementById("rpt_btn_guardar").addEventListener("click", async () =>
     const r = await apiSend("/admin/config-reportes", "PUT", { reporte: prefix, config: { columnas: rptBorrador } });
     REPORTES_CFG[prefix] = r.config;
     // se vuelven a pedir los datos: las columnas nuevas pueden necesitar campos que antes no se traían
-    if (prefix === "piz") await cargarPizarra(); else await cargarReporte();
+    await cargarInforme(prefix);
     showMsg(msg, "Configuración guardada. Ya se aplica a todos los usuarios.", true);
   } catch (err) { showMsg(msg, err.message, false); }
 });
@@ -1899,7 +1901,7 @@ document.getElementById("rpt_btn_restablecer").addEventListener("click", async (
     await apiSend(`/admin/config-reportes?reporte=${prefix}`, "DELETE", {});
     REPORTES_CFG[prefix] = null;
     await rptCargarBorrador();
-    if (prefix === "piz") await cargarPizarra(); else await cargarReporte();
+    await cargarInforme(prefix);
     showMsg(msg, "Se restableció la configuración de fábrica.", true);
   } catch (err) { showMsg(msg, err.message, false); }
 });
@@ -2134,13 +2136,20 @@ function initCatalogosUI() {
 // ---------------------------------------------------------------
 let pizarraDatos = [];
 let reporteDatos = [];
+let cicloDatos = [];
 
-// Estados "activos" de la Pizarra y el Reporte (valor especial del filtro "Estado del Ticket").
-const ESTADOS_ACTIVOS = ["EN CURSO (ASIGNADO)", "EN OBSERVACIÓN"];
-const VALOR_ACTIVOS = "__ACTIVOS__";
-const ETIQUETA_ACTIVOS = "Activos (En curso + En observación)";
+// Universo de cada informe: Pizarra y Reporte Diario muestran (tabla, gráficas, semáforo, filtros) solo los tickets
+// en curso asignado, en observación y en ventana de mantenimiento; los resueltos/cerrados solo aparecen en los indicadores.
+// Ciclo 2026 muestra los tickets gestionados (resueltos y cerrados).
+const ESTADOS_UNIVERSO = {
+  piz: ["EN CURSO (ASIGNADO)", "EN OBSERVACIÓN", "VENTANA DE MANTENIMIENTO"],
+  rep: ["EN CURSO (ASIGNADO)", "EN OBSERVACIÓN", "VENTANA DE MANTENIMIENTO"],
+  cic: ["RESUELTO", "CERRADO"],
+};
+function datosInforme(prefix) { return prefix === "piz" ? pizarraDatos : prefix === "rep" ? reporteDatos : cicloDatos; }
+function universoInforme(prefix, filas) { return filas.filter((f) => ESTADOS_UNIVERSO[prefix].includes(f.estado_ticket)); }
+function cargarInforme(prefix) { return prefix === "piz" ? cargarPizarra() : prefix === "rep" ? cargarReporte() : cargarCiclo(); }
 function coincideFiltro(f, flt, v) {
-  if (flt.id === "estado_ticket" && v === VALOR_ACTIVOS) return ESTADOS_ACTIVOS.includes(f.estado_ticket);
   return String(f[flt.campo] ?? "") === String(v);
 }
 
@@ -2166,8 +2175,7 @@ function initFiltrosGenerico(prefix) {
   llenarSelectSimple(`${prefix}_anio`, [], "Año");
   llenarSelectSimple(`${prefix}_grupo_horario`, ["MAÑANA","TARDE","NOCHE"].map((g)=>({value:g,label:g})), "Todos");
   llenarSelectSimple(`${prefix}_estado_ticket`,
-    [{ value: VALOR_ACTIVOS, label: ETIQUETA_ACTIVOS }, ...LOOKUPS.estados_ticket.map((e)=>({value:e.nombre,label:e.nombre}))], "Todos");
-  document.getElementById(`${prefix}_estado_ticket`).value = VALOR_ACTIVOS;   // por defecto: solo tickets activos
+    LOOKUPS.estados_ticket.filter((e) => ESTADOS_UNIVERSO[prefix].includes(e.nombre)).map((e)=>({value:e.nombre,label:e.nombre})), "Todos");
   llenarSelectSimple(`${prefix}_afectacion`, LOOKUPS.afectaciones.map((a)=>({value:a.nombre,label:a.nombre})), "Todas");
   llenarSelectSimple(`${prefix}_tipo_falla`, LOOKUPS.categorias.map((c)=>({value:c.nombre,label:c.nombre})), "Todos");
   llenarSelectSimple(`${prefix}_unidad`, LOOKUPS.unidades_resolutorias.map((u)=>({value:u.nombre,label:u.nombre})), "Todas");
@@ -2210,9 +2218,7 @@ function actualizarCascada(prefix, datosCompletos) {
     const placeholder = select.options[0] ? select.options[0].textContent : "Todos";
     const ordenados = Array.from(valores.entries()).sort((a, b) =>
       flt.numerico ? Number(a[0]) - Number(b[0]) : String(a[1]).localeCompare(String(b[1]), "es"));
-    const extraActivos = flt.id === "estado_ticket"
-      ? `<option value="${VALOR_ACTIVOS}" ${VALOR_ACTIVOS === actual ? "selected" : ""}>${ETIQUETA_ACTIVOS}</option>` : "";
-    select.innerHTML = `<option value="">${placeholder}</option>` + extraActivos +
+    select.innerHTML = `<option value="">${placeholder}</option>` +
       ordenados.map(([v, l]) => `<option value="${v}" ${v === actual ? "selected" : ""}>${l}</option>`).join("");
     if (![...select.options].some((o) => o.value === actual)) select.value = "";
   });
@@ -2252,8 +2258,9 @@ function avisoDash(prefix, texto, reiniciar = false) {
 }
 
 function aplicarFiltros(prefix) {
-  const datosCompletos = prefix === "piz" ? pizarraDatos : reporteDatos;
-  const filtrados = filtrarDatos(datosCompletos, prefix);
+  const datosCompletos = datosInforme(prefix);
+  const universo = universoInforme(prefix, datosCompletos);   // lo que muestran tabla, gráficas y filtros
+  const filtrados = filtrarDatos(universo, prefix);
   avisoDash(prefix, "", true);
   // Cada pieza va por separado: si una falla, las demás se dibujan igual.
   const paso = (nombre, fn) => {
@@ -2265,11 +2272,11 @@ function aplicarFiltros(prefix) {
   paso("tarjetas de estado", () => renderKpisGenerico(filtrarDatos(datosCompletos, prefix, true), prefix));
   paso("semáforo", () => renderSemaforoBar(filtrados, `${prefix}_semaforo_bar`));
   paso("top 5 por estado", () => renderTop5PorEstado(filtrados, `${prefix}_top5_estado`));
-  paso("tabla de tickets", () => (prefix === "piz" ? renderTablaPizarra(filtrados) : renderTablaReporte(filtrados)));
+  paso("tabla de tickets", () => renderTablaDinamica(prefix, filtrados));
   paso("gráfica de unidades", () => renderChartUnidad(filtrados, `${prefix}_chart_unidad`));
   paso("gráfica de oficinas", () => renderChartOficina(filtrados, `${prefix}_chart_oficina`));
   paso("desglose de activos", () => renderChartDesglose(filtrados, `${prefix}_chart_desglose`));
-  paso("filtros", () => actualizarCascada(prefix, datosCompletos));
+  paso("filtros", () => actualizarCascada(prefix, universo));
 }
 
 function ticketsUnicos(filas) {
@@ -2356,6 +2363,7 @@ function capitalizar(s) {
 }
 
 const chartInstances = {};
+const chartFiltros = {};   // por gráfica: valor de filtro de cada barra/sección (para el doble clic)
 function destruirChart(canvasId) {
   if (chartInstances[canvasId]) { chartInstances[canvasId].destroy(); delete chartInstances[canvasId]; }
 }
@@ -2366,7 +2374,7 @@ function escHtml(s) {
 function htmlFallbackBarras(items) {
   const max = Math.max(1, ...items.map((i) => i.valor));
   return `<div class="db-fb-contenedor">${items.map((i) =>
-    `<div class="db-fb-row"><span class="db-fb-lbl" title="${escHtml(i.etiqueta)}">${escHtml(i.etiqueta)}</span>` +
+    `<div class="db-fb-row" data-clave="${escHtml(i.clave ?? "")}"><span class="db-fb-lbl" title="${escHtml(i.etiqueta)}">${escHtml(i.etiqueta)}</span>` +
     `<span class="db-fb-bar"><i style="width:${(i.valor / max) * 100}%;background:${i.color}"></i></span><b>${formatearMiles(i.valor)}</b></div>`).join("")}</div>`;
 }
 function htmlFallbackDona(items) {
@@ -2374,7 +2382,7 @@ function htmlFallbackDona(items) {
   let acum = 0;
   const tramos = total ? items.map((i) => { const ini = acum; acum += (i.valor / total) * 100; return `${i.color} ${ini}% ${acum}%`; }).join(",") : "#e6e0ee 0 100%";
   return `<div class="db-fb-contenedor"><div class="db-fb-dona" style="background:conic-gradient(${tramos})"></div>` +
-    `<div class="db-fb-leyenda">${items.map((i) => `<span><i style="background:${i.color}"></i>${escHtml(i.etiqueta)}: <b>${formatearMiles(i.valor)}</b></span>`).join("")}</div></div>`;
+    `<div class="db-fb-leyenda">${items.map((i) => `<span data-clave="${escHtml(i.clave ?? "")}"><i style="background:${i.color}"></i>${escHtml(i.etiqueta)}: <b>${formatearMiles(i.valor)}</b></span>`).join("")}</div></div>`;
 }
 // Dibuja con Chart.js; si la librería no está o falla, muestra la misma información en modo simple
 // (barras/dona en HTML) y deja un aviso visible con el motivo.
@@ -2406,6 +2414,7 @@ function crearChartSeguro(canvasId, el, fallback, config) {
     console.error(`Gráfica ${canvasId}:`, e);
     el.style.display = "none";
     if (!alt) { alt = document.createElement("div"); alt.className = "db-fb-alt"; alt.style.height = "100%"; wrap.appendChild(alt); }
+    alt.dataset.canvas = canvasId;
     alt.innerHTML = fallback.tipo === "dona" ? htmlFallbackDona(fallback.items) : htmlFallbackBarras(fallback.items);
     avisoDash(canvasId.split("_")[0], `Las gráficas se muestran en modo simple (${e.message}).`);
   }
@@ -2420,13 +2429,15 @@ function renderSemaforoBar(filas, contId = "piz_semaforo_bar") {
     { color: "NARANJA", label: "2-3 Días" },
     { color: "ROJO", label: "+3 Días" },
   ];
-  const conteos = cfg.map((c) => unicos.filter((t) => t.semaforo === c.color).length);
+  // Un tramo en cero no se dibuja (ni su etiqueta)
+  const tramos = cfg.map((c) => ({ ...c, n: unicos.filter((t) => t.semaforo === c.color).length })).filter((c) => c.n > 0);
+  if (!tramos.length) { cont.innerHTML = `<div class="db-semaforo-vacio">Sin tickets para mostrar</div>`; return; }
   cont.innerHTML = `
     <div class="db-semaforo-bar">
-      ${cfg.map((c, i) => `<div class="seg seg-${c.color}" style="flex-grow:${conteos[i]}"><span>${formatearMiles(conteos[i])}</span></div>`).join("")}
+      ${tramos.map((c) => `<div class="seg seg-${c.color}" style="flex-grow:${c.n}"><span>${formatearMiles(c.n)}</span></div>`).join("")}
     </div>
     <div class="db-semaforo-labels">
-      ${cfg.map((c, i) => `<div style="flex-grow:${conteos[i]}">${c.label}</div>`).join("")}
+      ${tramos.map((c) => `<div style="flex-grow:${c.n}">${c.label}</div>`).join("")}
     </div>
   `;
 }
@@ -2434,20 +2445,24 @@ function renderSemaforoBar(filas, contId = "piz_semaforo_bar") {
 function renderChartUnidad(filas, canvasId = "piz_chart_unidad") {
   const unicos = ticketsUnicos(filas);
   const conteo = {};
-  ORDEN_UNIDADES.forEach((u) => { conteo[u] = 0; });
   unicos.forEach((t) => {
     if (!t.unidad_resolutoria) return;
     conteo[t.unidad_resolutoria] = (conteo[t.unidad_resolutoria] || 0) + 1;
   });
-  const etiquetas = Object.keys(conteo);
+  // Solo unidades con tickets (las que están en cero no se muestran); primero las conocidas en su orden
+  const etiquetas = Object.keys(conteo).filter((u) => conteo[u] > 0).sort((a, b) => {
+    const ia = ORDEN_UNIDADES.indexOf(a), ib = ORDEN_UNIDADES.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b, "es");
+  });
   const valores = etiquetas.map((e) => conteo[e]);
   const colores = etiquetas.map((e) => COLORES_UNIDAD[e] || "#cccccc");
+  chartFiltros[canvasId] = etiquetas;
 
   destruirChart(canvasId);
   const el = document.getElementById(canvasId);
   if (!el) return;
   ajustarScrollBarras(el, etiquetas.length);
-  crearChartSeguro(canvasId, el, { tipo: "barras", items: etiquetas.map((e, i) => ({ etiqueta: e, valor: valores[i], color: colores[i] })) }, {
+  crearChartSeguro(canvasId, el, { tipo: "barras", items: etiquetas.map((e, i) => ({ etiqueta: e, valor: valores[i], color: colores[i], clave: e })) }, {
     type: "bar",
     data: { labels: etiquetas, datasets: [{ data: valores, backgroundColor: colores, borderRadius: 15, barThickness: 18 }] },
     options: {
@@ -2470,12 +2485,14 @@ function renderChartUnidad(filas, canvasId = "piz_chart_unidad") {
 
 function renderChartOficina(filas, canvasId = "piz_chart_oficina") {
   const unicos = ticketsUnicos(filas);
-  const conteo = {};
+  const conteo = {}, idOficina = {};
   unicos.forEach((t) => {
     const o = t.oficina_nombre || "SIN OFICINA";
     conteo[o] = (conteo[o] || 0) + 1;
+    if (t.oficina_id !== null && t.oficina_id !== undefined && !(o in idOficina)) idOficina[o] = String(t.oficina_id);
   });
-  const entradas = Object.entries(conteo).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const entradas = Object.entries(conteo).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  chartFiltros[canvasId] = entradas.map(([n]) => idOficina[n] ?? "");
   const etiquetas = entradas.map(([n]) => capitalizar(n));
   const valores = entradas.map(([, n]) => n);
   const colores = colorGradienteOficinas(entradas.length);
@@ -2484,7 +2501,7 @@ function renderChartOficina(filas, canvasId = "piz_chart_oficina") {
   const el = document.getElementById(canvasId);
   if (!el) return;
   ajustarScrollBarras(el, etiquetas.length);
-  crearChartSeguro(canvasId, el, { tipo: "barras", items: etiquetas.map((e, i) => ({ etiqueta: e, valor: valores[i], color: colores[i] })) }, {
+  crearChartSeguro(canvasId, el, { tipo: "barras", items: etiquetas.map((e, i) => ({ etiqueta: e, valor: valores[i], color: colores[i], clave: chartFiltros[canvasId][i] })) }, {
     type: "bar",
     data: { labels: etiquetas, datasets: [{ data: valores, backgroundColor: colores, borderRadius: 15 }] },
     options: {
@@ -2506,18 +2523,28 @@ function renderChartOficina(filas, canvasId = "piz_chart_oficina") {
 
 function renderChartDesglose(filas, canvasId) {
   const unicos = ticketsUnicos(filas);
-  const cfg = [
-    { estado: "VENTANA DE MANTENIMIENTO", label: "Ventana de Mantenimiento", color: "#00A99D" },
-    { estado: "EN CURSO (ASIGNADO)", label: "En Curso Asignado", color: "#A6127A" },
-    { estado: "EN OBSERVACIÓN", label: "En Observación", color: "#4A1259" },
-  ];
-  const valores = cfg.map((c) => unicos.filter((t) => t.estado_ticket === c.estado).length);
+  const prefix = canvasId.split("_")[0];
+  const todos = prefix === "cic"
+    ? [
+        { estado: "RESUELTO", label: "Resuelto", color: "#00A99D" },
+        { estado: "CERRADO", label: "Cerrado", color: "#4A1259" },
+      ]
+    : [
+        { estado: "VENTANA DE MANTENIMIENTO", label: "Ventana de Mantenimiento", color: "#00A99D" },
+        { estado: "EN CURSO (ASIGNADO)", label: "En Curso Asignado", color: "#A6127A" },
+        { estado: "EN OBSERVACIÓN", label: "En Observación", color: "#4A1259" },
+      ];
+  // Solo secciones con tickets: las que están en cero no se dibujan
+  const conN = todos.map((c) => ({ ...c, n: unicos.filter((t) => t.estado_ticket === c.estado).length })).filter((c) => c.n > 0);
+  const cfg = conN;
+  const valores = conN.map((c) => c.n);
   const total = valores.reduce((a, b) => a + b, 0) || 1;
+  chartFiltros[canvasId] = cfg.map((c) => c.estado);
 
   destruirChart(canvasId);
   const el = document.getElementById(canvasId);
   if (!el) return;
-  crearChartSeguro(canvasId, el, { tipo: "dona", items: cfg.map((c, i) => ({ etiqueta: c.label, valor: valores[i], color: c.color })) }, {
+  crearChartSeguro(canvasId, el, { tipo: "dona", items: cfg.map((c, i) => ({ etiqueta: c.label, valor: valores[i], color: c.color, clave: c.estado })) }, {
     type: "doughnut",
     data: { labels: cfg.map((c) => c.label), datasets: [{ data: valores, backgroundColor: cfg.map((c) => c.color), borderWidth: 0 }] },
     options: {
@@ -2610,6 +2637,15 @@ const REPORTES_FABRICA = {
     ["ticket_puertos.nro_clientes_afectados", "N° Cltes Afectados"], ["oficinas.estado", "Estado"], ["oficinas.nombre", "Oficina"],
     ["tickets.avance_cmr", "Avance CMR"],
   ],
+  // Ciclo 2026: tickets gestionados; sin "Estado del Ticket" (ya se sabe que están resueltos/cerrados) y con la fecha de cierre
+  cic: [
+    ["calc.fila", "Fila"], ["tickets.ticket_cmr", "Title"], ["calc.tipo", "Tipo"], ["tickets.afectacion", "Afectación"],
+    ["tickets.unidad_resolutoria", "Unidad Resolutoria"],
+    ["tickets.fecha_apertura_cmr", "Apertura CMR"], ["tickets.fecha_solucion_cmr", "Cierre CMR"],
+    ["calc.grupo_horario", "Grupo Horario CMR"], ["calc.tiempo_abierto", "Tiempo Abierto CMR"],
+    ["ticket_puertos.nro_clientes_afectados", "N° Cltes Afectados"], ["oficinas.estado", "Estado"], ["oficinas.nombre", "Oficina"],
+    ["tickets.avance_cmr", "Avance CMR"],
+  ],
 };
 // Configuraciones guardadas con la primera versión (id/titulo) → db_column_name
 const ID_V1_A_CLAVE = {
@@ -2694,7 +2730,7 @@ function htmlTablaDinamica(columnas, filas, contexto) {
   ).join("")}</tr>`;
   const tbody = filas.map((f) => {
     const ctx = contexto ? contexto(f) : {};
-    return `<tr>${vis.map((c) => {
+    return `<tr data-ticket="${esc(f.ticket_cmr ?? "")}">${vis.map((c) => {
       const [contenido, extra] = celdaDeColumna(c.db_column_name, f, ctx);
       return `<td class="${NOWRAP_COLUMNAS.has(c.db_column_name) ? "col-nowrap" : ""}" data-col="${esc(c.db_column_name)}" style="${estiloCeldaDeColumna(c)}${extra ? ";" + extra : ""}">${contenido}</td>`;
     }).join("")}</tr>`;
@@ -2703,11 +2739,11 @@ function htmlTablaDinamica(columnas, filas, contexto) {
 }
 // REPORTES-PURE-END
 
-let REPORTES_CFG = { piz: null, rep: null };
+let REPORTES_CFG = { piz: null, rep: null, cic: null };
 async function cargarConfigReportes() {
   try {
     const c = await apiGet("/config-reportes");
-    REPORTES_CFG = { piz: c.piz || null, rep: c.rep || null };
+    REPORTES_CFG = { piz: c.piz || null, rep: c.rep || null, cic: c.cic || null };
   } catch (err) {
     console.warn("No se pudo leer la configuración de reportes; se usa la de fábrica.", err);
   }
@@ -2770,6 +2806,7 @@ function paginarFilasPdf(alturas, altoCabecera, altoMaximo) {
 const PDF_CFG = {
   piz: { seccion: "tab-pizarra", titulo: "Pizarra de Monitoreo", archivo: "pizarra_monitoreo" },
   rep: { seccion: "tab-reporte", titulo: "Reporte Diario de Fallas Masivas", archivo: "reporte_diario_fallas" },
+  cic: { seccion: "tab-ciclo", titulo: "Ciclo 2026", archivo: "ciclo_2026" },
 };
 
 async function exportarPdfDashboard(prefix) {
@@ -2871,6 +2908,7 @@ async function exportarPdfDashboard(prefix) {
 }
 document.getElementById("piz_btn_pdf").addEventListener("click", () => exportarPdfDashboard("piz"));
 document.getElementById("rep_btn_pdf").addEventListener("click", () => exportarPdfDashboard("rep"));
+document.getElementById("cic_btn_pdf").addEventListener("click", () => exportarPdfDashboard("cic"));
 
 function exportarExcelGenerico(filasObjetos, nombreHoja, nombreArchivo) {
   const ws = XLSX.utils.json_to_sheet(filasObjetos);
@@ -2914,12 +2952,12 @@ function filasParaExcelDashboard(filas) {
 document.getElementById("piz_btn_excel").addEventListener("click", () => {
   if (pizarraDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
   const fecha = new Date().toISOString().slice(0, 10);
-  exportarExcelGenerico(filasParaExcelDashboard(pizarraDatos), "Pizarra", `pizarra_monitoreo_${fecha}.xlsx`);
+  exportarExcelGenerico(filasParaExcelDashboard(universoInforme("piz", pizarraDatos)), "Pizarra", `pizarra_monitoreo_${fecha}.xlsx`);
 });
 document.getElementById("piz_btn_csv").addEventListener("click", () => {
   if (pizarraDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
   const fecha = new Date().toISOString().slice(0, 10);
-  exportarCSVGenerico(filasParaExcelDashboard(pizarraDatos), `pizarra_monitoreo_${fecha}.csv`);
+  exportarCSVGenerico(filasParaExcelDashboard(universoInforme("piz", pizarraDatos)), `pizarra_monitoreo_${fecha}.csv`);
 });
 
 // ---------------------------------------------------------------
@@ -2937,7 +2975,7 @@ function renderTop5PorEstado(filas, tablaId) {
   const entradas = Object.entries(porEstado).sort((a, b) => b[1].fallas - a[1].fallas);
   const top5 = entradas.slice(0, 5).map(([region, v]) => ({ region, ...v }));
   const resto = entradas.slice(5);
-  const filasTabla = [...top5];
+  const filasTabla = top5.map((f) => ({ ...f, filtrable: f.region !== "SIN ESTADO" }));
   if (resto.length > 0) {
     filasTabla.push({
       region: "Otros",
@@ -2945,15 +2983,24 @@ function renderTop5PorEstado(filas, tablaId) {
       afectados: resto.reduce((s, [, v]) => s + v.afectados, 0),
     });
   }
-  filasTabla.push({
-    region: "Total",
-    fallas: entradas.reduce((s, [, v]) => s + v.fallas, 0),
-    afectados: entradas.reduce((s, [, v]) => s + v.afectados, 0),
-  });
+  const totalFallas = entradas.reduce((s, [, v]) => s + v.fallas, 0);
+  if (totalFallas > 0) {
+    filasTabla.push({
+      region: "Total",
+      fallas: totalFallas,
+      afectados: entradas.reduce((s, [, v]) => s + v.afectados, 0),
+    });
+  }
 
   const tbody = document.querySelector(`#${tablaId} tbody`);
   if (!tbody) return;
-  tbody.innerHTML = filasTabla.map((f) => `<tr><td>${f.region}</td><td>${formatearMiles(f.fallas)}</td><td>${formatearMiles(f.afectados)}</td></tr>`).join("");
+  const prefix = tablaId.split("_")[0];
+  const regionActiva = document.getElementById(`${prefix}_region`)?.value || "";
+  // Las filas en cero no se muestran. Doble clic en un Estado lo usa como filtro (otro doble clic lo quita).
+  tbody.innerHTML = filasTabla.filter((f) => f.fallas > 0 || f.afectados > 0).map((f) =>
+    f.filtrable
+      ? `<tr class="db-filtrable ${f.region === regionActiva ? "db-fila-activa" : ""}" data-region="${escHtml(f.region)}" title="Doble clic para filtrar por este Estado"><td>${escHtml(f.region)}</td><td>${formatearMiles(f.fallas)}</td><td>${formatearMiles(f.afectados)}</td></tr>`
+      : `<tr><td>${escHtml(f.region)}</td><td>${formatearMiles(f.fallas)}</td><td>${formatearMiles(f.afectados)}</td></tr>`).join("");
 }
 
 function renderTablaReporte(filas) {
@@ -3012,16 +3059,169 @@ function filasDetalleReporteParaExcel(filas) {
 document.getElementById("rep_btn_excel").addEventListener("click", () => {
   if (reporteDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasResumenPorEstadoParaExcel(reporteDatos)), "Resumen por Estado");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasDetalleReporteParaExcel(reporteDatos)), "Detalle");
+  const univ = universoInforme("rep", reporteDatos);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasResumenPorEstadoParaExcel(univ)), "Resumen por Estado");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasDetalleReporteParaExcel(univ)), "Detalle");
   const fecha = new Date().toISOString().slice(0, 10);
   XLSX.writeFile(wb, `reporte_diario_fallas_${fecha}.xlsx`);
 });
 document.getElementById("rep_btn_csv").addEventListener("click", () => {
   if (reporteDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
   const fecha = new Date().toISOString().slice(0, 10);
-  exportarCSVGenerico(filasDetalleReporteParaExcel(reporteDatos), `reporte_diario_fallas_${fecha}.csv`);
+  exportarCSVGenerico(filasDetalleReporteParaExcel(universoInforme("rep", reporteDatos)), `reporte_diario_fallas_${fecha}.csv`);
 });
+
+// ---------------------------------------------------------------
+// CICLO 2026: tickets gestionados (resueltos y cerrados). "Tiempo Abierto CMR" aquí es el tiempo que estuvo abierta la falla:
+// fecha de cierre (solución CMR) − fecha de apertura CMR. Con eso se recalcula el semáforo (mismos colores y formato).
+// ---------------------------------------------------------------
+function semaforoDeHoras(h) { return h === null || h === undefined || !isFinite(h) ? null : h < 24 ? "VERDE" : h < 48 ? "AMARILLO" : h < 72 ? "NARANJA" : "ROJO"; }
+function mapearCiclo(filas) {
+  return filas.map((f) => {
+    const h = f.tiempo_cierre_horas === undefined || f.tiempo_cierre_horas === null ? null : Number(f.tiempo_cierre_horas);
+    return { ...f, horas_abierta: h, semaforo: semaforoDeHoras(h) };
+  });
+}
+async function cargarCiclo() {
+  try {
+    const data = await apiGet(rutaConsultaInforme("cic"));
+    cicloDatos = mapearCiclo(data.filas);
+    aplicarFiltros("cic");
+  } catch (err) {
+    console.error("Error cargando el Ciclo 2026:", err);
+  }
+}
+document.getElementById("cic_btn_actualizar").addEventListener("click", cargarCiclo);
+document.getElementById("cic_btn_excel").addEventListener("click", () => {
+  if (cicloDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
+  const univ = universoInforme("cic", cicloDatos);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasResumenPorEstadoParaExcel(univ)), "Resumen por Estado");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasDetalleReporteParaExcel(univ)), "Detalle");
+  XLSX.writeFile(wb, `ciclo_2026_${new Date().toISOString().slice(0, 10)}.xlsx`);
+});
+document.getElementById("cic_btn_csv").addEventListener("click", () => {
+  if (cicloDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
+  exportarCSVGenerico(filasDetalleReporteParaExcel(universoInforme("cic", cicloDatos)), `ciclo_2026_${new Date().toISOString().slice(0, 10)}.csv`);
+});
+
+// ---------------------------------------------------------------
+// Interacción de los informes
+//   · Doble clic en una fila del Top 5, una barra de "Unidades resolutorias" / "Oficinas" o una sección del
+//     "Desglose" = usa ese valor como filtro (otro doble clic sobre el mismo valor lo quita).
+//   · Clic en una fila de la tabla = menú con "1. Ver log" (toda la información del ticket en la base de datos).
+// ---------------------------------------------------------------
+const SELECT_DE_GRAFICA = { unidad: "unidad", oficina: "oficina", desglose: "estado_ticket" };
+function aplicarFiltroDoble(prefix, selectId, valor) {
+  const sel = document.getElementById(`${prefix}_${selectId}`);
+  if (!sel || valor === undefined || valor === null || valor === "") return;
+  sel.value = String(sel.value) === String(valor) ? "" : String(valor);
+  aplicarFiltros(prefix);
+}
+document.addEventListener("dblclick", (e) => {
+  const t = e.target;
+  if (!t || !t.closest) return;
+  // Top 5 por Estado
+  const trTop = t.closest("tr[data-region]");
+  if (trTop) {
+    const prefix = trTop.closest("table").id.split("_")[0];
+    aplicarFiltroDoble(prefix, "region", trTop.dataset.region);
+    return;
+  }
+  // Gráficas (Chart.js)
+  const canvas = t.closest("canvas");
+  const m = canvas && /^(piz|rep|cic)_chart_(unidad|oficina|desglose)$/.exec(canvas.id);
+  if (m) {
+    const ch = chartInstances[canvas.id];
+    const el = ch && ch.getElementsAtEventForMode(e, "nearest", { intersect: true }, true)[0];
+    if (el && chartFiltros[canvas.id]) aplicarFiltroDoble(m[1], SELECT_DE_GRAFICA[m[2]], chartFiltros[canvas.id][el.index]);
+    return;
+  }
+  // Gráficas en modo simple (sin Chart.js)
+  const fb = t.closest("[data-clave]");
+  const alt = fb && fb.closest(".db-fb-alt");
+  const m2 = alt && alt.dataset.canvas && /^(piz|rep|cic)_chart_(unidad|oficina|desglose)$/.exec(alt.dataset.canvas);
+  if (m2) aplicarFiltroDoble(m2[1], SELECT_DE_GRAFICA[m2[2]], fb.dataset.clave);
+});
+
+// --- Menú de la fila + ventana "Ver log" ---
+function cerrarMenuFila() { const m = document.getElementById("menu_fila"); if (m) m.remove(); }
+function abrirMenuFila(ev, ticket) {
+  cerrarMenuFila();
+  const menu = document.createElement("div");
+  menu.id = "menu_fila";
+  menu.className = "menu-fila";
+  menu.innerHTML = `<div class="menu-fila-titulo">Ticket ${escHtml(formatearTicket(ticket))}</div><button type="button" data-accion="log">1. Ver log</button>`;
+  document.body.appendChild(menu);
+  const w = menu.offsetWidth, h = menu.offsetHeight;
+  menu.style.left = Math.max(4, Math.min(ev.clientX, window.innerWidth - w - 8)) + "px";
+  menu.style.top = Math.max(4, Math.min(ev.clientY, window.innerHeight - h - 8)) + "px";
+  menu.querySelector('[data-accion="log"]').addEventListener("click", () => { cerrarMenuFila(); abrirModalLog(ticket); });
+}
+["piz_table", "rep_table", "cic_table"].forEach((id) => {
+  document.getElementById(id).addEventListener("click", (e) => {
+    const tr = e.target.closest("tbody tr[data-ticket]");
+    if (!tr || !tr.dataset.ticket) return;
+    if (window.getSelection && String(window.getSelection()).trim()) return;   // se está seleccionando texto
+    abrirMenuFila(e, tr.dataset.ticket);
+  });
+});
+document.addEventListener("click", (e) => {
+  if (e.target.closest("#menu_fila") || e.target.closest("tr[data-ticket]")) return;
+  cerrarMenuFila();
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { cerrarMenuFila(); cerrarModalLog(); } });
+window.addEventListener("wheel", (e) => { if (!e.target.closest || !e.target.closest("#menu_fila")) cerrarMenuFila(); }, { passive: true });
+
+function cerrarModalLog() { const m = document.getElementById("modal_log"); if (m) m.remove(); }
+function valorLogLegible(clave, v) {
+  if (v === null || v === undefined || v === "") return "-";
+  if (clave === "ticket_cmr") return formatearTicket(v);
+  if (/^(fecha_|creado_en|actualizado_en)/.test(clave)) return formatearFechaHora(v);
+  return escHtml(v);
+}
+function etiquetaCampoLog(clave) { return escHtml(String(clave).replace(/_/g, " ")); }
+// HTML de solo lectura con TODO lo guardado del ticket: sus campos, sus registros (puertos) y el log de cambios
+function htmlDetalleLog(ticket, puertos, log) {
+  const kv = Object.entries(ticket).map(([k, v]) =>
+    `<div class="ml-kv"><span>${etiquetaCampoLog(k)}</span><b>${valorLogLegible(k, v)}</b></div>`).join("");
+  const cols = [];
+  puertos.forEach((p) => Object.keys(p).forEach((k) => { if (!cols.includes(k)) cols.push(k); }));
+  const tabla = puertos.length
+    ? `<div class="ml-scroll"><table class="rows-table"><thead><tr>${cols.map((c) => `<th>${etiquetaCampoLog(c)}</th>`).join("")}</tr></thead><tbody>${
+        puertos.map((p) => `<tr>${cols.map((c) => `<td>${valorLogLegible(c, p[c])}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`
+    : `<p class="ml-vacio">Sin registros.</p>`;
+  const entradas = (log || []).length
+    ? log.map((l) => {
+        const det = l.ticket_puerto_id ? `[${escHtml(l.olt ?? "")} | ${escHtml(l.tarjeta ?? "")} | ${escHtml(l.puerto ?? "")}] ` : "";
+        return `<div class="log-entry"><div>${det}<strong>${escHtml(l.campo)}</strong>: ${escHtml(l.valor_anterior ?? "-")} → ${escHtml(l.valor_nuevo ?? "-")}</div>` +
+          `<div class="meta">${escHtml(l.tipo_cambio)} · ${escHtml(l.usuario_email)} · ${escHtml(l.fecha)}</div></div>`;
+      }).join("")
+    : `<p class="ml-vacio">Sin cambios registrados.</p>`;
+  return `<h4>Datos del ticket</h4><div class="ml-grid">${kv}</div><h4>Registros (${puertos.length})</h4>${tabla}<h4>Log de cambios</h4>${entradas}`;
+}
+async function abrirModalLog(cmr) {
+  cerrarModalLog();
+  const ov = document.createElement("div");
+  ov.id = "modal_log";
+  ov.className = "modal-overlay";
+  ov.innerHTML = `<div class="modal-box modal-log"><div class="ml-cab"><h3>Log del ticket ${escHtml(formatearTicket(cmr))}</h3>` +
+    `<button type="button" class="btn-secondary" id="ml_cerrar">Cerrar</button></div><div id="ml_cuerpo">Cargando...</div></div>`;
+  document.body.appendChild(ov);
+  ov.addEventListener("click", (e) => { if (e.target === ov) cerrarModalLog(); });
+  ov.querySelector("#ml_cerrar").addEventListener("click", cerrarModalLog);
+  try {
+    const [detalle, logData] = await Promise.all([
+      apiGet(`/tickets/${encodeURIComponent(cmr)}`),
+      apiGet(`/tickets/${encodeURIComponent(cmr)}/log`),
+    ]);
+    const cuerpo = document.getElementById("ml_cuerpo");
+    if (cuerpo) cuerpo.innerHTML = htmlDetalleLog(detalle.ticket, detalle.puertos, logData.log);
+  } catch (err) {
+    const cuerpo = document.getElementById("ml_cuerpo");
+    if (cuerpo) cuerpo.innerHTML = `<div class="msg error">${escHtml(err.message)}</div>`;
+  }
+}
 
 // ---------------------------------------------------------------
 // Arranque
