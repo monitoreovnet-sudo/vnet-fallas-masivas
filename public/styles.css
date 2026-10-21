@@ -726,3 +726,28 @@ tr.cl-fila-sel td { box-shadow: inset 0 0 0 9999px rgba(192, 57, 43, .16); }
 .modal-log .ml-scroll { overflow: auto; max-width: 100%; }
 .modal-log .ml-scroll th { text-transform: capitalize; white-space: nowrap; }
 .modal-log .ml-vacio { color: var(--muted, #6b7280); font-size: 13px; }
+
+/* ---------- Filtros de los informes: lista desplegable con casillas (selección múltiple) ---------- */
+.db-filtro-item { position: relative; }
+.db-filtro-item select.ms-nativo { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; padding: 0; border: 0; left: 0; bottom: 0; }
+.ms { position: relative; min-width: 0; }
+.ms-btn { width: 100%; text-align: left; font-family: var(--db-font); font-size: 14px; color: var(--db-gris); background: var(--db-white);
+  border: 1px solid #d0d0d0; border-radius: 6px; padding: 8px 30px 8px 10px; cursor: pointer; min-width: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%23b3b3b3'%3E%3Cpath d='M5.5 7.5l4.5 4.5 4.5-4.5' stroke='%23b3b3b3' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center; }
+.ms-btn.ms-activo { border-color: var(--db-primary, #4A1259); color: var(--db-primary, #4A1259); font-weight: 600; }
+.ms-txt { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-panel { position: absolute; z-index: 60; left: 0; top: calc(100% + 2px); min-width: max(100%, 190px); max-width: 320px; background: #fff;
+  border: 1px solid #d0d0d0; border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
+.ms-panel.hidden { display: none; }
+.ms-lista { max-height: 250px; overflow: auto; padding: 4px; }
+.ms-op { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 5px; cursor: pointer; font-size: 13px; color: #1f1230; font-family: var(--db-font); }
+.ms-op:hover { background: rgba(74, 18, 89, .08); }
+.ms-op input { margin: 0; accent-color: #4A1259; }
+.ms-vacio { padding: 8px; color: var(--muted, #6b7280); font-size: 12px; }
+.ms-pie { border-top: 1px solid #eee; padding: 4px; text-align: right; }
+.ms-limpiar { background: none; border: 0; color: var(--db-primary, #4A1259); font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px 8px; }
+.db-filtro-fecha .ms-panel { min-width: 150px; }
+.ms-buscar { padding: 6px 6px 2px; }
+.ms-buscar input { width: 100%; box-sizing: border-box; font-size: 13px; padding: 7px 9px; border: 1px solid #d0d0d0; border-radius: 6px; }
+.ms-panel:has(.ms-buscar) { min-width: max(100%, 260px); }

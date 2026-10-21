@@ -2149,11 +2149,18 @@ const ESTADOS_UNIVERSO = {
 function datosInforme(prefix) { return prefix === "piz" ? pizarraDatos : prefix === "rep" ? reporteDatos : cicloDatos; }
 function universoInforme(prefix, filas) { return filas.filter((f) => ESTADOS_UNIVERSO[prefix].includes(f.estado_ticket)); }
 function cargarInforme(prefix) { return prefix === "piz" ? cargarPizarra() : prefix === "rep" ? cargarReporte() : cargarCiclo(); }
+// Cada filtro admite varios valores a la vez (selección múltiple). Estado por informe: { id_del_filtro: Set de valores }.
+// Un Set vacío = sin filtro ("Todos"). El <select> nativo queda oculto y refleja el primer valor (lo usan las pruebas).
+const FILTRO_SEL = { piz: {}, rep: {}, cic: {} };
+function selDe(prefix, id) { return FILTRO_SEL[prefix][id] || (FILTRO_SEL[prefix][id] = new Set()); }
 function coincideFiltro(f, flt, v) {
-  return String(f[flt.campo] ?? "") === String(v);
+  return v.has(String(f[flt.campo] ?? ""));
 }
+function soloDigitosTexto(t) { return String(t ?? "").replace(/\D/g, ""); }
 
 const FILTROS_CASCADA = [
+  // N° Ticket: lista con casillas (varios a la vez) + cuadro de texto para buscar/escribir uno puntual
+  { id: "ticket_sel", campo: "ticket_cmr", ticket: true, desc: true, etiqueta: (t) => formatearTicket(t) },
   { id: "estado_ticket", campo: "estado_ticket" },
   { id: "tipo_falla", campo: "categoria_afectacion" },
   { id: "afectacion", campo: "afectacion" },
@@ -2184,22 +2191,120 @@ function initFiltrosGenerico(prefix) {
   const regiones = Array.from(new Set(LOOKUPS.oficinas.map((o)=>o.estado).filter(Boolean))).sort();
   llenarSelectSimple(`${prefix}_region`, regiones.map((r)=>({value:r,label:r})), "Todos");
 
+  // El campo de texto del N° de ticket pasa a vivir dentro del desplegable; el <select> nativo (oculto) guarda lo marcado.
+  const inpTicket = document.getElementById(`${prefix}_ticket`);
+  inpTicket.removeAttribute("list");
+  document.getElementById(`${prefix}_ticket_lista`)?.remove();
+  if (!document.getElementById(`${prefix}_ticket_sel`)) {
+    const selT = document.createElement("select");
+    selT.id = `${prefix}_ticket_sel`;
+    selT.innerHTML = '<option value="">Todos</option>';
+    inpTicket.closest(".db-filtro-item").appendChild(selT);
+  }
   FILTROS_CASCADA.forEach((flt) => {
-    document.getElementById(`${prefix}_${flt.id}`).addEventListener("change", () => aplicarFiltros(prefix));
+    const nativo = document.getElementById(`${prefix}_${flt.id}`);
+    nativo.classList.add("ms-nativo");
+    nativo.tabIndex = -1;
+    nativo.addEventListener("change", () => {          // cambio hecho sobre el <select> nativo (una sola opción)
+      const set = selDe(prefix, flt.id);
+      set.clear(); if (nativo.value) set.add(nativo.value);
+      aplicarFiltros(prefix);
+    });
+    msCrear(prefix, flt);
+    msDibujar(prefix, flt, nativo.options[0] ? nativo.options[0].textContent : "Todos", [...nativo.options].slice(1).map((o) => [o.value, o.textContent]));
   });
-  document.getElementById(`${prefix}_ticket`).addEventListener("input", () => aplicarFiltros(prefix));
+  inpTicket.addEventListener("input", () => aplicarFiltros(prefix));
+  inpTicket.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const t = soloDigitosTexto(inpTicket.value);
+    const ops = (document.getElementById(`${prefix}_ticket_sel_ms`)?._opciones || []).map(([v]) => v);
+    const coinc = t ? ops.filter((v) => v.includes(t)) : [];
+    if (!coinc.length) return;
+    const elegidos = coinc.includes(t) ? [t] : coinc;      // número exacto → solo ese; si no, todos los que lo contienen
+    const set = selDe(prefix, "ticket_sel");
+    elegidos.forEach((v) => set.add(v));
+    inpTicket.value = "";
+    aplicarFiltros(prefix);
+  });
 }
 function initFiltrosPizarra() { initFiltrosGenerico("piz"); }
 
 function valorFiltro(prefix, id) {
-  return document.getElementById(`${prefix}_${id}`).value;
+  return selDe(prefix, id);
 }
 
+// ---- Lista desplegable con casillas (selección múltiple) ----
+function msCrear(prefix, flt) {
+  const nativo = document.getElementById(`${prefix}_${flt.id}`);
+  const cont = document.createElement("div");
+  cont.className = "ms";
+  cont.id = `${prefix}_${flt.id}_ms`;
+  cont.innerHTML = `<button type="button" class="ms-btn" aria-haspopup="listbox"><span class="ms-txt"></span></button>` +
+    `<div class="ms-panel hidden"><div class="ms-lista"></div><div class="ms-pie"><button type="button" class="ms-limpiar">Quitar selección</button></div></div>`;
+  nativo.insertAdjacentElement("afterend", cont);
+  const panel = cont.querySelector(".ms-panel");
+  let buscar = null;
+  if (flt.ticket) {
+    buscar = document.getElementById(`${prefix}_ticket`);
+    const caja = document.createElement("div");
+    caja.className = "ms-buscar";
+    caja.appendChild(buscar);
+    buscar.placeholder = "Escribe o elige N° de ticket";
+    panel.insertBefore(caja, panel.firstChild);
+  }
+  cont.querySelector(".ms-btn").addEventListener("click", () => {
+    const abrir = panel.classList.contains("hidden");
+    document.querySelectorAll(".ms-panel").forEach((p) => p.classList.add("hidden"));
+    if (abrir) { panel.classList.remove("hidden"); if (buscar) buscar.focus(); }
+  });
+  cont.querySelector(".ms-limpiar").addEventListener("click", () => {
+    selDe(prefix, flt.id).clear();
+    if (buscar) buscar.value = "";
+    aplicarFiltros(prefix);
+  });
+  cont.querySelector(".ms-lista").addEventListener("change", (e) => {
+    const cb = e.target.closest("input[type=checkbox]");
+    if (!cb) return;
+    const set = selDe(prefix, flt.id);
+    if (cb.checked) set.add(cb.value); else set.delete(cb.value);
+    aplicarFiltros(prefix);
+  });
+}
+function msDibujar(prefix, flt, placeholder, opciones) {   // opciones: [[valor, etiqueta], …]
+  const cont = document.getElementById(`${prefix}_${flt.id}_ms`);
+  if (!cont) return;
+  const set = selDe(prefix, flt.id);
+  const lista = cont.querySelector(".ms-lista");
+  const scroll = lista.scrollTop;
+  cont._opciones = opciones;
+  let visibles = opciones, nota = "";
+  const textoT = flt.ticket ? soloDigitosTexto(document.getElementById(`${prefix}_ticket`).value) : "";
+  if (flt.ticket) {
+    if (textoT) visibles = opciones.filter(([v]) => v.includes(textoT));
+    if (visibles.length > 300) { nota = `<div class="ms-vacio">Mostrando 300 de ${formatearMiles(visibles.length)}: escribe para acotar</div>`; visibles = visibles.slice(0, 300); }
+  }
+  lista.innerHTML = visibles.length
+    ? visibles.map(([v, l]) => `<label class="ms-op"><input type="checkbox" value="${escHtml(v)}" ${set.has(v) ? "checked" : ""} /><span>${escHtml(l)}</span></label>`).join("") + nota
+    : `<div class="ms-vacio">${textoT ? "Ningún ticket coincide (Enter no agrega nada)" : "Sin opciones"}</div>`;
+  lista.scrollTop = scroll;
+  const etiquetas = opciones.filter(([v]) => set.has(v)).map(([, l]) => l);
+  cont.querySelector(".ms-txt").textContent = !set.size ? (textoT ? `Buscando «${textoT}»` : placeholder) : etiquetas.length === 1 ? etiquetas[0] : `${set.size} seleccionados`;
+  cont.querySelector(".ms-btn").classList.toggle("ms-activo", set.size > 0 || !!textoT);
+  cont.querySelector(".ms-btn").title = etiquetas.join(", ");
+}
+document.addEventListener("click", (e) => {
+  if (e.target.closest && e.target.closest(".ms")) return;
+  document.querySelectorAll(".ms-panel").forEach((p) => p.classList.add("hidden"));
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.querySelectorAll(".ms-panel").forEach((p) => p.classList.add("hidden")); });
+
 function filasQueCoincidenExcepto(filas, prefix, idExcluir) {
-  return filas.filter((f) => FILTROS_CASCADA.every((flt) => {
+  const texto = idExcluir === "ticket_sel" ? "" : soloDigitosTexto(document.getElementById(`${prefix}_ticket`).value);
+  return filas.filter((f) => (!texto || String(f.ticket_cmr).includes(texto)) && FILTROS_CASCADA.every((flt) => {
     if (flt.id === idExcluir) return true;
     const v = valorFiltro(prefix, flt.id);
-    if (!v) return true;
+    if (!v.size) return true;
     return coincideFiltro(f, flt, v);
   }));
 }
@@ -2214,26 +2319,29 @@ function actualizarCascada(prefix, datosCompletos) {
       valores.set(String(val), flt.labelCampo ? f[flt.labelCampo] : flt.etiqueta ? flt.etiqueta(val) : val);
     });
     const select = document.getElementById(`${prefix}_${flt.id}`);
-    const actual = select.value;
+    const set = selDe(prefix, flt.id);
     const placeholder = select.options[0] ? select.options[0].textContent : "Todos";
     const ordenados = Array.from(valores.entries()).sort((a, b) =>
-      flt.numerico ? Number(a[0]) - Number(b[0]) : String(a[1]).localeCompare(String(b[1]), "es"));
+      flt.desc ? Number(b[0]) - Number(a[0]) : flt.numerico ? Number(a[0]) - Number(b[0]) : String(a[1]).localeCompare(String(b[1]), "es"));
+    // lo seleccionado que ya no existe con los demás filtros se descarta (igual que antes con la selección simple)
+    [...set].forEach((v) => { if (!valores.has(v)) set.delete(v); });
     select.innerHTML = `<option value="">${placeholder}</option>` +
-      ordenados.map(([v, l]) => `<option value="${v}" ${v === actual ? "selected" : ""}>${l}</option>`).join("");
-    if (![...select.options].some((o) => o.value === actual)) select.value = "";
+      ordenados.map(([v, l]) => `<option value="${escHtml(v)}">${escHtml(l)}</option>`).join("");
+    select.value = set.size ? [...set][0] : "";
+    msDibujar(prefix, flt, placeholder, ordenados.map(([v, l]) => [v, String(l)]));
   });
 }
 
 // sinEstado = true: aplica todos los filtros MENOS el de Estado del Ticket (lo usan las tarjetas de estado,
 // que siempre deben mostrar el conteo de cada estado aunque la vista esté en "Activos").
 function filtrarDatos(filas, prefix, sinEstado = false) {
-  const textoTicket = document.getElementById(`${prefix}_ticket`).value.trim();
+  const textoTicket = soloDigitosTexto(document.getElementById(`${prefix}_ticket`).value);   // acepta "334 455" o "334455"
   return filas.filter((f) => {
     if (textoTicket && !String(f.ticket_cmr).includes(textoTicket)) return false;
     return FILTROS_CASCADA.every((flt) => {
       if (sinEstado && flt.id === "estado_ticket") return true;
       const v = valorFiltro(prefix, flt.id);
-      if (!v) return true;
+      if (!v.size) return true;
       return coincideFiltro(f, flt, v);
     });
   });
@@ -2995,11 +3103,11 @@ function renderTop5PorEstado(filas, tablaId) {
   const tbody = document.querySelector(`#${tablaId} tbody`);
   if (!tbody) return;
   const prefix = tablaId.split("_")[0];
-  const regionActiva = document.getElementById(`${prefix}_region`)?.value || "";
+  const regionesActivas = selDe(prefix, "region");
   // Las filas en cero no se muestran. Doble clic en un Estado lo usa como filtro (otro doble clic lo quita).
   tbody.innerHTML = filasTabla.filter((f) => f.fallas > 0 || f.afectados > 0).map((f) =>
     f.filtrable
-      ? `<tr class="db-filtrable ${f.region === regionActiva ? "db-fila-activa" : ""}" data-region="${escHtml(f.region)}" title="Doble clic para filtrar por este Estado"><td>${escHtml(f.region)}</td><td>${formatearMiles(f.fallas)}</td><td>${formatearMiles(f.afectados)}</td></tr>`
+      ? `<tr class="db-filtrable ${regionesActivas.has(f.region) ? "db-fila-activa" : ""}" data-region="${escHtml(f.region)}" title="Doble clic para filtrar por este Estado"><td>${escHtml(f.region)}</td><td>${formatearMiles(f.fallas)}</td><td>${formatearMiles(f.afectados)}</td></tr>`
       : `<tr><td>${escHtml(f.region)}</td><td>${formatearMiles(f.fallas)}</td><td>${formatearMiles(f.afectados)}</td></tr>`).join("");
 }
 
@@ -3113,9 +3221,11 @@ document.getElementById("cic_btn_csv").addEventListener("click", () => {
 // ---------------------------------------------------------------
 const SELECT_DE_GRAFICA = { unidad: "unidad", oficina: "oficina", desglose: "estado_ticket" };
 function aplicarFiltroDoble(prefix, selectId, valor) {
-  const sel = document.getElementById(`${prefix}_${selectId}`);
-  if (!sel || valor === undefined || valor === null || valor === "") return;
-  sel.value = String(sel.value) === String(valor) ? "" : String(valor);
+  if (!document.getElementById(`${prefix}_${selectId}`) || valor === undefined || valor === null || valor === "") return;
+  const set = selDe(prefix, selectId), v = String(valor);
+  const yaEsElUnico = set.size === 1 && set.has(v);
+  set.clear();
+  if (!yaEsElUnico) set.add(v);
   aplicarFiltros(prefix);
 }
 document.addEventListener("dblclick", (e) => {
