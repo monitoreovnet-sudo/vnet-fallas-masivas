@@ -90,12 +90,16 @@ export async function onRequestGet({ request, env }) {
 
   const ahora = Date.now();
   let filas = results.map((r) => {
+    // Fin del CMR: su fecha de solución; si el ticket se cerró sin pasar por "solución", la fecha de cierre del registro
+    // (así los informes de tickets cerrados siguen midiendo igual que siempre).
+    const finCmr = r.fecha_solucion_cmr || (r.estado_ticket === "CERRADO" ? r.fecha_cierre_cmr : null) || null;
+    const finCda = r.fecha_solucion_cda || (r.estado_ticket === "CERRADO" ? r.fecha_cierre_cda : null) || null;
     const inicio = r.fecha_apertura_cmr ? new Date(r.fecha_apertura_cmr).getTime() : null;
-    const fin = r.fecha_solucion_cmr ? new Date(r.fecha_solucion_cmr).getTime() : ahora;
+    const fin = finCmr ? new Date(finCmr).getTime() : ahora;
     const horasAbierta = inicio ? (fin - inicio) / MS_HORA : null;
 
     const ap = partesFecha(r.fecha_apertura_cmr);
-    const ci = partesFecha(r.fecha_solucion_cmr);
+    const ci = partesFecha(finCmr);
 
     // Tiempos de gestión (se calculan al momento de la consulta, por eso nunca quedan desactualizados):
     //   En curso  = ahora − apertura, mientras el ticket no tenga fecha de solución (después deja de estar "en curso").
@@ -104,10 +108,10 @@ export async function onRequestGet({ request, env }) {
       const a = desde ? new Date(desde).getTime() : NaN, b = hasta ? new Date(hasta).getTime() : NaN;
       return Number.isFinite(a) && Number.isFinite(b) ? (b - a) / MS_HORA : null;
     };
-    const cursoCmr = r.fecha_solucion_cmr ? null : horasEntre(r.fecha_apertura_cmr, ahora);
-    const cursoCda = r.fecha_solucion_cda ? null : horasEntre(r.fecha_apertura_cda, ahora);
-    const cerrarCmr = r.fecha_solucion_cmr ? horasEntre(r.fecha_apertura_cmr, r.fecha_solucion_cmr) : null;
-    const cerrarCda = r.fecha_solucion_cda ? horasEntre(r.fecha_apertura_cda, r.fecha_solucion_cda) : null;
+    const cursoCmr = finCmr ? null : horasEntre(r.fecha_apertura_cmr, ahora);
+    const cursoCda = finCda ? null : horasEntre(r.fecha_apertura_cda, ahora);
+    const cerrarCmr = finCmr ? horasEntre(r.fecha_apertura_cmr, finCmr) : null;
+    const cerrarCda = finCda ? horasEntre(r.fecha_apertura_cda, finCda) : null;
     const sem = (h) => (h === null ? null : semaforo(h));
 
     return {
@@ -120,7 +124,7 @@ export async function onRequestGet({ request, env }) {
       grupo_horario: grupoHorario(r.fecha_apertura_cmr),
       semaforo: horasAbierta !== null ? semaforo(horasAbierta) : null,
       horas_abierta: horasAbierta,
-      tiempo_cierre_horas: r.fecha_solucion_cmr && inicio ? (new Date(r.fecha_solucion_cmr).getTime() - inicio) / MS_HORA : null,
+      tiempo_cierre_horas: finCmr && inicio ? (new Date(finCmr).getTime() - inicio) / MS_HORA : null,
     };
   });
 

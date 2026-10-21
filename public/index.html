@@ -160,29 +160,36 @@
 
     <!-- Paso 1: qué se quiere hacer (la pantalla solo muestra esto hasta elegir) -->
     <div class="field mc-paso1">
-      <label for="mc_accion">Cambio de Campo o Cierre de Ticket</label>
+      <label for="mc_accion">¿Qué deseas hacer?</label>
       <select id="mc_accion">
         <option value="">Seleccione:</option>
+        <option value="SOLUCION">Solución de Ticket</option>
         <option value="CIERRE">Cierre de Ticket</option>
-        <option value="CAMPO">Cambio de Campo</option>
+        <option value="CAMPO">Cambio de campo</option>
       </select>
     </div>
 
-    <!-- Paso 2: número de ticket y tipo de cambio -->
+    <!-- Paso 2: número de ticket; al confirmar se cuentan sus registros y, si hay más de uno, se elige masivo o puntual -->
     <div id="mc_paso2" class="hidden">
       <div class="grid-2">
         <div class="field">
           <label>Número de Ticket</label>
-          <input id="mc_ticket" placeholder="Ingrese el número de ticket" />
+          <input id="mc_ticket" inputmode="numeric" placeholder="Ingrese el número de ticket" />
         </div>
         <div class="field field-btn">
           <div class="search-row">
-            <button id="mc_btn_masivo" class="btn-secondary" type="button">CAMBIO MASIVO</button>
-            <button id="mc_btn_puertos" class="btn-secondary" type="button">CAMBIO PUNTUAL</button>
+            <button id="mc_btn_buscar" class="btn-primary" type="button">Buscar ticket</button>
           </div>
         </div>
       </div>
       <div id="mc_msg_busqueda" class="msg"></div>
+      <div id="mc_alcance" class="hidden">
+        <p class="hint" id="mc_alcance_hint"></p>
+        <div class="search-row">
+          <button id="mc_btn_masivo" class="btn-secondary" type="button">CAMBIO MASIVO</button>
+          <button id="mc_btn_puertos" class="btn-secondary" type="button">CAMBIO PUNTUAL</button>
+        </div>
+      </div>
     </div>
 
     <!-- Indicadores del ticket (solo en "Cambio de Campo") -->
@@ -239,22 +246,22 @@
     <!-- Escenario 2: <> Cerrado + Por Puertos -->
     <div id="mc_escenario_2" class="hidden">
       <hr />
-      <h3>Modificación por Puertos</h3>
-      <p class="hint">Edita solo las filas que necesites. Se enviarán únicamente los registros que modifiques.</p>
+      <h3>Cambio puntual</h3>
+      <p class="hint">Elige el registro (marca la casilla de su fila) y cambia solo su Oficina, OLT, Tarjeta o Puerto.</p>
       <table class="rows-table" id="e2_table">
         <thead>
-          <tr><th>Oficina</th><th>OLT</th><th>Tarjeta</th><th>Puerto</th><th>Estado</th></tr>
+          <tr><th></th><th>Oficina</th><th>OLT</th><th>Tarjeta</th><th>Puerto</th></tr>
         </thead>
         <tbody></tbody>
       </table>
-      <button id="e2_btn_guardar" class="btn-primary">Guardar Cambios por Puerto</button>
+      <button id="e2_btn_guardar" class="btn-primary">Guardar cambio del registro</button>
     </div>
 
     <!-- Escenario 3: Cerrado + Masivo -->
     <div id="mc_escenario_3" class="hidden">
       <hr />
       <h3>Cierre Masivo</h3>
-      <p class="hint">Se cerrarán TODOS los registros asociados a este ticket.</p>
+      <p class="hint">Se cerrarán TODOS los registros asociados a este ticket. Si el ticket no tiene Fecha de Solución del CDA, se llena con la Fecha de Cierre del CDA que indiques aquí.</p>
       <div class="grid-2">
         <div class="field">
           <label>Fecha de Cierre CMR</label>
@@ -268,28 +275,46 @@
       <button id="e3_btn_guardar" class="btn-primary">Cerrar Todo el Ticket</button>
     </div>
 
-    <!-- Escenario 4: Cerrado + Por Puertos -->
+    <!-- Escenario 4: Solución puntual -->
     <div id="mc_escenario_4" class="hidden">
       <hr />
-      <h3>Cierre por Puertos</h3>
+      <h3>Solución puntual</h3>
       <div class="grid-2">
         <div class="field">
-          <label>Fecha de Cierre CMR</label>
+          <label>Fecha de Solución CMR</label>
           <input id="e4_fecha_cmr" type="datetime-local" />
         </div>
         <div class="field">
-          <label>Fecha de Cierre CDA</label>
+          <label>Fecha de Solución CDA</label>
           <input id="e4_fecha_cda" type="datetime-local" />
         </div>
       </div>
-      <p class="hint">Marca solo los registros que se cerraron con esas fechas.</p>
+      <p class="hint">Marca solo los registros que se solucionaron con esas fechas. Los que ya están resueltos no se pueden volver a marcar.</p>
       <table class="rows-table" id="e4_table">
         <thead>
-          <tr><th></th><th>Oficina</th><th>OLT</th><th>Tarjeta</th><th>Puerto</th></tr>
+          <tr><th></th><th>Oficina</th><th>OLT</th><th>Tarjeta</th><th>Puerto</th><th>Estado</th></tr>
         </thead>
         <tbody></tbody>
       </table>
-      <button id="e4_btn_guardar" class="btn-primary">Cerrar Puertos Marcados</button>
+      <button id="e4_btn_guardar" class="btn-primary">Resolver registros marcados</button>
+    </div>
+
+    <!-- Escenario 5: Solución masiva -->
+    <div id="mc_escenario_5" class="hidden">
+      <hr />
+      <h3>Solución masiva</h3>
+      <p class="hint">Se resolverán todos los registros de este ticket. Los que ya estén resueltos (por una solución puntual) no se tocan y conservan su fecha.</p>
+      <div class="grid-2">
+        <div class="field">
+          <label>Fecha de Solución CMR</label>
+          <input id="e5_fecha_cmr" type="datetime-local" />
+        </div>
+        <div class="field">
+          <label>Fecha de Solución CDA</label>
+          <input id="e5_fecha_cda" type="datetime-local" />
+        </div>
+      </div>
+      <button id="e5_btn_guardar" class="btn-primary">Resolver Todo el Ticket</button>
     </div>
 
     <!-- ENLACE / TRAMO / TRONCAL: pantalla propia (MASIVO o POR OLT, activo o cerrado) -->
