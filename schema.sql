@@ -119,6 +119,8 @@ CREATE TABLE IF NOT EXISTS ticket_puertos (
   estado_puerto TEXT NOT NULL DEFAULT 'EN CURSO (ASIGNADO)',
   fecha_cierre_cmr TEXT,
   fecha_cierre_cda TEXT,
+  fecha_solucion_cmr TEXT,                -- solución del registro (migration_021)
+  fecha_solucion_cda TEXT,
   creado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   actualizado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

@@ -16,7 +16,7 @@ async function apiSend(path, method, body) {
     body: JSON.stringify(body),
   });
   const data = await r.json();
-  if (!r.ok) throw new Error(data.error || "Error de solicitud");
+  if (!r.ok) { const err = new Error(data.error || "Error de solicitud"); if (data.reautenticar) err.reautenticar = true; throw err; }
   return data;
 }
 function fillSelect(select, items, { valueKey = "nombre", labelKey = "nombre", placeholder = "Seleccione:" } = {}) {
@@ -103,6 +103,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (btn.dataset.tab === "reporte" && reporteDatos.length === 0) cargarReporte();
     if (btn.dataset.tab === "ciclo" && cicloDatos.length === 0) cargarCiclo();
     ajustarTodasLasTablas();
+    if (btn.dataset.tab === "consultar" && clGrid && clGridListo) clGrid.redraw(true);
   });
 });
 
@@ -1453,33 +1454,346 @@ function construirQueryConsulta() {
   return params.toString();
 }
 
+// ---------------------------------------------------------------
+// Consultar / Log: tabla tipo Excel (Tabulator). Solo lectura hasta que un administrador o supervisor
+// pulsa "Editar como cuadro de Excel" y vuelve a escribir su contraseña.
+// ---------------------------------------------------------------
 let clDatosActuales = [];   // filas de la última búsqueda mostrada en Consultar / Log
+let clSeleccion = new Set();   // ids de REGISTRO (fila de detalle) marcados para eliminar (solo administrador)
+let clFilas = new Map();      // id de registro -> { ticket, total de registros que tiene ese ticket en la base }
+let clGrid = null, clGridRol = null, clGridListo = false;
+let clBase = new Map();       // id de registro -> copia de los campos editables tal como están guardados
+let clGrupos = new Map();     // ticket_id -> [ids de registro]
+let clModoEdicion = false;
+let clTokenEdicion = null;    // permiso temporal (30 min) que entrega el servidor al volver a escribir la contraseña
+let clOcupado = false;
+
+// Una sola lista define orden, nombre visible, tipo y si se puede editar.
+//   t: texto visible · tipo: cómo se muestra/edita · ed: editable · campo: nombre que entiende el servidor al guardar
+const CL_COLS = [
+  { f: "ticket_cmr", t: "Ticket", tipo: "ticket", ed: true, w: 110, frozen: true },
+  { f: "tickets_vinculados", t: "Vinculados", tipo: "ticket", ed: true, w: 120 },
+  { f: "estado_ticket", t: "Estado del ticket", tipo: "lista", ed: true, w: 175, lista: () => (LOOKUPS.estados_ticket || []).map((x) => x.nombre) },
+  { f: "unidad_resolutoria", t: "Unidad resolutoria", tipo: "lista", ed: true, w: 160, vacio: true, lista: () => (LOOKUPS.unidades_resolutorias || []).map((x) => x.nombre) },
+  { f: "region", t: "Estado", tipo: "dato", w: 140 },
+  { f: "oficina_nombre", t: "Oficina", tipo: "lista", ed: true, campo: "oficina", w: 200, lista: () => (LOOKUPS.oficinas || []).map((x) => x.nombre) },
+  { f: "olt", t: "OLT", tipo: "texto", ed: true, w: 190 },
+  { f: "tarjeta", t: "Tarjeta", tipo: "texto", ed: true, w: 90 },
+  { f: "puerto", t: "Puerto", tipo: "texto", ed: true, w: 90 },
+  { f: "sector", t: "Sector", tipo: "texto", ed: true, w: 170 },
+  { f: "edificio", t: "Edificio", tipo: "texto", ed: true, w: 150 },
+  { f: "no_clientes_reportaron", t: "Nro. reportes", tipo: "cant", ed: true, w: 110 },
+  { f: "nro_clientes_afectados", t: "Nro. afectados", tipo: "cant", ed: true, w: 115 },
+  { f: "categoria_afectacion", t: "Categoría", tipo: "lista", ed: true, w: 170, lista: () => (LOOKUPS.categorias || []).map((x) => x.nombre) },
+  { f: "afectacion", t: "Afectación", tipo: "lista", ed: true, w: 190, lista: () => [...new Set((LOOKUPS.afectaciones || []).map((x) => x.nombre))] },
+  { f: "descripcion", t: "Descripción", tipo: "texto", ed: true, vacio: true, w: 260 },
+  { f: "comentario", t: "Comentario", tipo: "texto", ed: true, vacio: true, w: 220 },
+  { f: "avance_cmr", t: "Avance CMR", tipo: "texto", ed: true, vacio: true, w: 260 },
+  { f: "fecha_apertura_cda", t: "Apertura CDA", tipo: "fecha", ed: true, w: 140 },
+  { f: "fecha_apertura_cmr", t: "Apertura CMR", tipo: "fecha", ed: true, w: 140 },
+  { f: "dia_apertura", t: "Día apertura CMR", tipo: "dato", w: 90 },
+  { f: "mes_apertura", t: "Mes apertura CMR", tipo: "dato", w: 90 },
+  { f: "anio_apertura", t: "Año apertura CMR", tipo: "dato", w: 90 },
+  { f: "grupo_horario", t: "Grupo horario CMR", tipo: "dato", w: 120 },
+  { f: "fecha_cierre_cda", t: "Cierre CDA", tipo: "fecha", ed: true, w: 140 },
+  { f: "fecha_cierre_cmr", t: "Cierre CMR", tipo: "fecha", ed: true, w: 140 },
+  { f: "fecha_solucion_cda", t: "Solución CDA", tipo: "fecha", ed: true, w: 140 },
+  { f: "fecha_solucion_cmr", t: "Solución CMR", tipo: "fecha", ed: true, w: 140 },
+  { f: "tiempo_curso_cda_h", t: "Tiempo en curso CDA (h)", tipo: "horas", w: 120 },
+  { f: "tiempo_curso_cmr_h", t: "Tiempo en curso CMR (h)", tipo: "horas", w: 120 },
+  { f: "tiempo_cerrar_cda_h", t: "Tiempo en cerrar CDA (h)", tipo: "horas", w: 120 },
+  { f: "tiempo_cerrar_cmr_h", t: "Tiempo en cerrar CMR (h)", tipo: "horas", w: 120 },
+  { f: "semaforo_curso_cmr", t: "Semáforo tiempo en curso CMR", tipo: "sem", w: 130 },
+  { f: "semaforo_cierre_cmr", t: "Semáforo tiempo de cierre CMR", tipo: "sem", w: 130 },
+  { f: "creado_por_nombre", t: "Creado por", tipo: "dato", w: 150 },
+];
+// Campos que pertenecen al TICKET (se repiten en cada fila del ticket y se guardan una sola vez).
+const CL_CAMPOS_TICKET = ["ticket_cmr", "tickets_vinculados", "estado_ticket", "unidad_resolutoria", "categoria_afectacion", "afectacion",
+  "descripcion", "comentario", "avance_cmr", "fecha_apertura_cda", "fecha_apertura_cmr", "fecha_solucion_cda", "fecha_solucion_cmr"];
+const CL_EDITABLES = CL_COLS.filter((c) => c.ed);
+
+const clVacio = (v) => v === null || v === undefined || String(v).trim() === "";
+const clIgual = (a, b) => (clVacio(a) && clVacio(b)) || String(a) === String(b);
+
+// "04/10/2026 21:22" o "2026-10-04T21:22" -> "2026-10-04T21:22:00". Lo que no se reconoce se deja tal cual (el servidor lo rechaza y avisa).
+function clNormFecha(v) {
+  if (v === null || v === undefined) return "";
+  const t = String(v).trim();
+  if (!t) return "";
+  const dos = (x) => String(x).padStart(2, "0");
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}T${dos(m[4] || "00")}:${m[5] || "00"}:${m[6] || "00"}`;
+  m = t.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})(?:[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (m) return `${m[3]}-${dos(m[2])}-${dos(m[1])}T${dos(m[4] || "00")}:${m[5] || "00"}:${m[6] || "00"}`;
+  return t;
+}
+function clFechaATexto(v) {
+  const m = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}${m[4] ? ` ${m[4]}:${m[5]}` : ""}` : String(v || "");
+}
+function clNormCant(v) {
+  if (v === null || v === undefined) return "";
+  const t = String(v).trim().replace(/\./g, "");
+  return /^\d+$/.test(t) ? Number(t) : String(v).trim();
+}
+function clNormNumTicket(v) {
+  if (v === null || v === undefined) return "";
+  return String(v).replace(/\s+/g, "").trim();
+}
+
+function clEditorFecha(cell, onRendered, success, cancel) {
+  const inp = document.createElement("input");
+  inp.type = "text"; inp.placeholder = "dd/mm/aaaa hh:mm";
+  inp.style.cssText = "width:100%;height:100%;box-sizing:border-box;padding:4px;border:0;outline:0;";
+  inp.value = clFechaATexto(cell.getValue());
+  let hecho = false;
+  const fin = (ok) => {
+    if (hecho) return; hecho = true;
+    const v = inp.value.trim();
+    if (ok && v !== clFechaATexto(cell.getValue())) success(clNormFecha(v)); else cancel();
+  };
+  onRendered(() => { inp.focus({ preventScroll: true }); inp.select(); });
+  inp.addEventListener("blur", () => fin(true));
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); fin(true); }
+    else if (e.key === "Escape") { e.preventDefault(); fin(false); }
+  });
+  return inp;
+}
+
+// Resalta (color suave) la celda cuyo valor ya no es el guardado.
+function clMarcar(cell, texto) {
+  const el = cell.getElement();
+  const f = cell.getField();
+  const b = clBase.get(cell.getRow().getData().puerto_id);
+  el.classList.toggle("cl-cambiada", !!b && f in b && !clIgual(b[f], cell.getValue()));
+  return texto;
+}
+
+function clDefColumna(c) {
+  const col = { title: c.t, field: c.f, width: c.w, minWidth: 70, headerTooltip: c.t, cssClass: c.ed ? "" : "cl-calculada" };
+  if (c.frozen) col.frozen = true;
+  const esc = (v) => escHtml(String(v));
+  switch (c.tipo) {
+    case "ticket":
+      col.mutator = clNormNumTicket;
+      col.formatter = (cell) => clMarcar(cell, clVacio(cell.getValue()) ? "" : `<strong>${formatearTicket(cell.getValue())}</strong>`);
+      col.editor = "input"; col.editorParams = { elementAttributes: { inputmode: "numeric" } };
+      break;
+    case "texto":
+      col.formatter = (cell) => clMarcar(cell, clVacio(cell.getValue()) ? "" : esc(cell.getValue()));
+      col.editor = "input";
+      break;
+    case "cant":
+      col.mutator = clNormCant;
+      col.hozAlign = "right";
+      col.formatter = (cell) => clMarcar(cell, formatearMiles(cell.getValue()));
+      col.editor = "input"; col.editorParams = { elementAttributes: { inputmode: "numeric" } };
+      break;
+    case "lista":
+      col.formatter = (cell) => clMarcar(cell, clVacio(cell.getValue()) ? "" : esc(cell.getValue()));
+      col.editor = "list";
+      col.editorParams = () => ({ values: c.lista(), autocomplete: true, listOnEmpty: true, clearable: !!c.vacio, allowEmpty: !!c.vacio, freetext: false });
+      break;
+    case "fecha":
+      col.mutator = clNormFecha;
+      col.formatter = (cell) => clMarcar(cell, clVacio(cell.getValue()) ? "" : clFechaATexto(cell.getValue()));
+      col.editor = clEditorFecha;
+      break;
+    case "horas":
+      col.hozAlign = "right";
+      col.formatter = (cell) => { const v = cell.getValue(); return v === null || v === undefined || v === "" ? "" : Number(v).toFixed(1).replace(".", ","); };
+      break;
+    case "sem":
+      col.hozAlign = "center";
+      col.formatter = (cell) => {
+        const v = cell.getValue();
+        const el = cell.getElement();
+        el.style.background = v && SEMAFORO_HEX[v] ? hexARgba(SEMAFORO_HEX[v], 0.5) : "";
+        return v ? esc(v) : "";
+      };
+      break;
+    default:
+      col.formatter = (cell) => { const v = cell.getValue(); return v === null || v === undefined || v === "" ? "" : esc(v); };
+  }
+  if (c.ed) col.editable = () => clModoEdicion;
+  else col.editable = false;
+  return col;
+}
+
+function clColumnas() {
+  const cols = [];
+  if (currentUser && currentUser.rol === "administrador") {
+    cols.push({
+      title: "", field: "_sel", width: 44, hozAlign: "center", headerSort: false, frozen: true, cssClass: "cl-sel-col", editable: false, resizable: false,
+      titleFormatter: () => `<input type="checkbox" id="cl_check_todos" title="Seleccionar todas" />`,
+      headerClick: (e) => {
+        if (!(e.target && e.target.id === "cl_check_todos")) return;
+        const marcar = e.target.checked;
+        clSeleccion = new Set(marcar ? clGrid.getData("active").map((r) => String(r.puerto_id)) : []);
+        clGrid.getRows("active").forEach((r) => r.reformat());
+        clActualizarSeleccion();
+      },
+      formatter: (cell) => `<input type="checkbox" class="cl-check" ${clSeleccion.has(String(cell.getRow().getData().puerto_id)) ? "checked" : ""} title="Marca todo el ticket. Ctrl+clic: solo este registro." />`,
+      cellClick: (e, cell) => {
+        if (!(e.target && e.target.classList.contains("cl-check"))) return;
+        e.stopPropagation();
+        const d = cell.getRow().getData();
+        const id = String(d.puerto_id);
+        const soloEste = e.ctrlKey || e.metaKey || e.altKey;
+        const grupo = (clGrupos.get(d.ticket_id) || [d.puerto_id]).map(String);
+        const tocar = [id];
+        if (e.target.checked) {
+          const yaHabiaOtras = grupo.some((x) => x !== id && clSeleccion.has(x));
+          clSeleccion.add(id);
+          if (!soloEste && !yaHabiaOtras) grupo.forEach((x) => { clSeleccion.add(x); tocar.push(x); });
+        } else clSeleccion.delete(id);
+        tocar.forEach((x) => { const r = clGrid.getRow(Number(x)) || clGrid.getRow(x); if (r) r.reformat(); });
+        clActualizarSeleccion();
+      },
+    });
+  }
+  CL_COLS.forEach((c) => cols.push(clDefColumna(c)));
+  return cols;
+}
+
+function clCrearGrid() {
+  if (clGrid) { try { clGrid.destroy(); } catch (e) { /* ya destruida */ } clGrid = null; }
+  clGridListo = false;
+  clGridRol = currentUser ? currentUser.rol : null;
+  document.getElementById("cl_grid").innerHTML = "";
+  clGrid = new Tabulator("#cl_grid", {
+    data: [],
+    index: "puerto_id",
+    height: "68vh",
+    layout: "fixed",
+    renderHorizontal: "basic",
+    columns: clColumnas(),
+    placeholder: "Sin registros. Ajusta los filtros y pulsa Filtrar.",
+    selectableRange: true,
+    selectableRangeColumns: false,
+    selectableRangeRows: false,
+    selectableRangeClearCells: true,
+    selectableRangeFill: true,
+    editTriggerEvent: "dblclick",
+    clipboard: true,
+    clipboardCopyStyled: false,
+    clipboardPasteParser: "range",
+    clipboardPasteAction: "range",
+    history: true,
+    rowFormatter: (row) => {
+      const el = row.getElement(), d = row.getData();
+      el.dataset.ticket = d.ticket_cmr; el.dataset.registro = d.puerto_id;
+      el.classList.toggle("cl-fila-sel", clSeleccion.has(String(d.puerto_id)));
+    },
+  });
+  clGrid.on("tableBuilt", () => { clGridListo = true; if (clDatosActuales.length) clPonerDatos(); });
+  clGrid.on("rowDblClick", (e, row) => {
+    if (clModoEdicion) return;
+    if (e.target && e.target.closest && e.target.closest(".cl-sel-col")) return;
+    mostrarDetalleTicket(row.getData().ticket_cmr);
+  });
+  clGrid.on("cellEdited", (cell) => clTrasEditar([cell]));
+  clGrid.on("rangeEdited", (rango) => clTrasEditar(rango.getCells().flat()));
+  clGrid.on("historyUndo", (tipo, comp) => clTrasHistoria(tipo, comp));
+  clGrid.on("historyRedo", (tipo, comp) => clTrasHistoria(tipo, comp));
+}
+
+function clTrasHistoria(tipo, comp) {
+  if (tipo === "cellEdit") clTrasEditar([comp]);
+  else if (tipo === "rangeEdit" && comp && comp.getCells) clTrasEditar(comp.getCells().flat());
+  else clActualizarCambios();
+}
+
+// Después de editar: repite en todas las filas del ticket los campos del ticket, recalcula el Estado (región) si cambió la oficina.
+function clTrasEditar(celdas) {
+  const vistos = new Set();
+  celdas.forEach((cell) => {
+    if (!cell || !cell.getField) return;
+    const campo = cell.getField();
+    const fila = cell.getRow();
+    const d = fila.getData();
+    if (CL_CAMPOS_TICKET.includes(campo)) {
+      const k = d.puerto_id + "|" + campo;
+      if (vistos.has(k)) return; vistos.add(k);
+      (clGrupos.get(d.ticket_id) || []).forEach((id) => {
+        if (id === d.puerto_id) return;
+        const otra = clGrid.getRow(id);
+        if (otra && !clIgual(otra.getData()[campo], cell.getValue())) otra.update({ [campo]: cell.getValue() });
+      });
+    } else if (campo === "oficina_nombre") {
+      const of = (LOOKUPS.oficinas || []).find((o) => o.nombre === cell.getValue());
+      if (of && of.estado !== d.region) fila.update({ region: of.estado });
+    }
+  });
+  clActualizarCambios();
+}
+
+// Lista de cambios pendientes = diferencia entre lo que hay en la tabla y lo que está guardado.
+function clCambiosPendientes() {
+  const out = [];
+  if (!clGrid || !clGridListo) return out;
+  const vistos = new Set();
+  clGrid.getData().forEach((r) => {
+    const b = clBase.get(r.puerto_id);
+    if (!b) return;
+    CL_EDITABLES.forEach((c) => {
+      if (clIgual(b[c.f], r[c.f])) return;
+      if (CL_CAMPOS_TICKET.includes(c.f)) {
+        const k = r.ticket_id + "|" + c.f;
+        if (vistos.has(k)) return; vistos.add(k);
+      }
+      out.push({ registro: r.puerto_id, campo: c.campo || c.f, valor: clVacio(r[c.f]) ? "" : r[c.f] });
+    });
+  });
+  return out;
+}
+function clActualizarCambios() {
+  const n = clCambiosPendientes().length;
+  document.getElementById("cl_cambios_n").textContent = n ? `(${n})` : "";
+  document.getElementById("cl_btn_guardar").disabled = clOcupado || n === 0;
+  document.getElementById("cl_btn_descartar").disabled = clOcupado || n === 0;
+  return n;
+}
+
+function clPonerDatos() {
+  clBase = new Map();
+  clGrupos = new Map();
+  clFilas = new Map();
+  clSeleccion = new Set();
+  clDatosActuales.forEach((f) => {
+    const b = {};
+    CL_EDITABLES.forEach((c) => {
+      let v = f[c.f];
+      if (c.tipo === "fecha") v = clNormFecha(v);
+      else if (c.tipo === "cant") v = clNormCant(v);
+      else if (c.tipo === "ticket") v = clNormNumTicket(v);
+      b[c.f] = v === null || v === undefined ? "" : v;
+    });
+    clBase.set(f.puerto_id, b);
+    if (!clGrupos.has(f.ticket_id)) clGrupos.set(f.ticket_id, []);
+    clGrupos.get(f.ticket_id).push(f.puerto_id);
+    clFilas.set(String(f.puerto_id), { ticket: String(f.ticket_cmr), total: Number(f.total_registros_ticket) || 0 });
+  });
+  clGrid.replaceData(clDatosActuales.map((f) => ({ ...f })));
+  clGrid.clearHistory();
+  clActualizarSeleccion();
+  clActualizarCambios();
+}
 
 // Vista general (las mismas columnas de la tabla, con los filtros activos). No incluye el detalle del ticket.
 function filasExportConsulta() {
-  const v = (x) => (x === null || x === undefined ? "" : x);
-  return clDatosActuales.map((f) => ({
-    "Ticket": f.ticket_cmr,
-    "Vinculados": v(f.tickets_vinculados),
-    "Apert. CDA": v(f.fecha_apertura_cda),
-    "Apert. CMR": f.fecha_apertura_cmr ? formatearFechaHora(f.fecha_apertura_cmr) : "",
-    "Estado": v(f.estado_ticket),
-    "Unidad Res.": v(f.unidad_resolutoria),
-    "Categoría": v(f.categoria_afectacion),
-    "Afectación": v(f.afectacion),
-    "Comentario": v(f.comentario),
-    "Descripción": v(f.descripcion),
-    "Nro Afect.": v(f.nro_clientes_afectados),
-    "Nro Report.": v(f.no_clientes_reportaron),
-    "Oficina": v(f.oficina_nombre),
-    "OLT": v(f.olt),
-    "Sector": v(f.sector),
-    "Edificio": v(f.edificio),
-    "Tarjeta": v(f.tarjeta),
-    "Puerto": v(f.puerto),
-    "Semáforo": v(f.semaforo),
-    "Tiempo Cierre (h)": f.tiempo_cierre_horas !== null && f.tiempo_cierre_horas !== undefined ? Number(f.tiempo_cierre_horas.toFixed(1)) : "",
-  }));
+  return clDatosActuales.map((f) => {
+    const o = {};
+    CL_COLS.forEach((c) => {
+      let v = f[c.f];
+      if (v === null || v === undefined) v = "";
+      if (c.tipo === "fecha") v = v ? formatearFechaHora(v) : "";
+      else if (c.tipo === "horas") v = v === "" ? "" : Number(Number(v).toFixed(1));
+      o[c.t] = v;
+    });
+    return o;
+  });
 }
 function exportarConsulta(formato) {
   if (!clDatosActuales.length) { alert("No hay registros en pantalla para descargar. Aplica los filtros y pulsa Filtrar."); return; }
@@ -1491,89 +1805,113 @@ function exportarConsulta(formato) {
 document.getElementById("cl_btn_csv").addEventListener("click", () => exportarConsulta("csv"));
 document.getElementById("cl_btn_xlsx").addEventListener("click", () => exportarConsulta("xlsx"));
 
-async function cargarConsulta() {
-  const tbody = document.querySelector("#cl_table tbody");
+function clPuedeEditar() { return !!currentUser && (currentUser.rol === "administrador" || currentUser.rol === "supervisor"); }
+
+function clAplicarModoEdicion(activo) {
+  clModoEdicion = activo;
+  document.getElementById("cl_grid").classList.toggle("cl-editando", activo);
+  document.getElementById("cl_btn_editar").classList.toggle("hidden", activo);
+  document.getElementById("cl_edit_controles").classList.toggle("hidden", !activo);
+  document.getElementById("cl_ayuda_excel").classList.toggle("hidden", !activo);
+  if (!activo) clTokenEdicion = null;
+  clActualizarCambios();
+}
+
+// true si se puede continuar (no hay cambios, o el usuario acepta perderlos)
+function clConfirmarDescarte() {
+  const n = clModoEdicion ? clCambiosPendientes().length : 0;
+  return n === 0 || confirm(`Tienes ${n} cambio(s) sin guardar. Si continúas se pierden. ¿Continuar?`);
+}
+
+async function cargarConsulta(opciones) {
   const contador = document.getElementById("cl_contador");
-  clSeleccion = new Set();
-  clFilas = new Map();
-  clDatosActuales = [];
-  tbody.innerHTML = `<tr><td colspan="21">Cargando...</td></tr>`;
+  const msgx = document.getElementById("cl_msg_excel");
+  const silencioso = !!(opciones && opciones.silencioso);
+  if (!(opciones && opciones.forzar) && !clConfirmarDescarte()) return;
+  if (clModoEdicion && !(opciones && opciones.mantenerEdicion)) clAplicarModoEdicion(false);
+  if (!clGrid || clGridRol !== (currentUser && currentUser.rol)) clCrearGrid();
+  if (!silencioso) { contador.textContent = "Cargando..."; msgx.textContent = ""; }
   try {
     const data = await apiGet(`/consulta?${construirQueryConsulta()}`);
-    tbody.innerHTML = "";
     clDatosActuales = data.filas;   // exactamente lo que se ve en la tabla (ya filtrado por el servidor)
     clFechas = data.fechas || { apertura: [], cierre: [] };
     clActualizarFechas("apertura"); clActualizarFechas("cierre");
-    data.filas.forEach((f) => {
-      const tr = document.createElement("tr");
-      tr.className = f.semaforo ? `sem-${f.semaforo}` : "";
-      tr.style.cursor = "pointer";
-      tr.title = "Doble click para ver el log";
-      tr.innerHTML = `
-        <td class="cl-sel"><input type="checkbox" class="cl-check" data-ticket="${f.ticket_cmr}" data-registro="${f.puerto_id}" title="Marca todo el ticket. Ctrl+clic: solo este registro." /></td>
-        <td><strong>${formatearTicket(f.ticket_cmr)}</strong></td>
-        <td>${f.tickets_vinculados ? formatearTicket(f.tickets_vinculados) : "-"}</td>
-        <td>${f.fecha_apertura_cda || "-"}</td>
-        <td>${formatearFechaHora(f.fecha_apertura_cmr)}</td>
-        <td>${f.estado_ticket}</td>
-        <td>${f.unidad_resolutoria || "-"}</td>
-        <td>${f.categoria_afectacion || "-"}</td>
-        <td>${f.afectacion || "-"}</td>
-        <td>${f.comentario || "-"}</td>
-        <td>${f.descripcion || "-"}</td>
-        <td>${formatearMiles(f.nro_clientes_afectados)}</td>
-        <td>${formatearMiles(f.no_clientes_reportaron)}</td>
-        <td>${f.oficina_nombre || "-"}</td>
-        <td>${f.olt}</td>
-        <td>${f.sector}</td>
-        <td>${f.edificio}</td>
-        <td>${f.tarjeta}</td>
-        <td>${f.puerto}</td>
-        <td>${f.semaforo || "-"}</td>
-        <td>${f.tiempo_cierre_horas !== null ? f.tiempo_cierre_horas.toFixed(1) : "-"}</td>
-      `;
-      tr.addEventListener("dblclick", () => mostrarDetalleTicket(f.ticket_cmr));
-      clFilas.set(String(f.puerto_id), { ticket: String(f.ticket_cmr), total: Number(f.total_registros_ticket) || 0 });
-      const chk = tr.querySelector(".cl-check");
-      chk.addEventListener("dblclick", (e) => e.stopPropagation());
-      chk.addEventListener("click", (e) => { e.stopPropagation(); clAlHacerClic(chk, e.ctrlKey || e.metaKey || e.altKey); });
-      tbody.appendChild(tr);
-    });
-    clActualizarSeleccion();
+    if (clGridListo) clPonerDatos();     // si la tabla aún se está construyendo, lo hace al terminar (tableBuilt)
     contador.textContent = `${formatearMiles(data.filas.length)} registro(s) encontrados.`;
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="21" class="msg error">${err.message}</td></tr>`;
+    contador.textContent = "";
+    showMsg(msgx, err.message, false);
   }
 }
-
-// ---------------------------------------------------------------
-// Consultar / Log: eliminar tickets (solo administrador, con su contraseña)
-// ---------------------------------------------------------------
-let clSeleccion = new Set();   // ids de REGISTRO (fila de detalle) marcados
-let clFilas = new Map();      // id de registro -> { ticket, total de registros que tiene ese ticket en la base }
 
 // Marcar una fila marca todo el ticket (si no había ya filas suyas marcadas); desmarcar quita solo esa fila.
-// Ctrl+clic marca únicamente ese registro.
-function clAlHacerClic(chk, soloEste) {
-  const ticket = chk.dataset.ticket;
-  const delTicket = [...document.querySelectorAll(`#cl_table .cl-check[data-ticket="${ticket}"]`)];
-  if (chk.checked) {
-    const yaHabiaOtras = delTicket.some((c) => c !== chk && c.checked);
-    if (!soloEste && !yaHabiaOtras) delTicket.forEach((c) => { c.checked = true; });
-  }
-  clActualizarSeleccion();
-}
+// Ctrl+clic marca únicamente ese registro. (La lógica está en la columna de casillas.)
 function clActualizarSeleccion() {
-  const checks = [...document.querySelectorAll("#cl_table .cl-check")];
-  clSeleccion = new Set(checks.filter((c) => c.checked).map((c) => c.dataset.registro));
-  checks.forEach((c) => c.closest("tr").classList.toggle("cl-fila-sel", c.checked));
-  document.getElementById("cl_sel_count").textContent = clSeleccion.size ? `(${clSeleccion.size})` : "";
-  document.getElementById("cl_btn_eliminar").disabled = clSeleccion.size === 0;
-  document.getElementById("cl_check_todos").checked = checks.length > 0 && clSeleccion.size === checks.length;
+  const n = clSeleccion.size;
+  document.getElementById("cl_sel_count").textContent = n ? `(${n})` : "";
+  document.getElementById("cl_btn_eliminar").disabled = n === 0;
+  const todos = document.getElementById("cl_check_todos");
+  if (todos) todos.checked = clDatosActuales.length > 0 && n === clDatosActuales.length;
 }
-document.getElementById("cl_check_todos").addEventListener("change", (e) => {
-  document.querySelectorAll("#cl_table .cl-check").forEach((c) => { c.checked = e.target.checked; });
-  clActualizarSeleccion();
+
+// Activar la edición: pide la contraseña otra vez; el servidor entrega un permiso temporal.
+document.getElementById("cl_btn_editar").addEventListener("click", async () => {
+  if (!clPuedeEditar()) return;
+  const msgx = document.getElementById("cl_msg_excel");
+  msgx.textContent = "";
+  const r = await pedirClave("Para editar la tabla como si fuera Excel, vuelve a escribir tu contraseña.", async (password) => apiSend("/auth/verificar-edicion", "POST", { password }), { titulo: "Editar como cuadro de Excel", boton: "Activar edición", peligro: false });
+  if (!r || !r.token) return;
+  clTokenEdicion = r.token;
+  clAplicarModoEdicion(true);
+  showMsg(msgx, `Edición activada (${r.minutos || 30} min). Haz doble clic en una celda para cambiarla.`, true);
+});
+
+document.getElementById("cl_btn_salir_edicion").addEventListener("click", () => {
+  if (!clConfirmarDescarte()) return;
+  clAplicarModoEdicion(false);
+  cargarConsulta({ forzar: true });
+});
+document.getElementById("cl_btn_descartar").addEventListener("click", () => {
+  if (!clCambiosPendientes().length || !confirm("¿Descartar todos los cambios sin guardar?")) return;
+  cargarConsulta({ forzar: true, mantenerEdicion: true, silencioso: true });
+});
+
+async function clEnviarCambios(cambios) {
+  const lotes = [];
+  for (let i = 0; i < cambios.length; i += 1000) lotes.push(cambios.slice(i, i + 1000));
+  let total = 0;
+  for (const lote of lotes) {
+    let r;
+    try { r = await apiSend("/consulta-editar", "POST", { token: clTokenEdicion, cambios: lote }); }
+    catch (e) {
+      if (!e.reautenticar) throw e;
+      const nuevo = await pedirClave("Tu permiso de edición venció. Escribe tu contraseña para continuar.", async (password) => apiSend("/auth/verificar-edicion", "POST", { password }), { titulo: "Editar como cuadro de Excel", boton: "Continuar", peligro: false });
+      if (!nuevo || !nuevo.token) throw new Error("Guardado cancelado. No se guardó nada.");
+      clTokenEdicion = nuevo.token;
+      r = await apiSend("/consulta-editar", "POST", { token: clTokenEdicion, cambios: lote });
+    }
+    total += r.celdas || lote.length;
+  }
+  return total;
+}
+
+document.getElementById("cl_btn_guardar").addEventListener("click", async () => {
+  const msgx = document.getElementById("cl_msg_excel");
+  const cambios = clCambiosPendientes();
+  if (!cambios.length || clOcupado) return;
+  clOcupado = true; clActualizarCambios();
+  try {
+    const n = await clEnviarCambios(cambios);
+    pizarraDatos = []; reporteDatos = []; cicloDatos = [];            // los informes se recargan al abrirlos
+    await cargarConsulta({ forzar: true, mantenerEdicion: true, silencioso: true });
+    showMsg(msgx, `Se guardaron ${formatearMiles(n)} cambio(s). Las columnas calculadas se actualizaron.`, true);
+  } catch (e) {
+    showMsg(msgx, e.message, false);
+  } finally { clOcupado = false; clActualizarCambios(); }
+});
+
+window.addEventListener("beforeunload", (e) => {
+  if (clModoEdicion && clCambiosPendientes().length) { e.preventDefault(); e.returnValue = ""; }
 });
 
 // Qué se va a borrar: tickets con TODOS sus registros marcados -> ticket completo; el resto -> solo esos registros.
@@ -1595,7 +1933,8 @@ function clPlanEliminacion() {
 
 // Ventana que pide la contraseña. "ejecutar(clave)" hace la llamada; si falla (ej. clave incorrecta)
 // el mensaje se muestra en la ventana y se puede reintentar. Resuelve con el resultado, o null si se cancela.
-function pedirClave(texto, ejecutar) {
+function pedirClave(texto, ejecutar, op) {
+  const o = Object.assign({ titulo: "Confirmar eliminación", boton: "Eliminar definitivamente", peligro: true }, op || {});
   return new Promise((resolve) => {
     const ov = document.getElementById("modal_clave");
     const inp = document.getElementById("modal_clave_input");
@@ -1603,6 +1942,9 @@ function pedirClave(texto, ejecutar) {
     const ok = document.getElementById("modal_clave_ok");
     const cancelar = document.getElementById("modal_clave_cancelar");
     document.getElementById("modal_clave_texto").textContent = texto;
+    document.getElementById("modal_clave_titulo").textContent = o.titulo;
+    ok.textContent = o.boton;
+    ok.className = o.peligro ? "btn-danger" : "btn-primary";
     inp.value = ""; msg.textContent = ""; msg.className = "msg"; ok.disabled = false;
     ov.classList.remove("hidden");
     inp.focus();
@@ -1640,7 +1982,7 @@ async function eliminarEnLotes(ruta, campo, lista, password, acumulado) {
 }
 
 document.getElementById("cl_btn_eliminar").addEventListener("click", async () => {
-  if (clSeleccion.size === 0) return;
+  if (clSeleccion.size === 0 || !clConfirmarDescarte()) return;
   const { completos, sueltos } = clPlanEliminacion();
   const lineas = ["Vas a eliminar definitivamente:"];
   if (completos.length) {
@@ -1664,7 +2006,7 @@ document.getElementById("cl_btn_eliminar").addEventListener("click", async () =>
   });
   if (!res) return;
   pizarraDatos = []; reporteDatos = []; cicloDatos = [];            // los dashboards se recargan al abrirlos
-  await cargarConsulta();
+  await cargarConsulta({ forzar: true });
   const sueltosEl = sueltos.reduce((s, x) => s + x.ids.length, 0);
   const partes = [];
   if (completos.length) partes.push(`${res.tickets_eliminados - res.tickets_vaciados} ticket(s) completo(s)`);
@@ -1673,12 +2015,22 @@ document.getElementById("cl_btn_eliminar").addEventListener("click", async () =>
   showMsg(document.getElementById("cl_contador"), `Se eliminaron: ${partes.join(", ")}.`, true);
 });
 
-document.getElementById("cl_btn_filtrar").addEventListener("click", cargarConsulta);
+document.getElementById("cl_btn_filtrar").addEventListener("click", () => cargarConsulta());
+
+// Actualización programada: cada hora se recargan los informes abiertos y la tabla de Consultar / Log
+// (los tiempos "en curso" se calculan al momento de la consulta), sin depender de que alguien registre un ticket.
+setInterval(() => {
+  if (!currentUser || !currentUser.registrado) return;
+  ["piz", "rep", "cic"].forEach((p) => { if (datosInforme(p).length) cargarInforme(p); });
+  const vistaTabla = document.getElementById("cl_vista_tabla");
+  if (clGrid && !clModoEdicion && vistaTabla && !vistaTabla.classList.contains("hidden")) cargarConsulta({ forzar: true, silencioso: true });
+}, 3600000);
 
 document.getElementById("q_btn_volver").addEventListener("click", () => {
   document.getElementById("q_resultado").classList.add("hidden");
   document.getElementById("q_btn_volver").classList.add("hidden");
   document.getElementById("cl_vista_tabla").classList.remove("hidden");
+  if (clGrid && clGridListo) clGrid.redraw(true);
 });
 
 // ---------------------------------------------------------------
@@ -1706,7 +2058,8 @@ function aplicarPermisosRol() {
   }
 
   const esAdminCl = currentUser.rol === "administrador";
-  document.getElementById("cl_table").classList.toggle("cl-admin", esAdminCl);
+  document.getElementById("cl_barra_excel").classList.toggle("hidden", !clPuedeEditar());
+  if (clGrid && clGridRol !== currentUser.rol) { clAplicarModoEdicion(false); cargarConsulta({ forzar: true }); }
   document.getElementById("cl_btn_eliminar").classList.toggle("hidden", !esAdminCl);
   document.getElementById("cl_ayuda_sel").classList.toggle("hidden", !esAdminCl);
 

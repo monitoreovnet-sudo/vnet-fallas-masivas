@@ -51,16 +51,19 @@ export async function onRequestGet({ request, env }) {
     SELECT
       t.id AS ticket_id, t.ticket_cmr, t.tickets_vinculados,
       t.fecha_apertura_cda, t.fecha_apertura_cmr,
-      t.fecha_solucion_cmr, t.estado_ticket, t.unidad_resolutoria,
+      t.fecha_solucion_cmr, t.fecha_solucion_cda, t.estado_ticket, t.unidad_resolutoria,
       t.categoria_afectacion, t.afectacion, t.comentario, t.descripcion, t.avance_cmr,
       p.id AS puerto_id, p.oficina_id, o.nombre AS oficina_nombre, o.estado AS region, o.localidad,
       p.olt, p.sector, p.edificio, p.tarjeta, p.puerto,
       p.no_clientes_reportaron, p.nro_clientes_afectados, p.estado_puerto,
+      p.fecha_cierre_cda, p.fecha_cierre_cmr,
+      t.creado_por, COALESCE(NULLIF(u.nombre, ''), t.creado_por) AS creado_por_nombre,
       tot.n AS total_registros_ticket${extrasSql}
     FROM ticket_puertos p
     JOIN tickets t ON t.id = p.ticket_id
     JOIN (SELECT ticket_id, COUNT(*) AS n FROM ticket_puertos GROUP BY ticket_id) tot ON tot.ticket_id = t.id
     LEFT JOIN oficinas o ON o.id = p.oficina_id
+    LEFT JOIN usuarios u ON u.email = t.creado_por
     WHERE 1 = 1
   `;
   const binds = [];
@@ -94,8 +97,24 @@ export async function onRequestGet({ request, env }) {
     const ap = partesFecha(r.fecha_apertura_cmr);
     const ci = partesFecha(r.fecha_solucion_cmr);
 
+    // Tiempos de gestión (se calculan al momento de la consulta, por eso nunca quedan desactualizados):
+    //   En curso  = ahora − apertura, mientras el ticket no tenga fecha de solución (después deja de estar "en curso").
+    //   En cerrar = fecha de solución − apertura (solo cuando ya la tiene).
+    const horasEntre = (desde, hasta) => {
+      const a = desde ? new Date(desde).getTime() : NaN, b = hasta ? new Date(hasta).getTime() : NaN;
+      return Number.isFinite(a) && Number.isFinite(b) ? (b - a) / MS_HORA : null;
+    };
+    const cursoCmr = r.fecha_solucion_cmr ? null : horasEntre(r.fecha_apertura_cmr, ahora);
+    const cursoCda = r.fecha_solucion_cda ? null : horasEntre(r.fecha_apertura_cda, ahora);
+    const cerrarCmr = r.fecha_solucion_cmr ? horasEntre(r.fecha_apertura_cmr, r.fecha_solucion_cmr) : null;
+    const cerrarCda = r.fecha_solucion_cda ? horasEntre(r.fecha_apertura_cda, r.fecha_solucion_cda) : null;
+    const sem = (h) => (h === null ? null : semaforo(h));
+
     return {
       ...r,
+      tiempo_curso_cmr_h: cursoCmr, tiempo_curso_cda_h: cursoCda,
+      tiempo_cerrar_cmr_h: cerrarCmr, tiempo_cerrar_cda_h: cerrarCda,
+      semaforo_curso_cmr: sem(cursoCmr), semaforo_cierre_cmr: sem(cerrarCmr),
       dia_apertura: ap.dia, mes_apertura: ap.mes, anio_apertura: ap.anio,
       dia_cierre: ci.dia, mes_cierre: ci.mes, anio_cierre: ci.anio,
       grupo_horario: grupoHorario(r.fecha_apertura_cmr),

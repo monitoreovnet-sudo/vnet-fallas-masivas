@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="styles.css" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/vendor/tabulator.min.css" />
 </head>
 <body>
   <div id="login_screen" class="login-screen">
@@ -644,19 +645,17 @@
       <div class="field field-btn"><button id="cl_btn_filtrar" class="btn-primary" type="button">Filtrar</button></div>
     </div>
 
-    <div class="table-scroll">
-      <table class="rows-table" id="cl_table">
-        <thead>
-          <tr>
-            <th class="cl-sel"><input type="checkbox" id="cl_check_todos" title="Seleccionar todas" /></th><th>Ticket</th><th>Vinculados</th><th>Apert. CDA</th><th>Apert. CMR</th><th>Estado</th>
-            <th>Unidad Res.</th><th>Categoría</th><th>Afectación</th><th>Comentario</th><th>Descripción</th>
-            <th>Nro Afect.</th><th>Nro Report.</th><th>Oficina</th><th>OLT</th><th>Sector</th>
-            <th>Edificio</th><th>Tarjeta</th><th>Puerto</th><th>Semáforo</th><th>Tiempo Cierre (h)</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+    <div id="cl_barra_excel" class="cl-barra-excel hidden">
+      <button id="cl_btn_editar" class="btn-primary" type="button" title="Pide tu contraseña de nuevo y activa la edición tipo Excel">Editar como cuadro de Excel</button>
+      <span id="cl_edit_controles" class="hidden">
+        <button id="cl_btn_guardar" class="btn-primary" type="button" disabled>Guardar cambios <span id="cl_cambios_n"></span></button>
+        <button id="cl_btn_descartar" class="btn-secondary" type="button" disabled>Descartar cambios</button>
+        <button id="cl_btn_salir_edicion" class="btn-secondary" type="button">Salir de la edición</button>
+      </span>
     </div>
+    <p id="cl_ayuda_excel" class="hint hidden">Modo edición: doble clic o Enter en una celda para editarla · arrastra el puntito de la esquina de la selección para copiar hacia las celdas vecinas · Ctrl+C / Ctrl+V entre celdas · Ctrl+Z / Ctrl+Y para deshacer o rehacer. Los cambios se guardan juntos con «Guardar cambios». Las columnas en gris se calculan solas.</p>
+    <div id="cl_msg_excel" class="msg" style="white-space:pre-line"></div>
+    <div id="cl_grid"></div>
     <p class="hint" id="cl_contador"></p>
     </div>
 
@@ -795,7 +794,7 @@
   <!-- Confirmación con contraseña (eliminar tickets) -->
   <div id="modal_clave" class="modal-overlay hidden">
     <div class="modal-box">
-      <h3>Confirmar eliminación</h3>
+      <h3 id="modal_clave_titulo">Confirmar eliminación</h3>
       <p id="modal_clave_texto"></p>
       <div class="field">
         <label>Tu contraseña</label>
@@ -828,6 +827,8 @@
 <script>window.jspdf||document.write('<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"><\/script>')</script>
 <script>window.jspdf||document.write('<script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"><\/script>')</script>
 <script>window.jspdf||document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>')</script>
+<!-- Tabulator 6.7 (MIT): tabla tipo Excel de Consultar / Log (copia local en public/vendor) -->
+<script src="/vendor/tabulator.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

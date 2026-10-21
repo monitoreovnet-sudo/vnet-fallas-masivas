@@ -92,6 +92,25 @@ export async function verificarTokenSesion(token, env) {
   }
 }
 
+// --- Permiso temporal para editar la tabla "tipo Excel" (se obtiene volviendo a escribir la contraseña) ---
+const DURACION_EDICION_MS = 30 * 60 * 1000;
+
+export async function crearTokenEdicion(email, env) {
+  const payloadB64 = base64UrlEncode(JSON.stringify({ email, uso: "edicion-excel", exp: Date.now() + DURACION_EDICION_MS }));
+  return `${payloadB64}.${await firmar(payloadB64, env.SESSION_SECRET)}`;
+}
+
+// true solo si la firma es válida, no ha vencido, es para edición y pertenece a ese mismo usuario.
+export async function verificarTokenEdicion(token, email, env) {
+  if (!token || typeof token !== "string" || !token.includes(".")) return false;
+  const [payloadB64, firma] = token.split(".");
+  if (firma !== (await firmar(payloadB64, env.SESSION_SECRET))) return false;
+  try {
+    const p = JSON.parse(base64UrlDecode(payloadB64));
+    return p.uso === "edicion-excel" && p.email === email && p.exp > Date.now();
+  } catch { return false; }
+}
+
 export function parseCookies(request) {
   const header = request.headers.get("Cookie") || "";
   const cookies = {};
