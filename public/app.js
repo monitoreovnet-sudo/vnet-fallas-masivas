@@ -51,6 +51,89 @@ function soloDigitos(input) {
 }
 ["c_ticket_cmr", "c_tickets_vinculados"].forEach((id) => soloDigitos(document.getElementById(id)));
 
+// ---------------------------------------------------------------
+// Campos de fecha y hora: la fecha usa el selector del navegador y la hora se escribe con el teclado, en formato libre.
+//   · 13–23 → PM (14 = 2:00 PM) · 1–11 → AM · 12 → 12 PM (mediodía) · 0 / 00 → 12 AM (medianoche)
+//   · "5p" / "5 pm" fuerzan PM; "12a" / "12 am" fuerzan AM. Minutos opcionales: "9", "9:30", "930", "14:05", "1405".
+// El <input type="datetime-local"> original se conserva oculto como valor del campo (el resto del código lo sigue leyendo igual).
+// ---------------------------------------------------------------
+// FECHAHORA-PURE-START
+function interpretarHora(texto) {
+  const t = String(texto ?? "").trim().toLowerCase().replace(/\./g, "").replace(/\s+/g, "");
+  const m = /^(\d{1,2})(?::?(\d{2}))?([ap])?m?$/.exec(t);
+  if (!m) return null;
+  const h = Number(m[1]), min = m[2] === undefined ? 0 : Number(m[2]), suf = m[3] || "";
+  if (min > 59 || h > 23) return null;
+  let h24;
+  if (suf && h >= 1 && h <= 12) h24 = suf === "p" ? (h === 12 ? 12 : h + 12) : (h === 12 ? 0 : h);
+  else if (h === 0) h24 = 0;           // 0 / 00 → 12 AM (medianoche)
+  else h24 = h;                        // 1–11 → AM · 12 → 12 PM · 13–23 → PM
+  return { h24, min };
+}
+function formatearHora12(h24, min) {
+  const ampm = h24 >= 12 ? "PM" : "AM";
+  const h = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")} ${ampm}`;
+}
+// FECHAHORA-PURE-END
+const _valorNativo = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+function mejorarFechaHora(orig) {
+  if (!orig || orig.dataset.fh) return;
+  orig.dataset.fh = "1";
+  const wrap = document.createElement("div");
+  wrap.className = "fh-wrap";
+  const fecha = document.createElement("input"); fecha.type = "date"; fecha.className = "fh-fecha";
+  const hora = document.createElement("input"); hora.type = "text"; hora.className = "fh-hora";
+  hora.placeholder = "hh:mm"; hora.maxLength = 12; hora.autocomplete = "off";
+  hora.title = "Escribe la hora: 14:30 = 2:30 PM · 9:15 = 9:15 AM · 12 = mediodía (12 PM) · 0 = medianoche (12 AM). Con p o a puedes forzar PM o AM (ej. 5p).";
+  const ayuda = document.createElement("span"); ayuda.className = "fh-ayuda";
+  wrap.append(fecha, hora, ayuda);
+  orig.insertAdjacentElement("afterend", wrap);
+  orig.style.display = "none";
+  let interno = false;
+  const dibujar = (v) => {
+    const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(v || "");
+    fecha.value = m ? m[1] : "";
+    hora.value = m ? formatearHora12(Number(m[2]), Number(m[3])) : "";
+    hora.classList.remove("fh-error"); ayuda.textContent = "";
+  };
+  const recalcular = (normalizar) => {
+    const txt = hora.value.trim();
+    const hr = txt ? interpretarHora(txt) : null;
+    hora.classList.toggle("fh-error", !!txt && !hr);
+    ayuda.textContent = txt && !hr ? "Hora no válida" : "";
+    if (hr && normalizar) hora.value = formatearHora12(hr.h24, hr.min);
+    const nuevo = fecha.value && hr ? `${fecha.value}T${String(hr.h24).padStart(2, "0")}:${String(hr.min).padStart(2, "0")}` : "";
+    if (nuevo !== _valorNativo.get.call(orig)) {
+      interno = true; _valorNativo.set.call(orig, nuevo); interno = false;
+      orig.dispatchEvent(new Event("input", { bubbles: true })); orig.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  };
+  fecha.addEventListener("change", () => recalcular(true));
+  fecha.addEventListener("input", () => recalcular(false));
+  hora.addEventListener("input", () => recalcular(false));
+  hora.addEventListener("change", () => recalcular(true));
+  hora.addEventListener("blur", () => recalcular(true));
+  hora.addEventListener("keydown", (e) => { if (e.key === "Enter") recalcular(true); });
+  // Lecturas y escrituras de .value desde el código (ej. cargar un ticket) se reflejan en los campos visibles
+  Object.defineProperty(orig, "value", {
+    configurable: true,
+    get() { return _valorNativo.get.call(orig); },
+    set(v) { _valorNativo.set.call(orig, v); if (!interno) dibujar(_valorNativo.get.call(orig)); },
+  });
+  dibujar(_valorNativo.get.call(orig));
+}
+function mejorarTodosFechaHora(raiz) {
+  (raiz || document).querySelectorAll('input[type="datetime-local"]').forEach(mejorarFechaHora);
+}
+mejorarTodosFechaHora();
+new MutationObserver((muts) => {
+  for (const m of muts) m.addedNodes.forEach((n) => {
+    if (n.nodeType !== 1) return;
+    if (n.matches && n.matches('input[type="datetime-local"]')) mejorarFechaHora(n); else if (n.querySelectorAll) mejorarTodosFechaHora(n);
+  });
+}).observe(document.body, { childList: true, subtree: true });
+
 // Formatea un número de ticket con un espacio visual cada 3 dígitos
 // (de derecha a izquierda), únicamente para lectura en pantallas de
 // consulta/log/dashboard. Nunca se usa este valor para guardar ni buscar.

@@ -771,3 +771,11 @@ input:focus, select:focus, textarea:focus {
 .db-tabla-maestra thead th[data-col]:hover { filter: brightness(1.15); }
 .db-tabla-maestra thead th[data-orden="asc"]::after { content: " \25B2"; font-size: 9px; }
 .db-tabla-maestra thead th[data-orden="desc"]::after { content: " \25BC"; font-size: 9px; }
+
+/* Fecha + hora (hora escrita con el teclado) */
+.fh-wrap { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.fh-wrap .fh-fecha { flex: 1 1 150px; min-width: 140px; }
+.fh-wrap .fh-hora { flex: 0 1 120px; width: 120px; min-width: 100px; text-transform: uppercase; }
+.fh-wrap .fh-hora.fh-error { border-color: #DC2626; background: #FEF2F2; }
+.fh-ayuda { color: #DC2626; font-size: 12px; flex-basis: 100%; }
+.fh-ayuda:empty { display: none; }
