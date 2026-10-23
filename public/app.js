@@ -782,10 +782,11 @@ function mcAccionActual() {
 function mcFechaCorta(v) { return v ? formatearFechaHora(v) : "-"; }
 
 // Estados que se pueden asignar con "Cambio de campo" (CERRADO se hace por "Cierre de Ticket")
+// En "Cambio de campo" no se ofrecen CERRADO ni RESUELTO: esos estados se registran solo con las acciones "Cierre de Ticket" y "Solución de Ticket" (llevan sus fechas).
 function mcLlenarEstados(select, textoVacio, actual) {
   select.innerHTML = "";
   if (textoVacio) { const o = document.createElement("option"); o.value = ""; o.textContent = textoVacio; select.appendChild(o); }
-  (LOOKUPS.estados_ticket || []).map((e) => e.nombre).filter((n) => n !== "CERRADO").forEach((n) => {
+  (LOOKUPS.estados_ticket || []).map((e) => e.nombre).filter((n) => n !== "CERRADO" && n !== "RESUELTO").forEach((n) => {
     const o = document.createElement("option"); o.value = n; o.textContent = n; select.appendChild(o);
   });
   if (actual !== undefined && actual !== null) select.value = actual;
