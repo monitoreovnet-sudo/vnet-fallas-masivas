@@ -9,6 +9,7 @@ const CAMPOS_PERMITIDOS = [
   "tickets_vinculados",
   "fecha_apertura_cda",
   "fecha_apertura_cmr",
+  "fecha_falla",
   "fecha_solucion_cda",
   "fecha_solucion_cmr",
   "estado_ticket",

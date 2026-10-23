@@ -28,6 +28,7 @@ const CAMPOS_TICKET = {
   descripcion: { tipo: "txt", max: 2000 },
   avance_cmr: { tipo: "txt", max: 2000 },
   fecha_apertura_cda: { tipo: "fecha" },
+  fecha_falla: { tipo: "fecha" },
   fecha_apertura_cmr: { tipo: "fecha", noVacio: true },
   fecha_solucion_cda: { tipo: "fecha" },
   fecha_solucion_cmr: { tipo: "fecha" },

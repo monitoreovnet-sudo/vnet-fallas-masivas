@@ -20,7 +20,7 @@ export const CAMPOS_CALCULADOS = [
 // Nombres amables para las columnas conocidas; el resto se "humaniza" (fecha_apertura_cmr → Fecha apertura cmr).
 const ETIQUETAS = {
   "tickets.ticket_cmr": "N° Ticket", "tickets.tickets_vinculados": "Tickets Vinculados",
-  "tickets.fecha_apertura_cda": "Apertura CDA", "tickets.fecha_apertura_cmr": "Apertura CMR",
+  "tickets.fecha_apertura_cda": "Apertura CDA", "tickets.fecha_apertura_cmr": "Apertura CMR", "tickets.fecha_falla": "Fecha de la Falla",
   "tickets.fecha_solucion_cmr": "Solución CMR", "tickets.fecha_solucion_cda": "Solución CDA",
   "tickets.estado_ticket": "Estado del Ticket", "tickets.unidad_resolutoria": "Unidad Resolutoria",
   "tickets.categoria_afectacion": "Categoría de la Afectación", "tickets.afectacion": "Afectación",

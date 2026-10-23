@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS tickets (
   tickets_vinculados TEXT,
   fecha_apertura_cda TEXT,                -- ISO 8601
   fecha_apertura_cmr TEXT,
+  fecha_falla TEXT,                       -- Fecha de la Falla: cuándo empezó realmente (≠ cuándo la detectaron CDA/CMR)
   estado_ticket TEXT NOT NULL DEFAULT 'EN CURSO (ASIGNADO)',
   unidad_resolutoria TEXT,
   categoria_afectacion TEXT,

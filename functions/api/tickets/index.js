@@ -51,6 +51,7 @@ export async function onRequestPost({ request, env }) {
     ticket_cmr,
     tickets_vinculados,
     fecha_apertura_cda,
+    fecha_falla,
     fecha_apertura_cmr,
     estado_ticket,
     unidad_resolutoria,
@@ -86,15 +87,16 @@ export async function onRequestPost({ request, env }) {
   const insertTicket = agregando ? null : await db
     .prepare(
       `INSERT INTO tickets
-        (ticket_cmr, tickets_vinculados, fecha_apertura_cda, fecha_apertura_cmr, estado_ticket,
+        (ticket_cmr, tickets_vinculados, fecha_apertura_cda, fecha_apertura_cmr, fecha_falla, estado_ticket,
          unidad_resolutoria, categoria_afectacion, afectacion, comentario, descripcion, oficina_id, creado_por)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       String(ticket_cmr),
       tickets_vinculados || null,
       fecha_apertura_cda || null,
       fecha_apertura_cmr || null,
+      fecha_falla || null,
       estado_ticket || "EN CURSO (ASIGNADO)",
       unidad_resolutoria || null,
       categoria_afectacion || null,

@@ -730,6 +730,7 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
       ticket_cmr: document.getElementById("c_ticket_cmr").value.trim(),
       tickets_vinculados: document.getElementById("c_tickets_vinculados").value.trim(),
       fecha_apertura_cda: document.getElementById("c_fecha_cda").value,
+      fecha_falla: document.getElementById("c_fecha_falla").value,
       fecha_apertura_cmr: document.getElementById("c_fecha_cmr").value,
       estado_ticket: document.getElementById("c_estado_ticket").value,
       unidad_resolutoria: document.getElementById("c_unidad_resolutoria").value,
@@ -942,6 +943,8 @@ document.getElementById("e1_btn_guardar").addEventListener("click", async () => 
     const avance = document.getElementById("e1_avance").value.trim();
     if (fechaCmr) body.fecha_apertura_cmr = fechaCmr;
     if (fechaCda) body.fecha_apertura_cda = fechaCda;
+    const fechaFalla = document.getElementById("e1_fecha_falla").value;
+    if (fechaFalla) body.fecha_falla = fechaFalla;
     if (unidad) body.unidad_resolutoria = unidad;
     if (avance) body.avance_cmr = avance;
     if (Object.keys(body).length === 0) throw new Error("No hay cambios para guardar: llena al menos un campo o elige otra acción.");
@@ -1197,6 +1200,7 @@ function construirCambiosTicketEnlace({ ticket, alcance, cerrado, estado, unidad
     if (estado && estado !== ticket.estado_ticket) masivoBody.estado_ticket = estado;
     if (apertura.cmr && apertura.cmr !== vTicket("fecha_apertura_cmr")) masivoBody.fecha_apertura_cmr = apertura.cmr;
     if (apertura.cda && apertura.cda !== vTicket("fecha_apertura_cda")) masivoBody.fecha_apertura_cda = apertura.cda;
+    if (apertura.falla && apertura.falla !== vTicket("fecha_falla")) masivoBody.fecha_falla = apertura.falla;
     if (avance && String(avance).trim()) masivoBody.avance_cmr = String(avance).trim();
   } else if (alcance === "MASIVO") {
     if (!cierre.cmr && !cierre.cda) throw new Error("Indica al menos una fecha de cierre (CMR o CDA).");
@@ -1294,6 +1298,7 @@ function mcRenderEnlace(alcance, cerrado, estado) {
   document.getElementById("me_bloque_cierre").classList.toggle("hidden", !cerrado);
   document.getElementById("me_apertura_cmr").value = toLocalInputValue(mcTicket.fecha_apertura_cmr);
   document.getElementById("me_apertura_cda").value = toLocalInputValue(mcTicket.fecha_apertura_cda);
+  document.getElementById("me_fecha_falla").value = toLocalInputValue(mcTicket.fecha_falla);
   document.getElementById("me_avance").value = "";
   // en MASIVO se precargan las fechas de cierre actuales del ticket; por OLT se piden nuevas
   document.getElementById("me_cierre_cmr").value = porOlt ? "" : toLocalInputValue(mcTicket.fecha_solucion_cmr);
@@ -1336,7 +1341,7 @@ document.getElementById("me_btn_guardar").addEventListener("click", async () => 
     const { masivoBody, cerrarBody } = construirCambiosTicketEnlace({
       ticket: mcTicket, alcance, cerrado, estado: cerrado ? estado : val("me_estado"),
       unidad: cerrado ? "" : val("me_unidad"),
-      apertura: { cmr: val("me_apertura_cmr"), cda: val("me_apertura_cda") },
+      apertura: { cmr: val("me_apertura_cmr"), cda: val("me_apertura_cda"), falla: val("me_fecha_falla") },
       cierre, avance: val("me_avance"),
     });
 
@@ -1416,6 +1421,7 @@ function renderDetalle(editable, log) {
         ${campoTexto("Afectación", t.afectacion)}
         ${campoTexto("Comentario", t.comentario)}
         ${campoTexto("Apertura CDA", t.fecha_apertura_cda)}
+        ${campoTexto("Fecha de la Falla", t.fecha_falla)}
         ${campoTexto("Apertura CMR", t.fecha_apertura_cmr)}
         ${campoTexto("Solución CDA", t.fecha_solucion_cda)}
         ${campoTexto("Solución CMR", t.fecha_solucion_cmr)}
@@ -1438,6 +1444,7 @@ function renderDetalle(editable, log) {
         <div class="field"><label>Afectación</label>${campoSelect("d_afectacion", LOOKUPS.afectaciones.map(a=>a.nombre), t.afectacion)}</div>
         <div class="field"><label>Comentario</label>${campoSelect("d_comentario", LOOKUPS.comentarios.map(c=>c.nombre), t.comentario)}</div>
         <div class="field"><label>Apertura CDA</label>${campoInput("d_fecha_apertura_cda", toLocalInputValue(t.fecha_apertura_cda), "datetime-local")}</div>
+        <div class="field"><label>Fecha de la Falla</label>${campoInput("d_fecha_falla", toLocalInputValue(t.fecha_falla), "datetime-local")}</div>
         <div class="field"><label>Apertura CMR</label>${campoInput("d_fecha_apertura_cmr", toLocalInputValue(t.fecha_apertura_cmr), "datetime-local")}</div>
         <div class="field"><label>Solución CDA</label>${campoInput("d_fecha_solucion_cda", toLocalInputValue(t.fecha_solucion_cda), "datetime-local")}</div>
         <div class="field"><label>Solución CMR</label>${campoInput("d_fecha_solucion_cmr", toLocalInputValue(t.fecha_solucion_cmr), "datetime-local")}</div>
@@ -1516,7 +1523,7 @@ async function guardarEdicionDetalle() {
       ticket_cmr: "d_ticket_cmr", tickets_vinculados: "d_vinculados",
       estado_ticket: "d_estado", unidad_resolutoria: "d_unidad",
       categoria_afectacion: "d_categoria", afectacion: "d_afectacion", comentario: "d_comentario",
-      fecha_apertura_cda: "d_fecha_apertura_cda", fecha_apertura_cmr: "d_fecha_apertura_cmr",
+      fecha_apertura_cda: "d_fecha_apertura_cda", fecha_apertura_cmr: "d_fecha_apertura_cmr", fecha_falla: "d_fecha_falla",
       fecha_solucion_cda: "d_fecha_solucion_cda", fecha_solucion_cmr: "d_fecha_solucion_cmr",
       descripcion: "d_descripcion", avance_cmr: "d_avance",
     };
@@ -1691,6 +1698,7 @@ const CL_COLS = [
   { f: "avance_cmr", t: "Avance CMR", tipo: "texto", ed: true, vacio: true, w: 260 },
   { f: "fecha_apertura_cda", t: "Apertura CDA", tipo: "fecha", ed: true, w: 140 },
   { f: "fecha_apertura_cmr", t: "Apertura CMR", tipo: "fecha", ed: true, w: 140 },
+  { f: "fecha_falla", t: "Fecha de la falla", tipo: "fecha", ed: true, w: 140 },
   { f: "dia_apertura", t: "Día apertura CMR", tipo: "dato", w: 90 },
   { f: "mes_apertura", t: "Mes apertura CMR", tipo: "dato", w: 90 },
   { f: "anio_apertura", t: "Año apertura CMR", tipo: "dato", w: 90 },
@@ -1709,7 +1717,7 @@ const CL_COLS = [
 ];
 // Campos que pertenecen al TICKET (se repiten en cada fila del ticket y se guardan una sola vez).
 const CL_CAMPOS_TICKET = ["ticket_cmr", "tickets_vinculados", "estado_ticket", "unidad_resolutoria", "categoria_afectacion", "afectacion",
-  "descripcion", "comentario", "avance_cmr", "fecha_apertura_cda", "fecha_apertura_cmr", "fecha_solucion_cda", "fecha_solucion_cmr"];
+  "descripcion", "comentario", "avance_cmr", "fecha_apertura_cda", "fecha_apertura_cmr", "fecha_falla", "fecha_solucion_cda", "fecha_solucion_cmr"];
 const CL_EDITABLES = CL_COLS.filter((c) => c.ed);
 
 const clVacio = (v) => v === null || v === undefined || String(v).trim() === "";
@@ -3276,7 +3284,7 @@ function colorPorNombreFactory(paleta) {
 // con ?extras= y llegan en la fila con su propio db_column_name como clave.
 const CAMPO_EN_FILA = {
   "tickets.id": "ticket_id", "tickets.ticket_cmr": "ticket_cmr", "tickets.tickets_vinculados": "tickets_vinculados",
-  "tickets.fecha_apertura_cda": "fecha_apertura_cda", "tickets.fecha_apertura_cmr": "fecha_apertura_cmr",
+  "tickets.fecha_apertura_cda": "fecha_apertura_cda", "tickets.fecha_apertura_cmr": "fecha_apertura_cmr", "tickets.fecha_falla": "fecha_falla",
   "tickets.fecha_solucion_cmr": "fecha_solucion_cmr", "tickets.estado_ticket": "estado_ticket",
   "tickets.unidad_resolutoria": "unidad_resolutoria", "tickets.categoria_afectacion": "categoria_afectacion",
   "tickets.afectacion": "afectacion", "tickets.comentario": "comentario", "tickets.descripcion": "descripcion", "tickets.avance_cmr": "avance_cmr",

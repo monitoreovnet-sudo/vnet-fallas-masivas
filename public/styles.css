@@ -779,3 +779,8 @@ input:focus, select:focus, textarea:focus {
 .fh-wrap .fh-hora.fh-error { border-color: #DC2626; background: #FEF2F2; }
 .fh-ayuda { color: #DC2626; font-size: 12px; flex-basis: 100%; }
 .fh-ayuda:empty { display: none; }
+
+/* Las tres fechas del ticket (CMR, CDA y Falla) comparten una fila */
+.fechas-trio { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 20px; }
+.fechas-trio .field { min-width: 0; }
+@media (max-width: 900px) { .fechas-trio { grid-template-columns: 1fr; } }

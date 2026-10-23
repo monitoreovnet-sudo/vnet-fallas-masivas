@@ -50,7 +50,7 @@ export async function onRequestGet({ request, env }) {
   let sql = `
     SELECT
       t.id AS ticket_id, t.ticket_cmr, t.tickets_vinculados,
-      t.fecha_apertura_cda, t.fecha_apertura_cmr,
+      t.fecha_apertura_cda, t.fecha_apertura_cmr, t.fecha_falla,
       t.fecha_solucion_cmr, t.fecha_solucion_cda, t.estado_ticket, t.unidad_resolutoria,
       t.categoria_afectacion, t.afectacion, t.comentario, t.descripcion, t.avance_cmr,
       p.id AS puerto_id, p.oficina_id, o.nombre AS oficina_nombre, o.estado AS region, o.localidad,

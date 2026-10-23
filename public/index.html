@@ -69,13 +69,19 @@
         <label>Tickets Vinculados <small>(solo números)</small></label>
         <input id="c_tickets_vinculados" placeholder="Ej: 123456" inputmode="numeric" maxlength="20" />
       </div>
-      <div class="field">
-        <label>Fecha de Apertura del CDA</label>
-        <input id="c_fecha_cda" type="datetime-local" />
-      </div>
-      <div class="field">
-        <label>Fecha de Apertura del CMR</label>
-        <input id="c_fecha_cmr" type="datetime-local" />
+      <div class="fechas-trio">
+        <div class="field">
+          <label>Fecha de Apertura del CMR</label>
+          <input id="c_fecha_cmr" type="datetime-local" />
+        </div>
+        <div class="field">
+          <label>Fecha de Apertura del CDA</label>
+          <input id="c_fecha_cda" type="datetime-local" />
+        </div>
+        <div class="field">
+          <label>Fecha de la Falla</label>
+          <input id="c_fecha_falla" type="datetime-local" />
+        </div>
       </div>
       <div class="field">
         <label>Estado del Ticket</label>
@@ -209,13 +215,19 @@
       <h3>Modificación Masiva</h3>
       <p class="hint">Solo se envían los campos que llenes; los que dejes vacíos no se modifican.</p>
       <div class="grid-2">
-        <div class="field">
-          <label>Fecha Apertura CMR</label>
-          <input id="e1_fecha_cmr" type="datetime-local" />
-        </div>
-        <div class="field">
-          <label>Fecha Apertura CDA</label>
-          <input id="e1_fecha_cda" type="datetime-local" />
+        <div class="fechas-trio">
+          <div class="field">
+            <label>Fecha Apertura CMR</label>
+            <input id="e1_fecha_cmr" type="datetime-local" />
+          </div>
+          <div class="field">
+            <label>Fecha Apertura CDA</label>
+            <input id="e1_fecha_cda" type="datetime-local" />
+          </div>
+          <div class="field">
+            <label>Fecha de la Falla</label>
+            <input id="e1_fecha_falla" type="datetime-local" />
+          </div>
         </div>
         <div class="field">
           <label>Unidad Resolutoria</label>
@@ -357,9 +369,10 @@
           <select id="me_estado"></select>
         </div>
       </div>
-      <div id="me_bloque_apertura" class="grid-2 hidden">
+      <div id="me_bloque_apertura" class="fechas-trio hidden">
         <div class="field"><label>Fecha Apertura CMR</label><input id="me_apertura_cmr" type="datetime-local" /></div>
         <div class="field"><label>Fecha Apertura CDA</label><input id="me_apertura_cda" type="datetime-local" /></div>
+        <div class="field"><label>Fecha de la Falla</label><input id="me_fecha_falla" type="datetime-local" /></div>
       </div>
       <div id="me_bloque_cierre" class="grid-2 hidden">
         <div class="field"><label id="me_lbl_cierre_cmr">Fecha de Cierre CMR</label><input id="me_cierre_cmr" type="datetime-local" /></div>
