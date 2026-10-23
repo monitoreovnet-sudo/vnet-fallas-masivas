@@ -763,16 +763,17 @@ function mcLimpiarPantalla() {
   document.getElementById("mc_msg").textContent = "";
   document.getElementById("mc_msg_busqueda").textContent = "";
 }
-// Tras guardar un cambio con éxito: se vacía el número de ticket y se oculta el formulario (el mensaje de éxito queda
+// Tras guardar un cambio con éxito: se vacía el número de ticket, el combo vuelve a "Seleccione:" y se oculta el formulario (el mensaje de éxito queda
 // visible) para que nadie aplique por error otro cambio sobre el mismo ticket.
 function mcFinalizarCambio() {
   const msg = document.getElementById("mc_msg");
   const texto = msg.textContent, clase = msg.className;
   mcLimpiarPantalla();
   msg.textContent = texto; msg.className = clase;
-  const inp = document.getElementById("mc_ticket");
-  inp.value = "";
-  inp.focus();
+  document.getElementById("mc_ticket").value = "";
+  document.getElementById("mc_accion").value = "";        // vuelve a "Seleccione:"
+  document.getElementById("mc_paso2").classList.add("hidden");
+  document.getElementById("mc_accion").focus();
 }
 // Al cambiar el paso 1 se limpia la pantalla: solo queda el Nº de ticket y el botón de buscar
 document.getElementById("mc_accion").addEventListener("change", () => {
