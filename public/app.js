@@ -710,6 +710,22 @@ async function revisarTicketRepetidoInterno(cmr) {
 }
 document.getElementById("c_ticket_cmr").addEventListener("blur", () => { revisarTicketRepetido(); });
 
+// Deja el formulario de Crear Ticket como recién abierto (después de crear el ticket con éxito)
+function limpiarFormularioCrear() {
+  ["c_ticket_cmr", "c_tickets_vinculados", "c_fecha_cmr", "c_fecha_cda", "c_fecha_falla", "c_descripcion"]
+    .forEach((id) => { document.getElementById(id).value = ""; });
+  ["c_estado_ticket", "c_unidad_resolutoria", "c_ubicacion_tipo"]
+    .forEach((id) => { document.getElementById(id).value = ""; });
+  const cat = document.getElementById("c_categoria");
+  cat.value = "";
+  cat.dispatchEvent(new Event("change"));      // vacía Afectación y Comentario y oculta la ubicación
+  oficinasState = [];
+  enlaceState = [nuevaFilaEnlace()];
+  renderOficinas();
+  actualizarModoUbicacion();
+  document.getElementById("c_otros_no_reportaron").value = "0";
+  document.getElementById("c_otros_nro_afectados").value = "0";
+}
 document.getElementById("btn_crear_ticket").addEventListener("click", async () => {
   const msg = document.getElementById("crear_msg");
   try {
@@ -746,14 +762,7 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
     showMsg(msg, res.agregado
       ? `Ticket ${res.ticket_cmr} ya existía: se agregaron ${payload.puertos.length} registro(s) (#${res.id}).`
       : `Ticket ${res.ticket_cmr} creado correctamente (#${res.id}) con ${payload.puertos.length} puerto(s).`, true);
-    oficinasState = [];
-    enlaceState = [nuevaFilaEnlace()];
-    renderOficinas();
-    document.getElementById("c_ubicacion_tipo").value = "";
-    actualizarModoUbicacion();
-    document.getElementById("c_ticket_cmr").value = "";
-    document.getElementById("c_otros_no_reportaron").value = "0";
-    document.getElementById("c_otros_nro_afectados").value = "0";
+    limpiarFormularioCrear();
   } catch (err) {
     showMsg(msg, err.message, false);
   }
