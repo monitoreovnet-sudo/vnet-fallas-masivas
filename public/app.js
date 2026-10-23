@@ -1025,10 +1025,10 @@ document.getElementById("e3_btn_guardar").addEventListener("click", async () => 
   try {
     const fecha_cierre_cmr = document.getElementById("e3_fecha_cmr").value;
     const fecha_cierre_cda = document.getElementById("e3_fecha_cda").value;
-    if (!fecha_cierre_cmr || !fecha_cierre_cda) {
-      throw new Error("Indica ambas fechas de cierre (CMR y CDA).");
+    if (!fecha_cierre_cmr && !fecha_cierre_cda) {
+      throw new Error("Indica al menos una fecha de cierre (CMR o CDA). La que dejes vacía conserva lo que ya tenía.");
     }
-    const r = await apiSend(`/tickets/${mcTicket.id}/cerrar`, "POST", { fecha_cierre_cmr, fecha_cierre_cda });
+    const r = await apiSend(`/tickets/${mcTicket.id}/cerrar`, "POST", soloLlenas({ fecha_cierre_cmr, fecha_cierre_cda }));
     showMsg(msg, `Ticket ${mcTicket.ticket_cmr} cerrado correctamente (${r.registros} registro(s)).` + (r.fecha_solucion_cda_copiada ? " La Fecha de Solución del CDA estaba vacía y se llenó con la de cierre." : ""), true);
     pizarraDatos = []; reporteDatos = []; cicloDatos = [];
     mcFinalizarCambio();
@@ -1072,15 +1072,15 @@ document.getElementById("e4_btn_guardar").addEventListener("click", async () => 
   try {
     const fecha_solucion_cmr = document.getElementById("e4_fecha_cmr").value;
     const fecha_solucion_cda = document.getElementById("e4_fecha_cda").value;
-    if (!fecha_solucion_cmr || !fecha_solucion_cda) {
-      throw new Error("Indica ambas fechas de solución (CMR y CDA).");
+    if (!fecha_solucion_cmr && !fecha_solucion_cda) {
+      throw new Error("Indica al menos una fecha de solución (CMR o CDA). La que dejes vacía conserva lo que ya tenía.");
     }
     const registros = [];
     document.querySelectorAll("#e4_table .e4-check").forEach((chk) => {
       if (chk.checked) registros.push(mcPuertos[Number(chk.dataset.idx)].id);
     });
     if (registros.length === 0) throw new Error("Marca al menos un registro para resolver.");
-    const r = await apiSend(`/tickets/${mcTicket.id}/resolver`, "POST", { alcance: "PUNTUAL", fecha_solucion_cmr, fecha_solucion_cda, registros });
+    const r = await apiSend(`/tickets/${mcTicket.id}/resolver`, "POST", { alcance: "PUNTUAL", ...soloLlenas({ fecha_solucion_cmr, fecha_solucion_cda }), registros });
     showMsg(msg, `Ticket ${mcTicket.ticket_cmr}: ${mcResumenSolucion(r)}`, true);
     pizarraDatos = []; reporteDatos = []; cicloDatos = [];
     mcFinalizarCambio();
@@ -1088,6 +1088,9 @@ document.getElementById("e4_btn_guardar").addEventListener("click", async () => 
     showMsg(msg, err.message, false);
   }
 });
+
+// Quita los campos vacíos: una fecha que no se escribe no se envía y el servidor conserva la que ya había.
+function soloLlenas(o) { const r = {}; Object.keys(o).forEach((k) => { if (o[k]) r[k] = o[k]; }); return r; }
 
 // --- Escenario 5: Solución masiva (todo el ticket, salvo lo ya resuelto) ---
 function mcRenderEscenario5() {
@@ -1101,10 +1104,10 @@ document.getElementById("e5_btn_guardar").addEventListener("click", async () => 
   try {
     const fecha_solucion_cmr = document.getElementById("e5_fecha_cmr").value;
     const fecha_solucion_cda = document.getElementById("e5_fecha_cda").value;
-    if (!fecha_solucion_cmr || !fecha_solucion_cda) {
-      throw new Error("Indica ambas fechas de solución (CMR y CDA).");
+    if (!fecha_solucion_cmr && !fecha_solucion_cda) {
+      throw new Error("Indica al menos una fecha de solución (CMR o CDA). La que dejes vacía conserva lo que ya tenía.");
     }
-    const r = await apiSend(`/tickets/${mcTicket.id}/resolver`, "POST", { alcance: "MASIVO", fecha_solucion_cmr, fecha_solucion_cda });
+    const r = await apiSend(`/tickets/${mcTicket.id}/resolver`, "POST", { alcance: "MASIVO", ...soloLlenas({ fecha_solucion_cmr, fecha_solucion_cda }) });
     showMsg(msg, `Ticket ${mcTicket.ticket_cmr}: ${mcResumenSolucion(r)}`, true);
     pizarraDatos = []; reporteDatos = []; cicloDatos = [];
     mcFinalizarCambio();
@@ -1172,10 +1175,10 @@ function construirCambiosFilasEnlace({ alcance, cerrado, puertos, filas, masivo,
     if (String(nuevo.olt || "").trim() === "") throw new Error(`El OLT de la fila ${i + 1} no puede quedar vacío.`);
     const c = comparar(p, nuevo);
     if (cerrado && f.cerrar) {
-      if (!cierre.cmr || !cierre.cda) throw new Error("Indica ambas fechas de cierre (CMR y CDA) para las filas marcadas.");
+      if (!cierre.cmr && !cierre.cda) throw new Error("Indica al menos una fecha de cierre (CMR o CDA) para las filas marcadas.");
       c.estado_puerto = "CERRADO";
-      c.fecha_cierre_cmr = cierre.cmr;
-      c.fecha_cierre_cda = cierre.cda;
+      if (cierre.cmr) c.fecha_cierre_cmr = cierre.cmr;
+      if (cierre.cda) c.fecha_cierre_cda = cierre.cda;
     }
     if (Object.keys(c).length) cambios.push({ id: p.id, ...c });
   });
@@ -1195,8 +1198,8 @@ function construirCambiosTicketEnlace({ ticket, alcance, cerrado, estado, unidad
     if (apertura.cda && apertura.cda !== vTicket("fecha_apertura_cda")) masivoBody.fecha_apertura_cda = apertura.cda;
     if (avance && String(avance).trim()) masivoBody.avance_cmr = String(avance).trim();
   } else if (alcance === "MASIVO") {
-    if (!cierre.cmr || !cierre.cda) throw new Error("Indica ambas fechas de cierre (CMR y CDA).");
-    cerrarBody = { fecha_solucion_cmr: cierre.cmr, fecha_solucion_cda: cierre.cda };
+    if (!cierre.cmr && !cierre.cda) throw new Error("Indica al menos una fecha de cierre (CMR o CDA).");
+    cerrarBody = soloLlenas({ fecha_cierre_cmr: cierre.cmr, fecha_cierre_cda: cierre.cda });
   }
   return { masivoBody, cerrarBody };
 }
