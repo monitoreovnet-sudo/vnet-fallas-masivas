@@ -806,3 +806,9 @@ input:focus, select:focus, textarea:focus {
 .multi-cat .multi-op input[type="checkbox"] { width: auto; margin: 0; flex: none; }
 .multi-cat summary { font-weight: 400; }
 #cat_add_row .multi-cat summary { font-size: 14px; }
+/* Misma letra y aspecto que el resto de los campos */
+.multi-cat summary { font: inherit; font-size: 14px; font-weight: 400; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; background: white; line-height: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.multi-cat .multi-lista, .multi-cat .multi-op { font: inherit; font-size: 14px; font-weight: 400; color: var(--text); }
+#cat_add_row .multi-cat summary { font-size: 14px; }
+input, select, textarea, .multi-cat summary, .multi-cat .multi-lista { font-family: inherit; }
+.multi-cat summary { padding: 10px 14px; box-sizing: border-box; }
