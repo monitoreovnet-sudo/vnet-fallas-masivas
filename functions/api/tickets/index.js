@@ -53,6 +53,10 @@ export async function onRequestPost({ request, env }) {
     fecha_apertura_cda,
     fecha_falla,
     fecha_apertura_cmr,
+    fecha_solucion_cmr,
+    fecha_cierre_cmr,
+    fecha_solucion_cda,
+    fecha_cierre_cda,
     estado_ticket,
     unidad_resolutoria,
     categoria_afectacion,
@@ -82,14 +86,27 @@ export async function onRequestPost({ request, env }) {
   // El campo tickets.oficina_id guarda la primera como oficina "principal"
   // para efectos de listado/filtro; la oficina real de cada OLT queda en
   // ticket_puertos.oficina_id.
+  // Estado al crear: RESUELTO admite fechas de solución; CERRADO admite también las de cierre. En otros estados se ignoran.
+  const estadoFinal = estado_ticket || "EN CURSO (ASIGNADO)";
+  const esResuelto = estadoFinal === "RESUELTO" || estadoFinal === "CERRADO";
+  const esCerrado = estadoFinal === "CERRADO";
+  const limpia = (v) => String(v || "").trim() || null;
+  const sCmr = esResuelto ? limpia(fecha_solucion_cmr) : null;
+  const cCmr = esCerrado ? limpia(fecha_cierre_cmr) : null;
+  const cCda = esCerrado ? limpia(fecha_cierre_cda) : null;
+  let sCda = esResuelto ? limpia(fecha_solucion_cda) : null;
+  if (!sCda && cCda) sCda = cCda;   // sin fecha de solución del CDA pero con cierre del CDA: la solución toma la fecha del cierre
+  const FECHA = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+  if ([sCmr, cCmr, sCda, cCda].some((v) => v && !FECHA.test(v))) return badRequest("Alguna fecha de solución o cierre no tiene un formato válido.");
+
   const oficinaPrincipal = oficina_id || (puertos.find((p) => p.oficina_id) || {}).oficina_id || null;
 
   const insertTicket = agregando ? null : await db
     .prepare(
       `INSERT INTO tickets
-        (ticket_cmr, tickets_vinculados, fecha_apertura_cda, fecha_apertura_cmr, fecha_falla, estado_ticket,
+        (ticket_cmr, tickets_vinculados, fecha_apertura_cda, fecha_apertura_cmr, fecha_falla, estado_ticket, fecha_solucion_cmr, fecha_solucion_cda,
          unidad_resolutoria, categoria_afectacion, afectacion, comentario, descripcion, oficina_id, creado_por)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .bind(
       String(ticket_cmr),
@@ -97,7 +114,9 @@ export async function onRequestPost({ request, env }) {
       fecha_apertura_cda || null,
       fecha_apertura_cmr || null,
       fecha_falla || null,
-      estado_ticket || "EN CURSO (ASIGNADO)",
+      estadoFinal,
+      sCmr,
+      sCda,
       unidad_resolutoria || null,
       categoria_afectacion || null,
       afectacion || null,
@@ -127,8 +146,9 @@ export async function onRequestPost({ request, env }) {
     const ins = await db
       .prepare(
         `INSERT INTO ticket_puertos
-          (ticket_id, oficina_id, olt, tarjeta, puerto, sector, edificio, no_clientes_reportaron, nro_clientes_afectados, estado_puerto)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          (ticket_id, oficina_id, olt, tarjeta, puerto, sector, edificio, no_clientes_reportaron, nro_clientes_afectados, estado_puerto,
+           fecha_solucion_cmr, fecha_solucion_cda, fecha_cierre_cmr, fecha_cierre_cda)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
         ticketId,
@@ -140,7 +160,11 @@ export async function onRequestPost({ request, env }) {
         p.edificio || "DESCONOCIDO",
         Number(p.no_clientes_reportaron || 0),
         Number(p.nro_clientes_afectados || 0),
-        p.estado_puerto || "EN CURSO (ASIGNADO)"
+        esResuelto ? estadoFinal : (p.estado_puerto || "EN CURSO (ASIGNADO)"),
+        sCmr,
+        sCda,
+        cCmr,
+        cCda
       )
       .run();
 

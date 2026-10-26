@@ -722,12 +722,26 @@ document.getElementById("c_fecha_cda").addEventListener("input", () => { cdaAuto
 document.querySelector('.tab-btn[data-tab="crear"]').addEventListener("click", () => { if (cdaAuto) fijarCdaAhora(); });
 fijarCdaAhora();
 
+// Estado RESUELTO → aparecen las fechas de solución (CMR y CDA); CERRADO → solución y cierre. Otro estado: se ocultan y se vacían.
+function actualizarBloqueResolucion() {
+  const est = document.getElementById("c_estado_ticket").value;
+  const resuelto = est === "RESUELTO", cerrado = est === "CERRADO";
+  document.getElementById("c_resol_block").classList.toggle("hidden", !(resuelto || cerrado));
+  document.querySelectorAll("#c_fechas .fh-cierre").forEach((el) => {
+    el.classList.toggle("hidden", !cerrado);
+    if (!cerrado) el.querySelector("input[type=datetime-local]").value = "";
+  });
+  if (!resuelto && !cerrado) limpiarFechasSolCierre("c");
+}
+document.getElementById("c_estado_ticket").addEventListener("change", actualizarBloqueResolucion);
+
 // Deja el formulario de Crear Ticket como recién abierto (después de crear el ticket con éxito)
 function limpiarFormularioCrear() {
   ["c_ticket_cmr", "c_tickets_vinculados", "c_fecha_cmr", "c_fecha_cda", "c_fecha_falla", "c_descripcion"]
     .forEach((id) => { document.getElementById(id).value = ""; });
   ["c_estado_ticket", "c_unidad_resolutoria", "c_ubicacion_tipo"]
     .forEach((id) => { document.getElementById(id).value = ""; });
+  actualizarBloqueResolucion();
   const cat = document.getElementById("c_categoria");
   cat.value = "";
   cat.dispatchEvent(new Event("change"));      // vacía Afectación y Comentario y oculta la ubicación
@@ -769,6 +783,7 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
       descripcion: document.getElementById("c_descripcion").value,
       puertos,
     };
+    if (["RESUELTO", "CERRADO"].includes(payload.estado_ticket)) Object.assign(payload, leerFechasSolCierre("c"));
     if (dupVigente(payload.ticket_cmr)) payload.token_duplicado = DUP.token;
     const res = await apiSend("/tickets", "POST", payload);
     DUP.cmr = null; DUP.token = null; DUP.hasta = 0;
@@ -789,7 +804,7 @@ let mcPuertos = [];
 let mcEscenario = null; // 1, 2, 3 o 4
 
 function mcOcultarEscenarios() {
-  [1, 2, 3, 4, 5].forEach((n) => document.getElementById(`mc_escenario_${n}`).classList.add("hidden"));
+  [1, 2, 4, 5].forEach((n) => document.getElementById(`mc_escenario_${n}`).classList.add("hidden"));
   document.getElementById("mc_enlace").classList.add("hidden");
 }
 
@@ -800,7 +815,7 @@ function mcOcultarEscenarios() {
 function mcLlenarAccion() { document.getElementById("mc_accion").value = ""; }
 function mcAccionActual() {
   const v = document.getElementById("mc_accion").value;
-  return { accion: v, cerrado: v === "CIERRE", solucion: v === "SOLUCION", campo: v === "CAMPO", elegida: !!v };
+  return { accion: v, cerrado: false, solucion: v === "SOLUCION", campo: v === "CAMPO", elegida: !!v };
 }
 function mcFechaCorta(v) { return v ? formatearFechaHora(v) : "-"; }
 
@@ -844,7 +859,6 @@ async function mcRefrescarTicket() {
 function mcRenderSegunAccion() {
   mcOcultarEscenarios();
   const { cerrado, solucion } = mcAccionActual();
-  if (cerrado) { mcEscenario = 3; mcRenderEscenario3(); return; }
   if (solucion) {
     if (mcAlcance === "MASIVO") { mcEscenario = 5; mcRenderEscenario5(); } else { mcEscenario = 4; mcRenderEscenario4(); }
     return;
@@ -905,10 +919,10 @@ async function mcBuscarTicket() {
     const n = mcPuertos.length;
     showMsg(msg, `Ticket ${formatearTicket(mcTicket.ticket_cmr)}: ${formatearMiles(n)} registro(s) · estado ${mcTicket.estado_ticket}.`, true);
     mcRenderCards();
-    if (ac.cerrado || n <= 1) { mcAlcance = "MASIVO"; mcRenderSegunAccion(); return; }
-    const etiqueta = ac.solucion ? "Solución" : "Cambio";
-    document.getElementById("mc_btn_masivo").textContent = ac.solucion ? "SOLUCIÓN MASIVA" : "CAMBIO MASIVO";
-    document.getElementById("mc_btn_puertos").textContent = ac.solucion ? "SOLUCIÓN PUNTUAL" : "CAMBIO PUNTUAL";
+    if (n <= 1) { mcAlcance = "MASIVO"; mcRenderSegunAccion(); return; }
+    const etiqueta = ac.solucion ? "Solución / Cierre" : "Cambio";
+    document.getElementById("mc_btn_masivo").textContent = ac.solucion ? "SOLUCIÓN / CIERRE MASIVO" : "CAMBIO MASIVO";
+    document.getElementById("mc_btn_puertos").textContent = ac.solucion ? "SOLUCIÓN / CIERRE PUNTUAL" : "CAMBIO PUNTUAL";
     document.getElementById("mc_alcance_hint").textContent = `Este ticket tiene ${formatearMiles(n)} registros. ¿${etiqueta} masivo (todo el ticket) o puntual (un registro)?`;
     document.getElementById("mc_alcance").classList.remove("hidden");
     mcAlcance = null;
@@ -1058,108 +1072,84 @@ document.getElementById("e2_btn_guardar").addEventListener("click", async () => 
   }
 });
 
-// --- Escenario 3: Cierre masivo (siempre todo el ticket) ---
-function mcRenderEscenario3() {
-  document.getElementById("e3_fecha_cmr").value = "";
-  document.getElementById("e3_fecha_cda").value = "";
-  document.getElementById("mc_escenario_3").classList.remove("hidden");
+// --- Solución / Cierre (masivo o puntual): las 4 fechas en una sola pantalla ---
+// Solo se envían las fechas que el usuario llenó; el servidor ignora por completo las vacías (no toca lo ya guardado).
+const TXT_INFO_SOLUCION = "No es indispensable llenar el campo de solución del ticket";
+const TXT_INFO_SOLUCION_CDA = "Si no reporta fecha de solución del CDA, pero sí de cierre del CDA, el sistema colocará la fecha de cierre como su fecha de solución";
+// HTML de las 4 fechas (CMR primero, luego CDA). Los campos de solución llevan el icono "i" con su ayuda en la esquina superior derecha.
+function htmlFechasSolucionCierre(p) {
+  const info = (...textos) => `<span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">${textos.join("<br><br>")}</span></span>`;
+  const campo = (id, titulo, inf, cls) => `<div class="field campo-info ${cls}"><label>${titulo}</label>${inf}<input id="${p}_${id}" type="datetime-local" /></div>`;
+  return campo("sol_cmr", "Fecha de Solución CMR", info(TXT_INFO_SOLUCION), "fh-solucion")
+    + campo("cie_cmr", "Fecha de Cierre CMR", "", "fh-cierre")
+    + campo("sol_cda", "Fecha de Solución CDA", info(TXT_INFO_SOLUCION, TXT_INFO_SOLUCION_CDA), "fh-solucion")
+    + campo("cie_cda", "Fecha de Cierre CDA", "", "fh-cierre");
 }
-
-document.getElementById("e3_btn_guardar").addEventListener("click", async () => {
+["e4", "e5", "c"].forEach((p) => { document.getElementById(`${p}_fechas`).innerHTML = htmlFechasSolucionCierre(p); });
+const leerFechasSolCierre = (p) => soloLlenas({
+  fecha_solucion_cmr: document.getElementById(`${p}_sol_cmr`).value, fecha_cierre_cmr: document.getElementById(`${p}_cie_cmr`).value,
+  fecha_solucion_cda: document.getElementById(`${p}_sol_cda`).value, fecha_cierre_cda: document.getElementById(`${p}_cie_cda`).value,
+});
+const limpiarFechasSolCierre = (p) => ["sol_cmr", "cie_cmr", "sol_cda", "cie_cda"].forEach((k) => { document.getElementById(`${p}_${k}`).value = ""; });
+const MC_YA_RESUELTO = ["RESUELTO", "CERRADO"];
+function mcResumenSolCierre(r) {
+  const partes = [`${r.actualizados} registro(s) actualizado(s)`];
+  if (r.excluidos) partes.push(`${r.excluidos} ya estaban resueltos o cerrados y no se tocaron`);
+  partes.push(r.ticket_cerrado ? "el ticket quedó CERRADO" : r.ticket_resuelto ? "el ticket quedó RESUELTO" : `quedan ${r.pendientes} registro(s) pendientes`);
+  return partes.join(" · ") + ".";
+}
+// Envía al servidor y deja la pantalla limpia
+async function mcGuardarSolCierre(prefijo, alcance, registros) {
   const msg = document.getElementById("mc_msg");
   try {
-    const fecha_cierre_cmr = document.getElementById("e3_fecha_cmr").value;
-    const fecha_cierre_cda = document.getElementById("e3_fecha_cda").value;
-    if (!fecha_cierre_cmr && !fecha_cierre_cda) {
-      throw new Error("Indica al menos una fecha de cierre (CMR o CDA). La que dejes vacía conserva lo que ya tenía.");
-    }
-    const r = await apiSend(`/tickets/${mcTicket.id}/cerrar`, "POST", soloLlenas({ fecha_cierre_cmr, fecha_cierre_cda }));
-    showMsg(msg, `Ticket ${mcTicket.ticket_cmr} cerrado correctamente (${r.registros} registro(s)).` + (r.fecha_solucion_cda_copiada ? " La Fecha de Solución del CDA estaba vacía y se llenó con la de cierre." : ""), true);
+    const fechas = leerFechasSolCierre(prefijo);
+    if (!Object.keys(fechas).length) throw new Error("Llena al menos una fecha (solución o cierre). Las que dejes vacías no se modifican.");
+    if (alcance === "PUNTUAL" && !registros.length) throw new Error("Marca al menos un registro.");
+    const r = await apiSend(`/tickets/${mcTicket.id}/solucion-cierre`, "POST", { alcance, ...(alcance === "PUNTUAL" ? { registros } : {}), ...fechas });
+    showMsg(msg, `Ticket ${mcTicket.ticket_cmr}: ${mcResumenSolCierre(r)}`, true);
     pizarraDatos = []; reporteDatos = []; cicloDatos = [];
     mcFinalizarCambio();
   } catch (err) {
     showMsg(msg, err.message, false);
   }
-});
-
-const MC_YA_RESUELTO = ["RESUELTO", "CERRADO"];
-function mcResumenSolucion(r) {
-  const partes = [`${r.resueltos} registro(s) resuelto(s)`];
-  if (r.excluidos) partes.push(`${r.excluidos} ya estaban resueltos y no se tocaron`);
-  partes.push(r.ticket_resuelto ? "el ticket quedó RESUELTO" : `quedan ${r.pendientes} registro(s) pendientes`);
-  return partes.join(" · ") + ".";
 }
 
-// --- Escenario 4: Solución puntual (registros marcados) ---
+// --- Escenario 4: Solución / Cierre puntual (registros marcados) ---
 function mcRenderEscenario4() {
-  document.getElementById("e4_fecha_cmr").value = "";
-  document.getElementById("e4_fecha_cda").value = "";
+  limpiarFechasSolCierre("e4");
   const tbody = document.querySelector("#e4_table tbody");
   tbody.innerHTML = "";
   mcPuertos.forEach((p, idx) => {
-    const resuelto = MC_YA_RESUELTO.includes(p.estado_puerto);
+    const cerrado = p.estado_puerto === "CERRADO";
+    const fechaTxt = p.fecha_cierre_cmr || p.fecha_solucion_cmr;
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><input type="checkbox" class="e4-check" data-idx="${idx}" ${resuelto ? "disabled" : ""} /></td>
+      <td><input type="checkbox" class="e4-check" data-idx="${idx}" ${cerrado ? "disabled" : ""} /></td>
       <td>${escHtml(p.oficina_nombre || "-")}</td>
       <td>${escHtml(p.olt)}</td>
       <td>${escHtml(p.tarjeta)}</td>
       <td>${escHtml(p.puerto)}</td>
-      <td class="hint">${escHtml(p.estado_puerto || "")}${resuelto && p.fecha_solucion_cmr ? " · " + formatearFechaHora(p.fecha_solucion_cmr) : ""}</td>
+      <td class="hint">${escHtml(p.estado_puerto || "")}${MC_YA_RESUELTO.includes(p.estado_puerto) && fechaTxt ? " · " + formatearFechaHora(fechaTxt) : ""}</td>
     `;
     tbody.appendChild(tr);
   });
   document.getElementById("mc_escenario_4").classList.remove("hidden");
 }
-
-document.getElementById("e4_btn_guardar").addEventListener("click", async () => {
-  const msg = document.getElementById("mc_msg");
-  try {
-    const fecha_solucion_cmr = document.getElementById("e4_fecha_cmr").value;
-    const fecha_solucion_cda = document.getElementById("e4_fecha_cda").value;
-    if (!fecha_solucion_cmr && !fecha_solucion_cda) {
-      throw new Error("Indica al menos una fecha de solución (CMR o CDA). La que dejes vacía conserva lo que ya tenía.");
-    }
-    const registros = [];
-    document.querySelectorAll("#e4_table .e4-check").forEach((chk) => {
-      if (chk.checked) registros.push(mcPuertos[Number(chk.dataset.idx)].id);
-    });
-    if (registros.length === 0) throw new Error("Marca al menos un registro para resolver.");
-    const r = await apiSend(`/tickets/${mcTicket.id}/resolver`, "POST", { alcance: "PUNTUAL", ...soloLlenas({ fecha_solucion_cmr, fecha_solucion_cda }), registros });
-    showMsg(msg, `Ticket ${mcTicket.ticket_cmr}: ${mcResumenSolucion(r)}`, true);
-    pizarraDatos = []; reporteDatos = []; cicloDatos = [];
-    mcFinalizarCambio();
-  } catch (err) {
-    showMsg(msg, err.message, false);
-  }
+document.getElementById("e4_btn_guardar").addEventListener("click", () => {
+  const registros = [];
+  document.querySelectorAll("#e4_table .e4-check").forEach((chk) => { if (chk.checked) registros.push(mcPuertos[Number(chk.dataset.idx)].id); });
+  mcGuardarSolCierre("e4", "PUNTUAL", registros);
 });
 
 // Quita los campos vacíos: una fecha que no se escribe no se envía y el servidor conserva la que ya había.
 function soloLlenas(o) { const r = {}; Object.keys(o).forEach((k) => { if (o[k]) r[k] = o[k]; }); return r; }
 
-// --- Escenario 5: Solución masiva (todo el ticket, salvo lo ya resuelto) ---
+// --- Escenario 5: Solución / Cierre masivo (todo el ticket) ---
 function mcRenderEscenario5() {
-  document.getElementById("e5_fecha_cmr").value = "";
-  document.getElementById("e5_fecha_cda").value = "";
+  limpiarFechasSolCierre("e5");
   document.getElementById("mc_escenario_5").classList.remove("hidden");
 }
-
-document.getElementById("e5_btn_guardar").addEventListener("click", async () => {
-  const msg = document.getElementById("mc_msg");
-  try {
-    const fecha_solucion_cmr = document.getElementById("e5_fecha_cmr").value;
-    const fecha_solucion_cda = document.getElementById("e5_fecha_cda").value;
-    if (!fecha_solucion_cmr && !fecha_solucion_cda) {
-      throw new Error("Indica al menos una fecha de solución (CMR o CDA). La que dejes vacía conserva lo que ya tenía.");
-    }
-    const r = await apiSend(`/tickets/${mcTicket.id}/resolver`, "POST", { alcance: "MASIVO", ...soloLlenas({ fecha_solucion_cmr, fecha_solucion_cda }) });
-    showMsg(msg, `Ticket ${mcTicket.ticket_cmr}: ${mcResumenSolucion(r)}`, true);
-    pizarraDatos = []; reporteDatos = []; cicloDatos = [];
-    mcFinalizarCambio();
-  } catch (err) {
-    showMsg(msg, err.message, false);
-  }
-});
+document.getElementById("e5_btn_guardar").addEventListener("click", () => mcGuardarSolCierre("e5", "MASIVO", []));
 
 // ---------------------------------------------------------------
 // MODIFICAR / CERRAR para tickets ENLACE / TRAMO / TRONCAL

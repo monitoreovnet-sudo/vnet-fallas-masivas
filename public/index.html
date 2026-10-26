@@ -91,6 +91,9 @@
         <label>Unidad Resolutoria</label>
         <select id="c_unidad_resolutoria"></select>
       </div>
+      <div id="c_resol_block" class="hidden" style="grid-column: 1 / -1;">
+        <div class="grid-2" id="c_fechas"></div>
+      </div>
       <div class="field">
         <label>Categoría de la Afectación</label>
         <select id="c_categoria"></select>
@@ -169,8 +172,7 @@
       <label for="mc_accion">¿Qué deseas hacer?</label>
       <select id="mc_accion">
         <option value="">Seleccione:</option>
-        <option value="SOLUCION">Solución de Ticket</option>
-        <option value="CIERRE">Cierre de Ticket</option>
+        <option value="SOLUCION">Solución / Cierre de Ticket</option>
         <option value="CAMPO">Cambio de campo</option>
       </select>
     </div>
@@ -269,64 +271,30 @@
       <button id="e2_btn_guardar" class="btn-primary">Guardar cambio del registro</button>
     </div>
 
-    <!-- Escenario 3: Cerrado + Masivo -->
-    <div id="mc_escenario_3" class="hidden">
-      <hr />
-      <h3>Cierre Masivo</h3>
-      <p class="hint">Se cerrarán TODOS los registros asociados a este ticket. Si el ticket no tiene Fecha de Solución del CDA, se llena con la Fecha de Cierre del CDA que indiques aquí.</p>
-      <div class="grid-2">
-        <div class="field">
-          <label>Fecha de Cierre CMR</label>
-          <input id="e3_fecha_cmr" type="datetime-local" />
-        </div>
-        <div class="field">
-          <label>Fecha de Cierre CDA</label>
-          <input id="e3_fecha_cda" type="datetime-local" />
-        </div>
-      </div>
-      <button id="e3_btn_guardar" class="btn-primary">Cerrar Todo el Ticket</button>
-    </div>
-
-    <!-- Escenario 4: Solución puntual -->
+    <!-- Escenario 4: Solución / Cierre puntual -->
     <div id="mc_escenario_4" class="hidden">
       <hr />
-      <h3>Solución puntual</h3>
-      <div class="grid-2">
-        <div class="field">
-          <label>Fecha de Solución CMR</label>
-          <input id="e4_fecha_cmr" type="datetime-local" />
-        </div>
-        <div class="field">
-          <label>Fecha de Solución CDA</label>
-          <input id="e4_fecha_cda" type="datetime-local" />
-        </div>
-      </div>
-      <p class="hint">Marca solo los registros que se solucionaron con esas fechas. Los que ya están resueltos no se pueden volver a marcar.</p>
+      <h3>Solución / Cierre puntual</h3>
+      <p class="nota-fija">Nota: Los campos que no llene no se tomarán en cuenta ni modificarán la base de datos</p>
+      <div class="grid-2" id="e4_fechas"></div>
+      <p class="hint">Marca solo los registros que quieres actualizar con esas fechas. Si llenas la Fecha de Cierre del CMR los registros marcados quedan CERRADOS; si no, se marcan como RESUELTOS (los ya resueltos o cerrados no se tocan).</p>
       <table class="rows-table" id="e4_table">
         <thead>
           <tr><th></th><th>Oficina</th><th>OLT</th><th>Tarjeta</th><th>Puerto</th><th>Estado</th></tr>
         </thead>
         <tbody></tbody>
       </table>
-      <button id="e4_btn_guardar" class="btn-primary">Resolver registros marcados</button>
+      <button id="e4_btn_guardar" class="btn-primary">Guardar en los registros marcados</button>
     </div>
 
-    <!-- Escenario 5: Solución masiva -->
+    <!-- Escenario 5: Solución / Cierre masivo -->
     <div id="mc_escenario_5" class="hidden">
       <hr />
-      <h3>Solución masiva</h3>
-      <p class="hint">Se resolverán todos los registros de este ticket. Los que ya estén resueltos (por una solución puntual) no se tocan y conservan su fecha.</p>
-      <div class="grid-2">
-        <div class="field">
-          <label>Fecha de Solución CMR</label>
-          <input id="e5_fecha_cmr" type="datetime-local" />
-        </div>
-        <div class="field">
-          <label>Fecha de Solución CDA</label>
-          <input id="e5_fecha_cda" type="datetime-local" />
-        </div>
-      </div>
-      <button id="e5_btn_guardar" class="btn-primary">Resolver Todo el Ticket</button>
+      <h3>Solución / Cierre masivo</h3>
+      <p class="nota-fija">Nota: Los campos que no llene no se tomarán en cuenta ni modificarán la base de datos</p>
+      <p class="hint">Se aplica a todos los registros del ticket. Si llenas la Fecha de Cierre del CMR el ticket queda CERRADO; si no, se resuelven los registros pendientes (los ya resueltos o cerrados no se tocan y conservan sus fechas).</p>
+      <div class="grid-2" id="e5_fechas"></div>
+      <button id="e5_btn_guardar" class="btn-primary">Guardar en todo el ticket</button>
     </div>
 
     <!-- ENLACE / TRAMO / TRONCAL: pantalla propia (MASIVO o POR OLT, activo o cerrado) -->

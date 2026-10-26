@@ -784,3 +784,11 @@ input:focus, select:focus, textarea:focus {
 .fechas-trio { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 20px; }
 .fechas-trio .field { min-width: 0; }
 @media (max-width: 900px) { .fechas-trio { grid-template-columns: 1fr; } }
+
+/* Solución / Cierre: nota fija e icono de información en la esquina del campo */
+.nota-fija { background: #FEF9C3; border-left: 4px solid #CA8A04; color: #713F12; padding: 8px 12px; border-radius: 6px; font-size: 13px; margin: 8px 0 12px; }
+.campo-info { position: relative; }
+.info-i { position: absolute; top: 0; right: 0; width: 18px; height: 18px; border-radius: 50%; background: #4A1259; color: #fff; font: italic 700 12px/18px Georgia, serif; text-align: center; cursor: help; user-select: none; }
+.info-i:focus { outline: 2px solid #A78BFA; outline-offset: 1px; }
+.info-tip { display: none; position: absolute; right: 0; top: 24px; width: 280px; max-width: 80vw; background: #1F2937; color: #fff; font: 400 12px/1.4 var(--db-font, system-ui, sans-serif); font-style: normal; text-align: left; padding: 8px 10px; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.3); z-index: 50; }
+.info-i:hover .info-tip, .info-i:focus .info-tip { display: block; }
