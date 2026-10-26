@@ -70,16 +70,13 @@
         <input id="c_tickets_vinculados" placeholder="Ej: 123456" inputmode="numeric" maxlength="20" />
       </div>
       <div class="fechas-trio">
-        <div class="field">
-          <label>Fecha de Apertura del CMR</label>
+        <div class="field campo-info"><label>Fecha de Apertura del CMR</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">La hora de apertura en GLPI</span></span>
           <input id="c_fecha_cmr" type="datetime-local" />
         </div>
-        <div class="field">
-          <label>Fecha de Apertura del CDA</label>
+        <div class="field campo-info"><label>Fecha de Apertura del CDA</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">El momento en que usted esta llenando este reporte</span></span>
           <input id="c_fecha_cda" type="datetime-local" />
         </div>
-        <div class="field">
-          <label>Fecha de la Falla</label>
+        <div class="field campo-info"><label>Fecha de la Falla</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">El momento en que se detectó la existencia de la falla</span></span>
           <input id="c_fecha_falla" type="datetime-local" />
         </div>
       </div>
@@ -218,17 +215,14 @@
       <p class="hint">Solo se envían los campos que llenes; los que dejes vacíos no se modifican.</p>
       <div class="grid-2">
         <div class="fechas-trio">
-          <div class="field">
-            <label>Fecha Apertura CMR</label>
-            <input id="e1_fecha_cmr" type="datetime-local" />
+          <div class="field campo-info"><label>Fecha Apertura CMR</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">La hora de apertura en GLPI</span></span>
+          <input id="e1_fecha_cmr" type="datetime-local" />
           </div>
-          <div class="field">
-            <label>Fecha Apertura CDA</label>
-            <input id="e1_fecha_cda" type="datetime-local" />
+          <div class="field campo-info"><label>Fecha Apertura CDA</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">El momento en que usted esta llenando este reporte</span></span>
+          <input id="e1_fecha_cda" type="datetime-local" />
           </div>
-          <div class="field">
-            <label>Fecha de la Falla</label>
-            <input id="e1_fecha_falla" type="datetime-local" />
+          <div class="field campo-info"><label>Fecha de la Falla</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">El momento en que se detectó la existencia de la falla</span></span>
+          <input id="e1_fecha_falla" type="datetime-local" />
           </div>
         </div>
         <div class="field">
@@ -292,7 +286,6 @@
       <hr />
       <h3>Solución / Cierre masivo</h3>
       <p class="nota-fija">Nota: Los campos que no llene no se tomarán en cuenta ni modificarán la base de datos</p>
-      <p class="hint">Se aplica a todos los registros del ticket. Si llenas la Fecha de Cierre del CMR el ticket queda CERRADO; si no, se resuelven los registros pendientes (los ya resueltos o cerrados no se tocan y conservan sus fechas).</p>
       <div class="grid-2" id="e5_fechas"></div>
       <button id="e5_btn_guardar" class="btn-primary">Guardar en todo el ticket</button>
     </div>
@@ -338,9 +331,9 @@
         </div>
       </div>
       <div id="me_bloque_apertura" class="fechas-trio hidden">
-        <div class="field"><label>Fecha Apertura CMR</label><input id="me_apertura_cmr" type="datetime-local" /></div>
-        <div class="field"><label>Fecha Apertura CDA</label><input id="me_apertura_cda" type="datetime-local" /></div>
-        <div class="field"><label>Fecha de la Falla</label><input id="me_fecha_falla" type="datetime-local" /></div>
+        <div class="field campo-info"><label>Fecha Apertura CMR</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">La hora de apertura en GLPI</span></span><input id="me_apertura_cmr" type="datetime-local" /></div>
+        <div class="field campo-info"><label>Fecha Apertura CDA</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">El momento en que usted esta llenando este reporte</span></span><input id="me_apertura_cda" type="datetime-local" /></div>
+        <div class="field campo-info"><label>Fecha de la Falla</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">El momento en que se detectó la existencia de la falla</span></span><input id="me_fecha_falla" type="datetime-local" /></div>
       </div>
       <div id="me_bloque_cierre" class="grid-2 hidden">
         <div class="field"><label id="me_lbl_cierre_cmr">Fecha de Cierre CMR</label><input id="me_cierre_cmr" type="datetime-local" /></div>

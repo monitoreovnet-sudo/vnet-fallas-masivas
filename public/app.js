@@ -1080,10 +1080,9 @@ const TXT_INFO_SOLUCION_CDA = "Si no reporta fecha de soluci처n del CDA, pero s�
 function htmlFechasSolucionCierre(p) {
   const info = (...textos) => `<span class="info-i" tabindex="0" role="note" aria-label="Informaci처n">i<span class="info-tip">${textos.join("<br><br>")}</span></span>`;
   const campo = (id, titulo, inf, cls) => `<div class="field campo-info ${cls}"><label>${titulo}</label>${inf}<input id="${p}_${id}" type="datetime-local" /></div>`;
-  return campo("sol_cmr", "Fecha de Soluci처n CMR", info(TXT_INFO_SOLUCION), "fh-solucion")
-    + campo("cie_cmr", "Fecha de Cierre CMR", "", "fh-cierre")
-    + campo("sol_cda", "Fecha de Soluci처n CDA", info(TXT_INFO_SOLUCION, TXT_INFO_SOLUCION_CDA), "fh-solucion")
-    + campo("cie_cda", "Fecha de Cierre CDA", "", "fh-cierre");
+  const caja = (titulo, cuerpo) => `<fieldset class="grupo-fechas"><legend>${titulo}</legend>${cuerpo}</fieldset>`;
+  return caja("CMR", campo("sol_cmr", "Fecha de Soluci처n CMR", info(TXT_INFO_SOLUCION), "fh-solucion") + campo("cie_cmr", "Fecha de Cierre CMR", "", "fh-cierre"))
+    + caja("CDA", campo("sol_cda", "Fecha de Soluci처n CDA", info(TXT_INFO_SOLUCION, TXT_INFO_SOLUCION_CDA), "fh-solucion") + campo("cie_cda", "Fecha de Cierre CDA", "", "fh-cierre"));
 }
 ["e4", "e5", "c"].forEach((p) => { document.getElementById(`${p}_fechas`).innerHTML = htmlFechasSolucionCierre(p); });
 const leerFechasSolCierre = (p) => soloLlenas({
