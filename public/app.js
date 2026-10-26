@@ -985,6 +985,10 @@ function mcRenderEscenario2() {
       <td><input class="e2-olt" data-idx="${idx}" value="${escHtml(p.olt)}" disabled /></td>
       <td><input class="e2-tarjeta" data-idx="${idx}" value="${escHtml(p.tarjeta)}" disabled /></td>
       <td><input class="e2-puerto" data-idx="${idx}" value="${escHtml(p.puerto)}" disabled /></td>
+      <td><input class="e2-sector" data-idx="${idx}" value="${escHtml(p.sector ?? "")}" disabled /></td>
+      <td><input class="e2-edificio" data-idx="${idx}" value="${escHtml(p.edificio ?? "")}" disabled /></td>
+      <td><input class="e2-afectados" type="number" min="0" step="1" data-idx="${idx}" value="${escHtml(p.nro_clientes_afectados ?? 0)}" disabled /></td>
+      <td><input class="e2-reportaron" type="number" min="0" step="1" data-idx="${idx}" value="${escHtml(p.no_clientes_reportaron ?? 0)}" disabled /></td>
     `;
     tr.querySelector(".e2-sel").addEventListener("change", () => {
       tbody.querySelectorAll("tr").forEach((fila) => {
@@ -1010,12 +1014,27 @@ document.getElementById("e2_btn_guardar").addEventListener("click", async () => 
   const tarjeta = tbody.querySelector(`.e2-tarjeta[data-idx="${idx}"]`).value.trim();
   const puerto = tbody.querySelector(`.e2-puerto[data-idx="${idx}"]`).value.trim();
   if (!olt || !tarjeta || !puerto) { showMsg(msg, "OLT, Tarjeta y Puerto no pueden quedar vacíos.", false); return; }
+  const sector = tbody.querySelector(`.e2-sector[data-idx="${idx}"]`).value.trim();
+  const edificio = tbody.querySelector(`.e2-edificio[data-idx="${idx}"]`).value.trim();
+  if (!sector || !edificio) { showMsg(msg, "Sector y Edificio no pueden quedar vacíos.", false); return; }
+  const conteo = (clase, etiqueta) => {
+    const t = tbody.querySelector(`.${clase}[data-idx="${idx}"]`).value.trim();
+    if (!/^\d+$/.test(t)) throw new Error(`${etiqueta} debe ser un número entero mayor o igual a 0.`);
+    return Number(t);
+  };
+  let afectados, reportaron;
+  try { afectados = conteo("e2-afectados", "Clientes afectados"); reportaron = conteo("e2-reportaron", "Clientes que reportaron"); }
+  catch (err) { showMsg(msg, err.message, false); return; }
 
   const cambio = {};
   if (String(oficina_id || "") !== String(p.oficina_id || "")) cambio.oficina_id = oficina_id;
   if (olt !== p.olt) cambio.olt = olt;
   if (tarjeta !== p.tarjeta) cambio.tarjeta = tarjeta;
   if (puerto !== p.puerto) cambio.puerto = puerto;
+  if (sector !== String(p.sector ?? "")) cambio.sector = sector;
+  if (edificio !== String(p.edificio ?? "")) cambio.edificio = edificio;
+  if (afectados !== Number(p.nro_clientes_afectados ?? 0)) cambio.nro_clientes_afectados = afectados;
+  if (reportaron !== Number(p.no_clientes_reportaron ?? 0)) cambio.no_clientes_reportaron = reportaron;
   if (Object.keys(cambio).length === 0) { showMsg(msg, "No hay cambios para guardar en ese registro.", false); return; }
   try {
     await apiSend(`/tickets/${mcTicket.id}/puertos`, "PATCH", { puertos: [{ id: p.id, ...cambio }] });
