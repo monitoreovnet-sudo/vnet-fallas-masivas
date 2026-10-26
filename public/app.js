@@ -710,6 +710,18 @@ async function revisarTicketRepetidoInterno(cmr) {
 }
 document.getElementById("c_ticket_cmr").addEventListener("blur", () => { revisarTicketRepetido(); });
 
+// Fecha de Apertura del CDA: por defecto es el momento actual (editable). Si la falla se reportó antes (ej. la plataforma
+// estaba en mantenimiento), la persona escribe la fecha y hora reales. Mientras no la toque, se refresca al abrir la pestaña.
+let cdaAuto = true;
+function fijarCdaAhora() {
+  const d = new Date(), p2 = (n) => String(n).padStart(2, "0");
+  document.getElementById("c_fecha_cda").value = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`;
+  cdaAuto = true;
+}
+document.getElementById("c_fecha_cda").addEventListener("input", () => { cdaAuto = false; });
+document.querySelector('.tab-btn[data-tab="crear"]').addEventListener("click", () => { if (cdaAuto) fijarCdaAhora(); });
+fijarCdaAhora();
+
 // Deja el formulario de Crear Ticket como recién abierto (después de crear el ticket con éxito)
 function limpiarFormularioCrear() {
   ["c_ticket_cmr", "c_tickets_vinculados", "c_fecha_cmr", "c_fecha_cda", "c_fecha_falla", "c_descripcion"]
@@ -725,6 +737,7 @@ function limpiarFormularioCrear() {
   actualizarModoUbicacion();
   document.getElementById("c_otros_no_reportaron").value = "0";
   document.getElementById("c_otros_nro_afectados").value = "0";
+  fijarCdaAhora();
 }
 document.getElementById("btn_crear_ticket").addEventListener("click", async () => {
   const msg = document.getElementById("crear_msg");

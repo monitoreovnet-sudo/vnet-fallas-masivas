@@ -9,6 +9,7 @@ INSERT INTO olts (oficina_id, codigo) VALUES
 ((SELECT id FROM oficinas WHERE codigo = 'VIC' LIMIT 1), 'VIC-OL-ZT-AC-003'),
 ((SELECT id FROM oficinas WHERE codigo = 'SBE' LIMIT 1), 'SBE-OL-ZT-AC-001'),
 ((SELECT id FROM oficinas WHERE codigo = 'SBE' LIMIT 1), 'SBE-OL-ZT-AC-002'),
+((SELECT id FROM oficinas WHERE codigo = 'SBE' LIMIT 1), 'SBE-OL-ZT-AC-003'),
 ((SELECT id FROM oficinas WHERE codigo = 'STF' LIMIT 1), 'STF-OL-ZT-AC-001'),
 ((SELECT id FROM oficinas WHERE codigo = 'CAT' LIMIT 1), 'CAT-OL-ZT-AC-001'),
 ((SELECT id FROM oficinas WHERE codigo = 'CAT' LIMIT 1), 'CAT-OL-ZT-AC-002'),
