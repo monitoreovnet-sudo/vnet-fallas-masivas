@@ -14,10 +14,10 @@ export const CATALOGOS = {
 
 // Catálogos con relación "muchos a muchos": además de sus columnas, guardan una lista de ids en una tabla puente.
 //  - Una incidencia (afectación) puede pertenecer a varios Tipos de Incidencia (categorías).
-//  - Un comentario puede aplicar a varias incidencias (sin ninguna marcada = aplica a todas).
+//  - Un comentario puede aplicar a varios Tipos de Incidencia (sin ninguno marcado = aplica a todos).
 export const ENLACES = {
   catalogo_afectaciones: { tabla: "afectacion_categorias", col: "afectacion_id", otro: "categoria_id", campo: "categorias_ids", obligatorio: true, legado: "categoria_id" },
-  catalogo_comentarios: { tabla: "comentario_afectaciones", col: "comentario_id", otro: "afectacion_id", campo: "afectaciones_ids", obligatorio: false },
+  catalogo_comentarios: { tabla: "comentario_categorias", col: "comentario_id", otro: "categoria_id", campo: "categorias_ids", obligatorio: false, legado: "categoria_id" },
 };
 
 export function idsDe(body, enlace) {

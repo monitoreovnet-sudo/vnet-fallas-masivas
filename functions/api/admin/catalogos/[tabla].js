@@ -35,7 +35,7 @@ export async function onRequestPost({ request, env, params }) {
   const enlace = ENLACES[params.tabla];
   const ids = enlace ? idsDe(body, enlace) : undefined;
   if (enlace && enlace.obligatorio && (!ids || !ids.length)) return badRequest("Selecciona al menos una opción en la lista de selección múltiple.");
-  if (enlace && enlace.legado && ids && ids.length) body[enlace.legado] = ids[0];
+  if (enlace && enlace.legado && ids) body[enlace.legado] = ids.length ? ids[0] : null;
   const campos = config.columnas.filter((c) => body[c] !== undefined);
   if (campos.length === 0) return badRequest("No enviaste ningún campo válido.");
 

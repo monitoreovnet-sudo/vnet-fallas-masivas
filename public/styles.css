@@ -796,3 +796,13 @@ input:focus, select:focus, textarea:focus {
 /* Recuadros CMR / CDA en Solución / Cierre */
 .grupo-fechas { border: 2px solid #4A1259; border-radius: 10px; padding: 8px 14px 12px; margin: 0; min-width: 0; display: grid; gap: 10px; align-content: start; }
 .grupo-fechas legend { font-weight: 700; color: #4A1259; padding: 0 8px; }
+
+/* Selección múltiple en el editor de catálogos */
+.multi-cat { position: relative; min-width: 190px; }
+.multi-cat summary { cursor: pointer; border: 1px solid #C9C2D3; border-radius: 6px; padding: 7px 10px; background: #fff; list-style: none; }
+.multi-cat[open] .multi-lista { position: absolute; z-index: 40; left: 0; top: 100%; min-width: 260px; max-height: 260px; overflow: auto; background: #fff; border: 1px solid #C9C2D3; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.2); padding: 6px 8px; }
+.multi-op { display: flex; gap: 6px; align-items: center; padding: 3px 0; font-weight: 400; white-space: nowrap; }
+.multi-cat .multi-op { justify-content: flex-start; text-align: left; width: 100%; margin: 0; }
+.multi-cat .multi-op input[type="checkbox"] { width: auto; margin: 0; flex: none; }
+.multi-cat summary { font-weight: 400; }
+#cat_add_row .multi-cat summary { font-size: 14px; }

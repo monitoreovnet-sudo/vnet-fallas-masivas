@@ -202,7 +202,7 @@ async function loadLookups() {
   fillSelect(document.getElementById("c_estado_ticket"), LOOKUPS.estados_ticket, { valueKey: "nombre" });
   fillSelect(document.getElementById("c_unidad_resolutoria"), LOOKUPS.unidades_resolutorias, { valueKey: "nombre" });
   fillSelect(document.getElementById("c_categoria"), LOOKUPS.categorias, { valueKey: "id" });
-  fillSelect(document.getElementById("c_comentario"), comentariosParaCategoria(""), { valueKey: "nombre" });
+  renderComentariosCrear();
   fillSelect(document.getElementById("add_oficina_select"), oficinasReales(), { valueKey: "id" });
 
   mcLlenarAccion();
@@ -217,18 +217,40 @@ async function loadLookups() {
 
 document.getElementById("c_categoria").addEventListener("change", (e) => {
   const catId = e.target.value;
-  const afectaciones = LOOKUPS.afectaciones.filter((a) => String(a.categoria_id) === String(catId));
+  const afectaciones = afectacionesParaCategoria(catId);
   fillSelect(document.getElementById("c_afectacion"), afectaciones, { valueKey: "nombre" });
-  fillSelect(document.getElementById("c_comentario"), comentariosParaCategoria(catId), { valueKey: "nombre" });
+  renderComentariosCrear();
   document.getElementById("c_ubicacion_tipo").value = "";   // cada Tipo empieza con su propia elección de ubicación
   actualizarModoUbicacion();
 });
 
-// Comentarios que aplican a una categoría: los ligados a ella + los genéricos
-// (categoria_id NULL = aplican a todas las categorías).
-function comentariosParaCategoria(catId) {
-  return LOOKUPS.comentarios.filter((c) => !c.categoria_id || String(c.categoria_id) === String(catId));
+// Incidencias (afectaciones) de un Tipo de Incidencia: una incidencia puede pertenecer a varios Tipos.
+function afectacionesParaCategoria(catId) {
+  return LOOKUPS.afectaciones.filter((a) => (a.categoria_ids && a.categoria_ids.length ? a.categoria_ids : [a.categoria_id]).some((x) => String(x) === String(catId)));
 }
+// Comentarios que aplican a un Tipo de Incidencia: un comentario puede aplicar a varios Tipos (sin ninguno marcado = a todos).
+function comentariosParaCategoria(catId) {
+  return LOOKUPS.comentarios.filter((c) => {
+    if (c.categoria_ids && c.categoria_ids.length) return c.categoria_ids.some((x) => String(x) === String(catId));
+    return !c.categoria_id || String(c.categoria_id) === String(catId);
+  });
+}
+// Comentario del ticket: lista con casillas (varios a la vez). El valor que se envía son los nombres separados por " / ".
+const SEP_COMENTARIOS = " / ";
+function renderComentariosCrear() {
+  const box = document.getElementById("c_comentario_multi");
+  const previos = new Set(valoresComentarioCrear());
+  const items = comentariosParaCategoria(document.getElementById("c_categoria").value);
+  box.querySelector(".multi-lista").innerHTML = items.map((c) => `<label class="multi-op"><input type="checkbox" value="${String(c.nombre).replace(/"/g, "&quot;")}" ${previos.has(c.nombre) ? "checked" : ""} /> ${c.nombre}</label>`).join("") || '<span class="hint">Elige primero el Tipo de Incidencia</span>';
+  sincronizarComentarioCrear();
+}
+function valoresComentarioCrear() { return [...document.querySelectorAll("#c_comentario_multi input:checked")].map((i) => i.value); }
+function sincronizarComentarioCrear() {
+  const v = valoresComentarioCrear();
+  document.getElementById("c_comentario").value = v.join(SEP_COMENTARIOS);
+  document.querySelector("#c_comentario_multi summary").textContent = v.length ? v.join(SEP_COMENTARIOS) : "Seleccione:";
+}
+document.getElementById("c_comentario_multi").addEventListener("change", sincronizarComentarioCrear);
 
 // ---------------------------------------------------------------
 // CREAR TICKET: Tipo -> Tipo de ubicación -> (Oficinas | Enlace/Tramo | solo conteos)
@@ -742,6 +764,7 @@ function limpiarFormularioCrear() {
   ["c_estado_ticket", "c_unidad_resolutoria", "c_ubicacion_tipo"]
     .forEach((id) => { document.getElementById(id).value = ""; });
   actualizarBloqueResolucion();
+  document.querySelectorAll("#c_comentario_multi input").forEach((i) => { i.checked = false; });
   const cat = document.getElementById("c_categoria");
   cat.value = "";
   cat.dispatchEvent(new Event("change"));      // vacía Afectación y Comentario y oculta la ubicación
@@ -2604,11 +2627,11 @@ const CATALOGOS_UI = {
     { key: "nombre", tipo: "text" }, { key: "orden", tipo: "number" },
   ]},
   catalogo_afectaciones: { label: "Incidencias (Afectaciones)", campos: [
-    { key: "categoria_id", tipo: "ref", ref: "catalogo_categorias", label: "tipo de incidencia" },
+    { key: "categorias_ids", tipo: "multi", ref: "catalogo_categorias", label: "tipo de incidencia (puede marcar varios)", vacio: "Seleccione" },
     { key: "nombre", tipo: "text" }, { key: "orden", tipo: "number" },
   ]},
   catalogo_comentarios: { label: "Comentarios", campos: [
-    { key: "categoria_id", tipo: "ref", ref: "catalogo_categorias", label: "tipo de incidencia" },
+    { key: "categorias_ids", tipo: "multi", ref: "catalogo_categorias", label: "tipo de incidencia (puede marcar varios; ninguno = todos)", vacio: "Todas" },
     { key: "nombre", tipo: "text" }, { key: "orden", tipo: "number" },
   ]},
   catalogo_unidades_resolutorias: { label: "Unidades Resolutorias", campos: [
@@ -2629,6 +2652,12 @@ function catInputHtml(campo, valor, refs = {}) {
   if (campo.tipo === "number") {
     return `<input type="number" class="cat-f" data-key="${campo.key}" value="${valor ?? ""}" />`;
   }
+  if (campo.tipo === "multi") {
+    const marcados = new Set((Array.isArray(valor) ? valor : []).map(String));
+    const lista = (refs[campo.ref] || []).map((r) => `<label class="multi-op"><input type="checkbox" value="${r.id}" ${marcados.has(String(r.id)) ? "checked" : ""} /> ${r.nombre}</label>`).join("");
+    const n = marcados.size;
+    return `<details class="cat-f multi-cat" data-key="${campo.key}" data-tipo="multi" data-vacio="${campo.vacio || "Seleccione"}"><summary>${n ? n + " seleccionada(s)" : (campo.vacio || "Seleccione")}</summary><div class="multi-lista">${lista}</div></details>`;
+  }
   if (campo.tipo === "ref") {
     const opciones = (refs[campo.ref] || [])
       .map((r) => `<option value="${r.id}" ${String(r.id) === String(valor ?? "") ? "selected" : ""}>${r.nombre}</option>`)
@@ -2641,7 +2670,8 @@ function catInputHtml(campo, valor, refs = {}) {
 function catLeerValores(fila) {
   const valores = {};
   fila.querySelectorAll(".cat-f").forEach((el) => {
-    if (el.type === "checkbox") valores[el.dataset.key] = el.checked ? 1 : 0;
+    if (el.dataset.tipo === "multi") valores[el.dataset.key] = [...el.querySelectorAll("input:checked")].map((i) => Number(i.value));
+    else if (el.type === "checkbox") valores[el.dataset.key] = el.checked ? 1 : 0;
     else if (el.dataset.tipo === "ref") valores[el.dataset.key] = el.value === "" ? null : Number(el.value);
     else valores[el.dataset.key] = el.value;
   });
@@ -2659,7 +2689,7 @@ async function cargarCatalogo(tabla) {
   const refs = {};
   try {
     for (const c of config.campos) {
-      if (c.tipo === "ref" && !refs[c.ref]) {
+      if ((c.tipo === "ref" || c.tipo === "multi") && !refs[c.ref]) {
         refs[c.ref] = (await apiGet(`/admin/catalogos/${c.ref}`)).filas;
       }
     }
@@ -2703,6 +2733,16 @@ async function cargarCatalogo(tabla) {
 }
 
 document.getElementById("cat_select").addEventListener("change", (e) => cargarCatalogo(e.target.value));
+// Selección múltiple del editor de catálogos: el resumen refleja cuántas opciones hay marcadas
+document.addEventListener("click", (e) => {   // clic fuera de la lista = se cierra
+  document.querySelectorAll("details.multi-cat[open]").forEach((d) => { if (!d.contains(e.target)) d.open = false; });
+});
+document.addEventListener("change", (e) => {
+  const d = e.target.closest && e.target.closest("details.multi-cat");
+  if (!d || d.id === "c_comentario_multi") return;
+  const n = d.querySelectorAll("input:checked").length;
+  d.querySelector("summary").textContent = n ? `${n} seleccionada(s)` : d.dataset.vacio;
+});
 
 document.getElementById("cat_btn_agregar").addEventListener("click", async () => {
   const tabla = document.getElementById("cat_select").value;

@@ -26,9 +26,9 @@ export async function onRequestGet({ env }) {
       return m;
     } catch (e) { return new Map(); }
   };
-  const [afCat, comAf] = await Promise.all([rel("afectacion_categorias", "afectacion_id", "categoria_id"), rel("comentario_afectaciones", "comentario_id", "afectacion_id")]);
+  const [afCat, comCat] = await Promise.all([rel("afectacion_categorias", "afectacion_id", "categoria_id"), rel("comentario_categorias", "comentario_id", "categoria_id")]);
   afectaciones.results.forEach((a) => { a.categoria_ids = afCat.get(a.id) || (a.categoria_id ? [a.categoria_id] : []); });
-  comentarios.results.forEach((c) => { c.afectacion_ids = comAf.get(c.id) || []; });
+  comentarios.results.forEach((c) => { c.categoria_ids = comCat.get(c.id) || (c.categoria_id ? [c.categoria_id] : []); });   // vacío = aplica a todos los tipos
 
   return json({
     oficinas: oficinas.results,

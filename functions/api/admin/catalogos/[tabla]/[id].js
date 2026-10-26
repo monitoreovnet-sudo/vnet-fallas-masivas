@@ -14,7 +14,7 @@ export async function onRequestPatch({ request, env, params }) {
   const enlace = ENLACES[params.tabla];
   const ids = enlace ? idsDe(body, enlace) : undefined;
   if (enlace && enlace.obligatorio && ids !== undefined && !ids.length) return badRequest("Selecciona al menos una opción en la lista de selección múltiple.");
-  if (enlace && enlace.legado && ids && ids.length) body[enlace.legado] = ids[0];
+  if (enlace && enlace.legado && ids) body[enlace.legado] = ids.length ? ids[0] : null;
   const campos = config.columnas.filter((c) => body[c] !== undefined);
   if (campos.length === 0 && ids === undefined) return badRequest("No enviaste ningún campo válido.");
 
@@ -39,7 +39,6 @@ export async function onRequestDelete({ request, env, params }) {
   try {
     const enlace = ENLACES[params.tabla];
     if (enlace) await env.DB.prepare(`DELETE FROM ${enlace.tabla} WHERE ${enlace.col} = ?`).bind(params.id).run();
-    if (params.tabla === "catalogo_afectaciones") await env.DB.prepare("DELETE FROM comentario_afectaciones WHERE afectacion_id = ?").bind(params.id).run();
     await env.DB.prepare(`DELETE FROM ${params.tabla} WHERE id = ?`).bind(params.id).run();
   } catch (e) {
     return badRequest("No se puede eliminar: hay registros (tickets/OLTs) que dependen de este valor. Desactívalo en vez de eliminarlo, si el catálogo lo permite.");
