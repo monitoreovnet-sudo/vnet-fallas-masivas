@@ -11,3 +11,23 @@ export const CATALOGOS = {
   catalogo_estados_ticket: { columnas: ["nombre", "orden"], orden: "orden, nombre" },
   catalogo_estados_puerto: { columnas: ["nombre", "orden"], orden: "orden, nombre" },
 };
+
+// Catálogos con relación "muchos a muchos": además de sus columnas, guardan una lista de ids en una tabla puente.
+//  - Una incidencia (afectación) puede pertenecer a varios Tipos de Incidencia (categorías).
+//  - Un comentario puede aplicar a varias incidencias (sin ninguna marcada = aplica a todas).
+export const ENLACES = {
+  catalogo_afectaciones: { tabla: "afectacion_categorias", col: "afectacion_id", otro: "categoria_id", campo: "categorias_ids", obligatorio: true, legado: "categoria_id" },
+  catalogo_comentarios: { tabla: "comentario_afectaciones", col: "comentario_id", otro: "afectacion_id", campo: "afectaciones_ids", obligatorio: false },
+};
+
+export function idsDe(body, enlace) {
+  const v = body?.[enlace.campo];
+  if (v === undefined) return undefined;
+  return [...new Set((Array.isArray(v) ? v : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+}
+
+export async function guardarEnlaces(env, enlace, id, ids) {
+  const st = [env.DB.prepare(`DELETE FROM ${enlace.tabla} WHERE ${enlace.col} = ?`).bind(id)];
+  for (const o of ids) st.push(env.DB.prepare(`INSERT OR IGNORE INTO ${enlace.tabla} (${enlace.col}, ${enlace.otro}) VALUES (?, ?)`).bind(id, o));
+  await env.DB.batch(st);
+}

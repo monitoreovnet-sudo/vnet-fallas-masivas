@@ -18,6 +18,18 @@ export async function onRequestGet({ env }) {
       db.prepare("SELECT DISTINCT olt FROM ticket_puertos WHERE olt IS NOT NULL AND olt <> '' ORDER BY olt").all(),
     ]);
 
+  // Relaciones muchas-a-muchos (migración 025). Si aún no se aplicó, todo sigue funcionando con las columnas viejas.
+  const rel = async (tabla, a, b) => {
+    try {
+      const m = new Map();
+      (await db.prepare(`SELECT ${a} AS a, ${b} AS b FROM ${tabla}`).all()).results.forEach((r) => { if (!m.has(r.a)) m.set(r.a, []); m.get(r.a).push(r.b); });
+      return m;
+    } catch (e) { return new Map(); }
+  };
+  const [afCat, comAf] = await Promise.all([rel("afectacion_categorias", "afectacion_id", "categoria_id"), rel("comentario_afectaciones", "comentario_id", "afectacion_id")]);
+  afectaciones.results.forEach((a) => { a.categoria_ids = afCat.get(a.id) || (a.categoria_id ? [a.categoria_id] : []); });
+  comentarios.results.forEach((c) => { c.afectacion_ids = comAf.get(c.id) || []; });
+
   return json({
     oficinas: oficinas.results,
     categorias: categorias.results,
