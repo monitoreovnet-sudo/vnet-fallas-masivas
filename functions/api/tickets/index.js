@@ -82,6 +82,17 @@ export async function onRequestPost({ request, env }) {
     return badRequest(`Ya existe un ticket registrado con el número ${ticket_cmr}.`);
   }
 
+  // Ticket NUEVO: las tres fechas son obligatorias (los registros que se agregan a un ticket existente no tocan sus datos generales).
+  if (!agregando) {
+    const OBLIG = { fecha_apertura_cmr: "Fecha de Apertura del CMR", fecha_apertura_cda: "Fecha de Apertura del CDA", fecha_falla: "Fecha de la Falla" };
+    const FECHA_OBL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+    for (const [campo, nombre] of Object.entries(OBLIG)) {
+      const v = String(body[campo] || "").trim();
+      if (!v) return badRequest(`La ${nombre} es obligatoria.`);
+      if (!FECHA_OBL.test(v)) return badRequest(`La ${nombre} no tiene un formato válido.`);
+    }
+  }
+
   // El ticket puede abarcar varias oficinas (una por cada OLT registrado).
   // El campo tickets.oficina_id guarda la primera como oficina "principal"
   // para efectos de listado/filtro; la oficina real de cada OLT queda en

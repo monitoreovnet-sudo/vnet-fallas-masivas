@@ -792,6 +792,9 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
         no_reportaron: document.getElementById("c_otros_no_reportaron").value,
       },
     });
+    const faltan = [["c_fecha_cmr", "Fecha de Apertura del CMR"], ["c_fecha_cda", "Fecha de Apertura del CDA"], ["c_fecha_falla", "Fecha de la Falla"]]
+      .filter(([id]) => !document.getElementById(id).value).map(([, n]) => n);
+    if (faltan.length && !dupVigente(document.getElementById("c_ticket_cmr").value.trim())) throw new Error(`Falta completar (obligatorio): ${faltan.join(", ")}.`);
     const payload = {
       ticket_cmr: document.getElementById("c_ticket_cmr").value.trim(),
       tickets_vinculados: document.getElementById("c_tickets_vinculados").value.trim(),
