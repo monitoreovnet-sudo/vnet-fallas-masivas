@@ -1104,19 +1104,27 @@ document.getElementById("e2_btn_guardar").addEventListener("click", async () => 
 const TXT_INFO_SOLUCION = "No es indispensable llenar el campo de solución del ticket";
 const TXT_INFO_SOLUCION_CDA = "Si no reporta fecha de solución del CDA, pero sí de cierre del CDA, el sistema colocará la fecha de cierre como su fecha de solución";
 // HTML de las 4 fechas (CMR primero, luego CDA). Los campos de solución llevan el icono "i" con su ayuda en la esquina superior derecha.
-function htmlFechasSolucionCierre(p) {
+function htmlFechasSolucionCierre(p, conTextos) {
   const info = (...textos) => `<span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">${textos.join("<br><br>")}</span></span>`;
   const campo = (id, titulo, inf, cls) => `<div class="field campo-info ${cls}"><label>${titulo}</label>${inf}<input id="${p}_${id}" type="datetime-local" /></div>`;
   const caja = (titulo, cuerpo) => `<fieldset class="grupo-fechas"><legend>${titulo}</legend>${cuerpo}</fieldset>`;
   return caja("CMR", campo("sol_cmr", "Fecha de Solución CMR", info(TXT_INFO_SOLUCION), "fh-solucion") + campo("cie_cmr", "Fecha de Cierre CMR", "", "fh-cierre"))
-    + caja("CDA", campo("sol_cda", "Fecha de Solución CDA", info(TXT_INFO_SOLUCION, TXT_INFO_SOLUCION_CDA), "fh-solucion") + campo("cie_cda", "Fecha de Cierre CDA", "", "fh-cierre"));
+    + caja("CDA", campo("sol_cda", "Fecha de Solución CDA", info(TXT_INFO_SOLUCION, TXT_INFO_SOLUCION_CDA), "fh-solucion") + campo("cie_cda", "Fecha de Cierre CDA", "", "fh-cierre"))
+    + (conTextos ? `<div class="field" style="grid-column:1/-1"><label>Causa de la falla</label><textarea id="${p}_causa" rows="3" maxlength="2000" placeholder="Opcional"></textarea></div>
+      <div class="field" style="grid-column:1/-1"><label>Correctivo de la falla</label><textarea id="${p}_correctivo" rows="3" maxlength="2000" placeholder="Opcional"></textarea></div>` : "");
 }
-["e4", "e5", "c"].forEach((p) => { document.getElementById(`${p}_fechas`).innerHTML = htmlFechasSolucionCierre(p); });
+["e4", "e5", "c"].forEach((p) => { document.getElementById(`${p}_fechas`).innerHTML = htmlFechasSolucionCierre(p, p !== "c"); });
 const leerFechasSolCierre = (p) => soloLlenas({
   fecha_solucion_cmr: document.getElementById(`${p}_sol_cmr`).value, fecha_cierre_cmr: document.getElementById(`${p}_cie_cmr`).value,
   fecha_solucion_cda: document.getElementById(`${p}_sol_cda`).value, fecha_cierre_cda: document.getElementById(`${p}_cie_cda`).value,
 });
-const limpiarFechasSolCierre = (p) => ["sol_cmr", "cie_cmr", "sol_cda", "cie_cda"].forEach((k) => { document.getElementById(`${p}_${k}`).value = ""; });
+const limpiarFechasSolCierre = (p) => ["sol_cmr", "cie_cmr", "sol_cda", "cie_cda", "causa", "correctivo"].forEach((k) => { const e = document.getElementById(`${p}_${k}`); if (e) e.value = ""; });
+const leerTextosSolCierre = (p) => {
+  const o = {}, v = (k) => { const e = document.getElementById(`${p}_${k}`); return e ? e.value.trim() : ""; };
+  if (v("causa")) o.causa_falla = v("causa");
+  if (v("correctivo")) o.correctivo = v("correctivo");
+  return o;
+};
 const MC_YA_RESUELTO = ["RESUELTO", "CERRADO"];
 function mcResumenSolCierre(r) {
   const partes = [`${r.actualizados} registro(s) actualizado(s)`];
@@ -1131,7 +1139,7 @@ async function mcGuardarSolCierre(prefijo, alcance, registros) {
     const fechas = leerFechasSolCierre(prefijo);
     if (!Object.keys(fechas).length) throw new Error("Llena al menos una fecha (solución o cierre). Las que dejes vacías no se modifican.");
     if (alcance === "PUNTUAL" && !registros.length) throw new Error("Marca al menos un registro.");
-    const r = await apiSend(`/tickets/${mcTicket.id}/solucion-cierre`, "POST", { alcance, ...(alcance === "PUNTUAL" ? { registros } : {}), ...fechas });
+    const r = await apiSend(`/tickets/${mcTicket.id}/solucion-cierre`, "POST", { alcance, ...(alcance === "PUNTUAL" ? { registros } : {}), ...fechas, ...leerTextosSolCierre(prefijo) });
     showMsg(msg, `Ticket ${mcTicket.ticket_cmr}: ${mcResumenSolCierre(r)}`, true);
     pizarraDatos = []; reporteDatos = []; cicloDatos = [];
     mcFinalizarCambio();

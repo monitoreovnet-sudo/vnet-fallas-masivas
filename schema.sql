@@ -122,6 +122,8 @@ CREATE TABLE IF NOT EXISTS ticket_puertos (
   fecha_cierre_cda TEXT,
   fecha_solucion_cmr TEXT,                -- solución del registro (migration_021)
   fecha_solucion_cda TEXT,
+  causa_falla TEXT,                       -- migration_030
+  correctivo TEXT,
   creado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   actualizado_en TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

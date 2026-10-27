@@ -1,4 +1,5 @@
 import { json, badRequest, notFound, currentUserEmail, nowIso } from "../../../_lib/helpers.js";
+import { programarReevaluacion } from "../../../_lib/asociacion.js";
 
 // POST /api/tickets/:id/solucion-cierre      (Editar Ticket → "Solución / Cierre de Ticket", masivo o puntual)
 // Body: { alcance: "MASIVO" | "PUNTUAL", registros?: [ids] (solo PUNTUAL),
@@ -6,6 +7,8 @@ import { json, badRequest, notFound, currentUserEmail, nowIso } from "../../../_
 //
 // PROTECCIÓN DE DATOS: solo se guardan las fechas que llegan llenas. Una fecha vacía se ignora por completo:
 // lo que el registro (o el ticket) ya tuviera guardado en ese campo no se toca.
+//
+// Causa de la falla y correctivo (texto, opcionales): se guardan en cada registro del alcance, con la misma regla de campos vacíos (no se tocan).
 //
 // ESTADO (se decide por las fechas, en este orden de prioridad):
 //   1. Cierre CMR llena                              → CERRADO (todos los registros del alcance).
@@ -19,7 +22,7 @@ const YA_RESUELTOS = ["RESUELTO", "CERRADO"];
 const vacio = (v) => v === null || v === undefined || String(v).trim() === "";
 const mayor = (a, b) => (vacio(a) ? (vacio(b) ? null : b) : vacio(b) ? a : String(a).slice(0, 16) >= String(b).slice(0, 16) ? a : b);
 
-export async function onRequestPost({ request, env, params }) {
+export async function onRequestPost({ request, env, params, waitUntil }) {
   const db = env.DB;
   const usuario = currentUserEmail(request);
   const body = await request.json().catch(() => ({}));
@@ -31,11 +34,12 @@ export async function onRequestPost({ request, env, params }) {
   if (!alcance) return badRequest("Indica si el cambio es masivo o puntual.");
   const f = (k) => String(body[k] || "").trim() || null;
   const sCmr = f("fecha_solucion_cmr"), cCmr = f("fecha_cierre_cmr"), sCda = f("fecha_solucion_cda"), cCda = f("fecha_cierre_cda");
+  const causa = String(body.causa_falla || "").trim().slice(0, 2000) || null, correctivo = String(body.correctivo || "").trim().slice(0, 2000) || null;
   if (!sCmr && !cCmr && !sCda && !cCda) return badRequest("Llena al menos una fecha (solución o cierre).");
   if ([sCmr, cCmr, sCda, cCda].some((v) => v && !FECHA.test(v))) return badRequest("Alguna fecha no tiene un formato válido.");
 
   const { results: registros } = await db
-    .prepare("SELECT id, estado_puerto, fecha_solucion_cmr, fecha_solucion_cda, fecha_cierre_cmr, fecha_cierre_cda FROM ticket_puertos WHERE ticket_id = ?")
+    .prepare("SELECT id, estado_puerto, fecha_solucion_cmr, fecha_solucion_cda, fecha_cierre_cmr, fecha_cierre_cda, causa_falla, correctivo FROM ticket_puertos WHERE ticket_id = ?")
     .bind(ticket.id).all();
 
   let candidatos = registros;
@@ -74,8 +78,9 @@ export async function onRequestPost({ request, env, params }) {
     stmts.push(
       db.prepare(
         `UPDATE ticket_puertos SET estado_puerto = ?, fecha_solucion_cmr = COALESCE(?, fecha_solucion_cmr), fecha_cierre_cmr = COALESCE(?, fecha_cierre_cmr),
-           fecha_solucion_cda = COALESCE(?, fecha_solucion_cda), fecha_cierre_cda = COALESCE(?, fecha_cierre_cda), actualizado_en = ? WHERE id = ?`
-      ).bind(nuevoEstado, sCmr, cCmr, solCda, cCda, ahora, r.id)
+           fecha_solucion_cda = COALESCE(?, fecha_solucion_cda), fecha_cierre_cda = COALESCE(?, fecha_cierre_cda),
+           causa_falla = COALESCE(?, causa_falla), correctivo = COALESCE(?, correctivo), actualizado_en = ? WHERE id = ?`
+      ).bind(nuevoEstado, sCmr, cCmr, solCda, cCda, causa, correctivo, ahora, r.id)
     );
     const tipoSol = "solucion", tipoCie = "cierre";
     log(nuevoEstado === "CERRADO" ? tipoCie : tipoSol, "estado_puerto", r.estado_puerto, nuevoEstado, r.id);
@@ -83,6 +88,8 @@ export async function onRequestPost({ request, env, params }) {
     if (solCda) log(tipoSol, "fecha_solucion_cda", r.fecha_solucion_cda, solCda, r.id);
     if (cCmr) log(tipoCie, "fecha_cierre_cmr", r.fecha_cierre_cmr, cCmr, r.id);
     if (cCda) log(tipoCie, "fecha_cierre_cda", r.fecha_cierre_cda, cCda, r.id);
+    if (causa) log(nuevoEstado === "CERRADO" ? tipoCie : tipoSol, "causa_falla", r.causa_falla, causa, r.id);
+    if (correctivo) log(nuevoEstado === "CERRADO" ? tipoCie : tipoSol, "correctivo", r.correctivo, correctivo, r.id);
     despues.set(r.id, {
       ...r, estado_puerto: nuevoEstado,
       fecha_solucion_cmr: sCmr ?? r.fecha_solucion_cmr, fecha_solucion_cda: solCda ?? r.fecha_solucion_cda,
@@ -113,5 +120,6 @@ export async function onRequestPost({ request, env, params }) {
   }
 
   await db.batch(stmts);
+  await programarReevaluacion({ env, waitUntil }, [params.id]);
   return json({ ok: true, actualizados: objetivos.length, excluidos, pendientes, ticket_estado: estadoTicket || ticket.estado_ticket, ticket_cerrado: estadoTicket === "CERRADO", ticket_resuelto: estadoTicket === "RESUELTO" });
 }
