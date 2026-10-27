@@ -53,6 +53,7 @@
     <button class="tab-btn" data-tab="consultar">Consultar / Log</button>
     <button class="tab-btn hidden" data-tab="admin" id="nav_admin">Administración</button>
     <button class="tab-btn hidden" data-tab="repositorio" id="nav_repositorio">Repositorio</button>
+    <button class="tab-btn hidden" data-tab="clientes" id="nav_clientes">Clientes Afectados</button>
   </nav>
 
   <main id="app">
@@ -791,6 +792,46 @@
     <div id="repo_resultado"></div>
   </section>
 
+  <section id="tab-clientes" class="tab-panel">
+    <h2>Clientes Afectados</h2>
+    <p class="hint">Contiene datos personales (cédulas, teléfonos). Solo administrador y supervisor.</p>
+
+    <h3>1. Base de clientes (Grafana: Detalle de Cuentas)</h3>
+    <p class="hint">
+      Sube el CSV "Descargar para Excel" de Grafana, <strong>una sucursal por vez</strong>. Cada carga <strong>reemplaza</strong> la sucursal completa
+      (la base anterior solo se borra cuando la nueva llegó completa).
+    </p>
+    <div class="field">
+      <label>Archivo (.csv)</label>
+      <input type="file" id="cli_archivo" accept=".csv,.txt" />
+    </div>
+    <button id="cli_btn_analizar" class="btn-secondary" type="button">1. Analizar archivo</button>
+    <div id="cli_msg_analisis" class="msg"></div>
+
+    <div id="cli_preview" class="hidden">
+      <div class="kv" style="margin: 12px 0;">
+        <div><span>Filas leídas:</span> <strong id="cli_prev_leidas">0</strong></div>
+        <div><span>Cuentas válidas:</span> <strong id="cli_prev_validas">0</strong></div>
+        <div><span>Filas descartadas:</span> <strong id="cli_prev_desc">0</strong> <small id="cli_prev_det_desc"></small></div>
+        <div><span>Clientes activos:</span> <strong id="cli_prev_activos">0</strong> <small id="cli_prev_estados"></small></div>
+        <div><span>Con serial de ONU:</span> <strong id="cli_prev_serial">—</strong></div>
+        <div><span>Fecha de la base:</span> <strong id="cli_fecha_base"></strong></div>
+      </div>
+      <div id="cli_prev_malas"></div>
+      <div class="field">
+        <label>Sucursal de esta carga</label>
+        <input id="cli_sucursal" />
+        <small id="cli_aviso_sucursal"></small>
+      </div>
+      <button id="cli_btn_cargar" class="btn-primary" type="button">2. Confirmar y cargar (reemplaza la sucursal)</button>
+    </div>
+    <div id="cli_msg_carga" class="msg"></div>
+    <div id="cli_resultado"></div>
+
+    <h3>Bases cargadas</h3>
+    <div id="cli_bases"></div>
+  </section>
+
   </main>
   </div>
 
@@ -833,5 +874,6 @@
 <!-- Tabulator 6.7 (MIT): tabla tipo Excel de Consultar / Log (copia local en public/vendor) -->
 <script src="/vendor/tabulator.min.js"></script>
 <script src="app.js"></script>
+<script src="clientes.js"></script>
 </body>
 </html>

@@ -185,6 +185,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (btn.dataset.tab === "pizarra" && pizarraDatos.length === 0) cargarPizarra();
     if (btn.dataset.tab === "reporte" && reporteDatos.length === 0) cargarReporte();
     if (btn.dataset.tab === "ciclo" && cicloDatos.length === 0) cargarCiclo();
+    if (btn.dataset.tab === "clientes" && window.cliCargarBases) window.cliCargarBases();
     ajustarTodasLasTablas();
     if (btn.dataset.tab === "consultar" && clGrid && clGridListo) clGrid.redraw(true);
   });
@@ -2305,8 +2306,8 @@ let currentUser = null;
 const TABS_POR_ROL = {
   analista: ["pizarra", "reporte", "ciclo"],
   especialista: ["crear", "modificar", "pizarra", "reporte", "ciclo"],
-  supervisor: ["crear", "modificar", "pizarra", "reporte", "ciclo", "consultar"],
-  administrador: ["crear", "modificar", "pizarra", "reporte", "ciclo", "consultar", "admin", "repositorio"],
+  supervisor: ["crear", "modificar", "pizarra", "reporte", "ciclo", "consultar", "clientes"],
+  administrador: ["crear", "modificar", "pizarra", "reporte", "ciclo", "consultar", "admin", "repositorio", "clientes"],
 };
 
 function aplicarPermisosRol() {
