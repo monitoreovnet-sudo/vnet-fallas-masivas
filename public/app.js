@@ -185,7 +185,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (btn.dataset.tab === "pizarra" && pizarraDatos.length === 0) cargarPizarra();
     if (btn.dataset.tab === "reporte" && reporteDatos.length === 0) cargarReporte();
     if (btn.dataset.tab === "ciclo" && cicloDatos.length === 0) cargarCiclo();
-    if (btn.dataset.tab === "clientes" && window.cliCargarBases) window.cliCargarBases();
+    if (btn.dataset.tab === "clientes" && window.cliCargarBases) { window.cliCargarBases(); if (window.cliCargarAuditorias) window.cliCargarAuditorias(); }
     ajustarTodasLasTablas();
     if (btn.dataset.tab === "consultar" && clGrid && clGridListo) clGrid.redraw(true);
   });

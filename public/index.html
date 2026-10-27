@@ -830,6 +830,38 @@
 
     <h3>Bases cargadas</h3>
     <div id="cli_bases"></div>
+
+    <h3>2. Auditoría de ONUs (SmartOLT)</h3>
+    <p class="hint">
+      Sube el CSV "ONUs list" de SmartOLT (separado por <code>;</code>). La hora del nombre del archivo viene en <strong>UTC</strong>: aquí se muestra convertida
+      a hora de Caracas para que la confirmes. Cada ONU se cruza con la base de clientes de <strong>todas</strong> las sucursales cargadas.
+    </p>
+    <div class="field">
+      <label>Archivo (.csv)</label>
+      <input type="file" id="cli_aud_archivo" accept=".csv,.txt" />
+    </div>
+    <button id="cli_aud_btn_analizar" class="btn-secondary" type="button">1. Analizar archivo</button>
+    <div id="cli_aud_msg_analisis" class="msg"></div>
+    <div id="cli_aud_preview" class="hidden">
+      <div class="kv" style="margin: 12px 0;">
+        <div><span>OLT:</span> <strong id="cli_aud_olt"></strong> <small id="cli_aud_aviso_olt"></small></div>
+        <div><span>Alcance del exporte:</span> <strong id="cli_aud_filtro"></strong></div>
+        <div><span>ONUs leídas:</span> <strong id="cli_aud_onus"></strong></div>
+        <div><span>Por estado:</span> <strong id="cli_aud_estados"></strong></div>
+        <div><span>Hora en el nombre del archivo:</span> <strong id="cli_aud_utc"></strong></div>
+      </div>
+      <div class="field">
+        <label>Fecha y hora de la auditoría (hora de Caracas) — confírmala</label>
+        <input id="cli_aud_fecha" type="datetime-local" />
+      </div>
+      <button id="cli_aud_btn_cargar" class="btn-primary" type="button">2. Confirmar, cargar y cruzar</button>
+    </div>
+    <div id="cli_aud_msg_carga" class="msg"></div>
+    <div id="cli_aud_resultado"></div>
+
+    <h3>Auditorías cargadas</h3>
+    <div id="cli_auditorias"></div>
+
   </section>
 
   </main>
