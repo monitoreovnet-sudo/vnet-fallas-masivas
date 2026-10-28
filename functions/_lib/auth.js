@@ -47,6 +47,15 @@ export async function descifrarPassword(valorCifrado, env) {
   }
 }
 
+// Reglas de la contraseña definitiva: mínimo 8 caracteres, al menos un número y una mayúscula; los caracteres especiales son libres.
+export function validarPasswordNueva(p) {
+  const s = String(p || "");
+  if (s.length < 8) return "La contraseña debe tener al menos 8 caracteres.";
+  if (!/[0-9]/.test(s)) return "La contraseña debe incluir al menos un número.";
+  if (!/[A-ZÁÉÍÓÚÑ]/.test(s)) return "La contraseña debe incluir al menos una letra mayúscula.";
+  return null;
+}
+
 export async function verificarPassword(password, valorCifrado, env) {
   const real = await descifrarPassword(valorCifrado, env);
   return real !== null && real === password;
@@ -69,8 +78,9 @@ async function firmar(payloadStr, secret) {
   return base64UrlEncode(String.fromCharCode(...new Uint8Array(firma)));
 }
 
-export async function crearTokenSesion(email, rol, env) {
-  const payload = { email, rol, exp: Date.now() + DURACION_SESION_MS };
+// cambio = true: sesión limitada (solo puede crear su contraseña); el middleware bloquea todo lo demás.
+export async function crearTokenSesion(email, rol, env, cambio = false) {
+  const payload = { email, rol, exp: Date.now() + (cambio ? 30 * 60 * 1000 : DURACION_SESION_MS), ...(cambio ? { cambio: true } : {}) };
   const payloadStr = JSON.stringify(payload);
   const payloadB64 = base64UrlEncode(payloadStr);
   const firma = await firmar(payloadB64, env.SESSION_SECRET);
