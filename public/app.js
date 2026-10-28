@@ -791,11 +791,25 @@ function fijarCdaAhora() {
   document.getElementById("c_fecha_cda").value = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`;
   cdaAuto = true;
 }
-// Fecha de la falla: se copia sola de la Apertura del CMR mientras la persona no la cambie a mano.
-let fallaManual = false;
-document.getElementById("c_fecha_falla").addEventListener("input", () => { fallaManual = true; });
-document.getElementById("c_fecha_cmr").addEventListener("input", () => {
-  if (!fallaManual) document.getElementById("c_fecha_falla").value = document.getElementById("c_fecha_cmr").value;
+// Fecha de la falla: se copia sola de la Apertura del CMR (fecha y hora, apenas se escriben) mientras la persona no la cambie a mano.
+let fallaManual = false, fallaCopiando = false;
+document.getElementById("c_fecha_falla").addEventListener("input", () => { if (!fallaCopiando) fallaManual = true; });
+function copiarFallaDesdeCmr() {
+  if (fallaManual) return;
+  const wc = document.querySelector("#c_fecha_cmr + .fh-wrap"), wf = document.querySelector("#c_fecha_falla + .fh-wrap");
+  if (!wc || !wf) { document.getElementById("c_fecha_falla").value = document.getElementById("c_fecha_cmr").value; return; }
+  fallaCopiando = true;
+  try {
+    wf.querySelector(".fh-fecha").value = wc.querySelector(".fh-fecha").value;
+    const h = wf.querySelector(".fh-hora"), txt = wc.querySelector(".fh-hora").value, hr = txt.trim() ? interpretarHora(txt) : null;
+    h.value = hr ? formatearHora12(hr.h24, hr.min) : txt;
+    h.dispatchEvent(new Event("input", { bubbles: true }));
+  } finally { fallaCopiando = false; }
+}
+["input", "change"].forEach((ev) => {
+  document.getElementById("c_fecha_cmr").addEventListener(ev, copiarFallaDesdeCmr);
+  const wc = document.querySelector("#c_fecha_cmr + .fh-wrap");
+  if (wc) wc.addEventListener(ev, copiarFallaDesdeCmr);
 });
 document.querySelector('.tab-btn[data-tab="crear"]').addEventListener("click", () => { if (cdaAuto) fijarCdaAhora(); });
 fijarCdaAhora();
@@ -1086,12 +1100,14 @@ document.getElementById("e1_btn_guardar").addEventListener("click", async () => 
 });
 
 // --- Escenario 2: Cambio puntual (un registro: solo Oficina, OLT, Tarjeta y Puerto) ---
+// Listas desplegables (select) de Cambio puntual: el valor actual del registro siempre queda como opción elegida.
+const E2_TARJETAS = ["N/A", "Todas", ...Array.from({ length: NUM_TARJETAS }, (_, i) => `Tarjeta ${i + 1}`)];
+const E2_PUERTOS = ["N/A", "Todos", ...Array.from({ length: NUM_PUERTOS }, (_, i) => `Puerto ${i + 1}`)];
+function e2Opciones(vals, actual) {
+  const act = String(actual ?? "");
+  return [...new Set([act, ...vals].filter((v) => v !== ""))].map((v) => `<option value="${escHtml(v)}"${v === act ? " selected" : ""}>${escHtml(v)}</option>`).join("");
+}
 function mcRenderEscenario2() {
-  if (!document.getElementById("e2_dl_tar")) {
-    const dl = (id, vals) => { const d = document.createElement("datalist"); d.id = id; d.innerHTML = vals.map((v) => `<option value="${v}"></option>`).join(""); document.body.appendChild(d); };
-    dl("e2_dl_tar", ["N/A", "Todas", ...Array.from({ length: NUM_TARJETAS }, (_, i) => `Tarjeta ${i + 1}`)]);
-    dl("e2_dl_pue", ["N/A", "Todos", ...Array.from({ length: NUM_PUERTOS }, (_, i) => `Puerto ${i + 1}`)]);
-  }
   const tbody = document.querySelector("#e2_table tbody");
   tbody.innerHTML = "";
   const oficinas = LOOKUPS.oficinas;
@@ -1106,24 +1122,20 @@ function mcRenderEscenario2() {
           ${oficinas.filter((o) => o.id !== p.oficina_id).map((o) => `<option value="${o.id}">${escHtml(o.nombre)}</option>`).join("")}
         </select>
       </td>
-      <td><input class="e2-olt" list="e2_dl_olt_${idx}" autocomplete="off" data-idx="${idx}" value="${escHtml(p.olt)}" disabled /><datalist id="e2_dl_olt_${idx}"></datalist></td>
-      <td><input class="e2-tarjeta" list="e2_dl_tar" autocomplete="off" data-idx="${idx}" value="${escHtml(p.tarjeta)}" disabled /></td>
-      <td><input class="e2-puerto" list="e2_dl_pue" autocomplete="off" data-idx="${idx}" value="${escHtml(p.puerto)}" disabled /></td>
+      <td><select class="e2-olt" data-idx="${idx}" disabled>${e2Opciones([], p.olt)}</select></td>
+      <td><select class="e2-tarjeta" data-idx="${idx}" disabled>${e2Opciones(E2_TARJETAS, p.tarjeta)}</select></td>
+      <td><select class="e2-puerto" data-idx="${idx}" disabled>${e2Opciones(E2_PUERTOS, p.puerto)}</select></td>
       <td><input class="e2-sector" data-idx="${idx}" value="${escHtml(p.sector ?? "")}" disabled /></td>
       <td><input class="e2-edificio" data-idx="${idx}" value="${escHtml(p.edificio ?? "")}" disabled /></td>
       <td><input class="e2-afectados" type="number" min="0" step="1" data-idx="${idx}" value="${escHtml(p.nro_clientes_afectados ?? 0)}" disabled /></td>
       <td><input class="e2-reportaron" type="number" min="0" step="1" data-idx="${idx}" value="${escHtml(p.no_clientes_reportaron ?? 0)}" disabled /></td>
     `;
-    // Listas desplegables: al entrar al cuadro se muestran todas las opciones (el valor actual vuelve si no eliges otra); también se puede escribir.
-    tr.querySelectorAll(".e2-olt, .e2-tarjeta, .e2-puerto").forEach((inp) => {
-      inp.addEventListener("focus", () => { inp.dataset.prev = inp.value; inp.value = ""; });
-      inp.addEventListener("blur", () => { if (!inp.value.trim()) inp.value = inp.dataset.prev || ""; });
-    });
     const llenarOlts = async () => {
       const ofId = tr.querySelector(".e2-oficina").value;
       let codigos = (LOOKUPS.olts || []).map((o) => o.codigo);
       if (ofId) { try { const d = await apiSend("/lookups", "POST", { oficina_id: ofId }); if (d.olts && d.olts.length) codigos = d.olts.map((o) => o.codigo); } catch (e) { /* se queda la lista general */ } }
-      tr.querySelector("datalist").innerHTML = [...new Set(["N/A", "NO INDICADO", ...codigos])].map((c) => `<option value="${escHtml(c)}"></option>`).join("");
+      const selOlt = tr.querySelector(".e2-olt");
+      selOlt.innerHTML = e2Opciones(["N/A", "NO INDICADO", ...codigos], selOlt.value);
     };
     tr.querySelector(".e2-oficina").addEventListener("change", llenarOlts);
     llenarOlts();
