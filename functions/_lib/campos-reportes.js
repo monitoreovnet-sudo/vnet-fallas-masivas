@@ -15,6 +15,8 @@ export const CAMPOS_CALCULADOS = [
   { db_column_name: "calc.grupo_horario", etiqueta: "Grupo Horario CMR" },
   { db_column_name: "calc.tiempo_cierre_horas", etiqueta: "Tiempo hasta el cierre (h)" },
   { db_column_name: "calc.tipo", etiqueta: "Tipo (columna vacía)" },
+  { db_column_name: "calc.clientes_falla", etiqueta: "Clientes afectados (falla)" },
+  { db_column_name: "calc.clientes_sin_luz", etiqueta: "Sin electricidad" },
 ];
 
 // Nombres amables para las columnas conocidas; el resto se "humaniza" (fecha_apertura_cmr → Fecha apertura cmr).

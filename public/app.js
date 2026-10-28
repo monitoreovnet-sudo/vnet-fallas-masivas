@@ -1867,6 +1867,8 @@ const CL_COLS = [
   { f: "edificio", t: "Edificio", tipo: "texto", ed: true, w: 150 },
   { f: "no_clientes_reportaron", t: "Nro. reportes", tipo: "cant", ed: true, w: 110 },
   { f: "nro_clientes_afectados", t: "Nro. afectados", tipo: "cant", ed: true, w: 115 },
+  { f: "clientes_falla", t: "Clientes afectados (falla)", tipo: "cantcalc", w: 140 },
+  { f: "clientes_sin_luz", t: "Sin electricidad", tipo: "cantcalc", w: 115 },
   { f: "categoria_afectacion", t: "Categoría", tipo: "lista", ed: true, w: 170, lista: () => (LOOKUPS.categorias || []).map((x) => x.nombre) },
   { f: "afectacion", t: "Afectación", tipo: "lista", ed: true, w: 190, lista: () => [...new Set((LOOKUPS.afectaciones || []).map((x) => x.nombre))] },
   { f: "descripcion", t: "Descripción", tipo: "texto", ed: true, vacio: true, w: 260 },
@@ -1973,6 +1975,10 @@ function clDefColumna(c) {
       col.hozAlign = "right";
       col.formatter = (cell) => clMarcar(cell, formatearMiles(cell.getValue()));
       col.editor = "input"; col.editorParams = { elementAttributes: { inputmode: "numeric" } };
+      break;
+    case "cantcalc":   // número calculado con las auditorías de SmartOLT (no se edita); vacío = sin auditoría asociada
+      col.hozAlign = "right";
+      col.formatter = (cell) => { const v = cell.getValue(); return v === null || v === undefined || v === "" ? "" : formatearMiles(v); };
       break;
     case "lista":
       col.formatter = (cell) => clMarcar(cell, clVacio(cell.getValue()) ? "" : esc(cell.getValue()));
@@ -3506,6 +3512,7 @@ const CAMPO_EN_FILA = {
   "ticket_puertos.estado_puerto": "estado_puerto",
   "oficinas.id": "oficina_id", "oficinas.nombre": "oficina_nombre", "oficinas.estado": "region", "oficinas.localidad": "localidad",
   "calc.semaforo": "semaforo", "calc.grupo_horario": "grupo_horario", "calc.tiempo_cierre_horas": "tiempo_cierre_horas",
+  "calc.clientes_falla": "clientes_falla", "calc.clientes_sin_luz": "clientes_sin_luz",
 };
 const NOWRAP_COLUMNAS = new Set(["calc.fila", "tickets.ticket_cmr"]);   // el N° de ticket y la fila nunca se parten en dos líneas
 const FABRICA_BASE = { "tickets.ticket_cmr": { fontSize: 14, negrita: true } };
@@ -3544,7 +3551,7 @@ const ID_V1_A_CLAVE = {
   clientes_reportaron: "ticket_puertos.no_clientes_reportaron", unidad_resolutoria: "tickets.unidad_resolutoria", tipo: "calc.tipo",
   grupo_horario: "calc.grupo_horario", region: "oficinas.estado", avance_cmr: "tickets.avance_cmr",
 };
-const CAMPOS_CALC_CLIENTE = new Set(["calc.fila", "calc.tiempo_abierto", "calc.semaforo", "calc.grupo_horario", "calc.tiempo_cierre_horas", "calc.tipo"]);
+const CAMPOS_CALC_CLIENTE = new Set(["calc.fila", "calc.tiempo_abierto", "calc.semaforo", "calc.grupo_horario", "calc.tiempo_cierre_horas", "calc.tipo", "calc.clientes_falla", "calc.clientes_sin_luz"]);
 
 function etiquetaDeClave(clave) {
   const col = String(clave).split(".")[1] || clave;
@@ -3596,6 +3603,7 @@ function celdaDeColumna(clave, f, ctx) {
   if (clave === "tickets.ticket_cmr") return [esc(formatearTicket(v))];
   if (clave === "ticket_puertos.nro_clientes_afectados" || clave === "ticket_puertos.no_clientes_reportaron") return [vacio ? "-" : esc(formatearMiles(v))];
   if (clave === "calc.tiempo_cierre_horas") return [vacio ? "-" : Number(v).toFixed(1)];
+  if (clave === "calc.clientes_falla" || clave === "calc.clientes_sin_luz") return [vacio ? "-" : esc(formatearMiles(v))];
   if (/\.(fecha_|creado_en|actualizado_en)/.test(clave)) return [vacio ? "-" : esc(formatearFechaHora(v))];
   if (clave === "tickets.unidad_resolutoria") return [vacio ? "-" : esc(v), estiloUnidad(v)];
   return [vacio ? "-" : esc(v)];
@@ -3646,7 +3654,7 @@ function valorOrdenTabla(clave, f, filaPorTicket) {
   const v = f[CAMPO_EN_FILA[clave] || clave];
   if (v === null || v === undefined || v === "") return null;
   if (clave === "tickets.ticket_cmr") return Number(v);
-  if (clave === "ticket_puertos.nro_clientes_afectados" || clave === "ticket_puertos.no_clientes_reportaron" || clave === "calc.tiempo_cierre_horas") return Number(v);
+  if (clave === "ticket_puertos.nro_clientes_afectados" || clave === "ticket_puertos.no_clientes_reportaron" || clave === "calc.tiempo_cierre_horas" || clave === "calc.clientes_falla" || clave === "calc.clientes_sin_luz") return Number(v);
   return v;
 }
 function ordenarFilasTabla(filas, ord, filaPorTicket) {
@@ -4176,16 +4184,88 @@ function htmlDetalleLog(ticket, puertos, log) {
     : `<p class="ml-vacio">Sin cambios registrados.</p>`;
   return `<h4>Datos del ticket</h4><div class="ml-grid">${kv}</div><h4>Registros (${puertos.length})</h4>${tabla}<h4>Log de cambios</h4>${entradas}`;
 }
+// ---- Paso 5: pestañas "Clientes por puerto" y "Clientes del ticket" (solo administrador y supervisor) ----
+const ROLES_PANEL_CLIENTES = ["administrador", "supervisor"];
+const ETQ_CLASIF = { falla: "Afectado (falla)", powerfail: "Sin electricidad", caida_previa: "Caída previa" };
+const numCli = (v) => formatearMiles(Number(v) || 0);
+function htmlResumenClientes(r, puertosN) {
+  const tile = (n, t, cls) => `<div class="ml-tile ${cls || ""}"><b>${numCli(n)}</b><span>${t}</span></div>`;
+  return `<div class="ml-tiles">${tile(r.falla, "Afectados por falla", "t-falla")}${tile(r.sin_luz, "Sin electricidad", "t-luz")}${tile(r.caida_previa, "Caída previa (no cuenta)", "t-prev")}` +
+    `${tile(r.sin_cruzar, "ONUs sin cruzar", "t-sin")}${tile(puertosN, "Puertos con auditoría")}</div>` +
+    (r.duplicado ? `<div class="ml-badge b-aviso">Revisar: posible ticket duplicado</div>` : "") +
+    (r.base_desactualizada ? `<div class="ml-badge b-aviso">La base de clientes es anterior a la auditoría (puede estar desactualizada)</div>` : "");
+}
+function htmlVacioClientes() {
+  return `<p class="ml-vacio">Este ticket todavía no tiene auditorías de SmartOLT asociadas. Cuando se suba la auditoría de uno de sus puertos (pestaña Clientes Afectados) aparecerán aquí los clientes.</p>`;
+}
+function celdasOnu(o, conPuerto) {
+  const sin = !o.cuenta;
+  return (conPuerto ? `<td>${escHtml(o.olt)}</td><td>${escHtml(o.tarjeta)}</td><td>${escHtml(o.puerto)}</td>` : "") +
+    `<td>${escHtml(o.onu_num ?? "")}</td><td>${escHtml(o.status ?? "")}</td><td><span class="cl-tag tag-${escHtml(o.clasificacion)}">${escHtml(ETQ_CLASIF[o.clasificacion] || o.clasificacion)}</span></td>` +
+    `<td>${o.last_status_change ? escHtml(formatearFechaHora(o.last_status_change)) : "-"}</td>` +
+    (sin ? `<td colspan="6" class="ml-sin-cruzar">Sin cruzar${o.name_smartolt ? " · " + escHtml(o.name_smartolt) : ""}${o.contact ? " · " + escHtml(o.contact) : ""}</td>`
+      : `<td>${escHtml(o.cuenta)}</td><td>${escHtml(o.cli_nombre ?? "-")}</td><td>${escHtml(o.cli_telefono ?? "-")}</td><td>${escHtml(o.cli_cedula ?? "-")}</td><td>${escHtml(o.cli_sector ?? "-")}</td><td>${escHtml(o.cli_estado_contrato ?? "-")}</td>`);
+}
+const ENC_ONU = ["ONU", "Estado SmartOLT", "Clasificación", "Último cambio", "Cuenta", "Cliente", "Teléfono", "Cédula", "Sector", "Estado del contrato"];
+function htmlClientesPorPuerto(d) {
+  if (!d.puertos.length) return htmlVacioClientes();
+  const cuerpo = d.puertos.map((p) => {
+    const onus = d.onus.filter((o) => o.olt === p.olt && o.tarjeta === p.tarjeta && o.puerto === p.puerto);
+    const tabla = onus.length
+      ? `<div class="ml-scroll"><table class="rows-table"><thead><tr>${ENC_ONU.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${onus.map((o) => `<tr>${celdasOnu(o, false)}</tr>`).join("")}</tbody></table></div>`
+      : `<p class="ml-vacio">Sin ONUs afectadas en este puerto.</p>`;
+    return `<details class="ml-puerto"><summary><b>${escHtml(p.olt)}</b> · Tarjeta ${escHtml(p.tarjeta)} · Puerto ${escHtml(p.puerto)}` +
+      `<span class="ml-sum">Auditoría ${p.fecha_auditoria_local ? escHtml(formatearFechaHora(p.fecha_auditoria_local)) : "-"} · ` +
+      `Falla <b>${numCli(p.falla)}</b> · Sin electricidad <b>${numCli(p.sin_luz)}</b> · Caída previa <b>${numCli(p.caida_previa)}</b> · Sin cruzar <b>${numCli(p.sin_cruzar)}</b>` +
+      `${p.duplicado ? ' · <em class="b-aviso-txt">posible ticket duplicado</em>' : ""}</span></summary>${tabla}</details>`;
+  }).join("");
+  return htmlResumenClientes(d.resumen, d.puertos.length) + cuerpo;
+}
+const FILTROS_CLIENTES = [["todos", "Todos"], ["falla", "Afectados (falla)"], ["powerfail", "Sin electricidad"], ["caida_previa", "Caída previa"], ["sin_cruzar", "Sin cruzar"]];
+function htmlClientesTicket(d, filtro) {
+  if (!d.puertos.length) return htmlVacioClientes();
+  const f = filtro || "todos";
+  const lista = d.onus.filter((o) => f === "todos" || (f === "sin_cruzar" ? !o.cuenta : o.clasificacion === f));
+  const barra = `<div class="ml-filtros">${FILTROS_CLIENTES.map(([k, t]) => `<button type="button" class="ml-filtro ${k === f ? "activo" : ""}" data-filtro="${k}">${t}</button>`).join("")}</div>`;
+  const tabla = lista.length
+    ? `<div class="ml-scroll"><table class="rows-table" id="ml_tabla_clientes"><thead><tr>${["OLT", "Tarjeta", "Puerto", ...ENC_ONU].map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${lista.map((o) => `<tr>${celdasOnu(o, true)}</tr>`).join("")}</tbody></table></div>`
+    : `<p class="ml-vacio">No hay clientes en esta categoría.</p>`;
+  return htmlResumenClientes(d.resumen, d.puertos.length) + barra + `<p class="hint">${numCli(lista.length)} registro(s) mostrados.</p>` + tabla;
+}
 async function abrirModalLog(cmr) {
   cerrarModalLog();
+  const conClientes = !!currentUser && ROLES_PANEL_CLIENTES.includes(currentUser.rol);
   const ov = document.createElement("div");
   ov.id = "modal_log";
   ov.className = "modal-overlay";
-  ov.innerHTML = `<div class="modal-box modal-log"><div class="ml-cab"><h3>Log del ticket ${escHtml(formatearTicket(cmr))}</h3>` +
-    `<button type="button" class="btn-secondary" id="ml_cerrar">Cerrar</button></div><div id="ml_cuerpo">Cargando...</div></div>`;
+  ov.innerHTML = `<div class="modal-box modal-log"><div class="ml-cab"><h3>Ticket ${escHtml(formatearTicket(cmr))}</h3>` +
+    `<button type="button" class="btn-secondary" id="ml_cerrar">Cerrar</button></div>` +
+    (conClientes ? `<div class="ml-tabs" role="tablist"><button type="button" class="ml-tab activo" data-ml="log">Log</button>` +
+      `<button type="button" class="ml-tab" data-ml="puertos">Clientes por puerto</button><button type="button" class="ml-tab" data-ml="ticket">Clientes del ticket</button></div>` : "") +
+    `<div id="ml_cuerpo">Cargando...</div><div id="ml_clientes" class="hidden"></div></div>`;
   document.body.appendChild(ov);
   ov.addEventListener("click", (e) => { if (e.target === ov) cerrarModalLog(); });
   ov.querySelector("#ml_cerrar").addEventListener("click", cerrarModalLog);
+  if (conClientes) {
+    let datos = null, filtro = "todos", vista = "log";
+    const caja = ov.querySelector("#ml_clientes"), cuerpoLog = ov.querySelector("#ml_cuerpo");
+    const pintar = () => {
+      if (vista === "log") { cuerpoLog.classList.remove("hidden"); caja.classList.add("hidden"); return; }
+      cuerpoLog.classList.add("hidden"); caja.classList.remove("hidden");
+      caja.innerHTML = vista === "puertos" ? htmlClientesPorPuerto(datos) : htmlClientesTicket(datos, filtro);
+      caja.querySelectorAll(".ml-filtro").forEach((b) => b.addEventListener("click", () => { filtro = b.dataset.filtro; pintar(); }));
+    };
+    ov.querySelectorAll(".ml-tab").forEach((b) => b.addEventListener("click", async () => {
+      ov.querySelectorAll(".ml-tab").forEach((x) => x.classList.toggle("activo", x === b));
+      vista = b.dataset.ml;
+      if (vista !== "log" && !datos) {
+        cuerpoLog.classList.add("hidden"); caja.classList.remove("hidden"); caja.textContent = "Cargando...";
+        try { datos = await apiGet(`/tickets/${encodeURIComponent(cmr)}/clientes`); }
+        catch (err) { caja.innerHTML = `<div class="msg error">${escHtml(err.message)}</div>`; return; }
+      }
+      pintar();
+    }));
+  }
   try {
     const [detalle, logData] = await Promise.all([
       apiGet(`/tickets/${encodeURIComponent(cmr)}`),

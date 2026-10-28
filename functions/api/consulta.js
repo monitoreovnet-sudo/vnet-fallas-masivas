@@ -1,6 +1,7 @@
 import { json } from "../_lib/helpers.js";
 import { columnasBD, TABLAS_REPORTE } from "../_lib/campos-reportes.js";
 import { usuarioDeSesion } from "../_lib/auth.js";
+import { agregarConteosClientes } from "../_lib/clientes-ticket.js";
 
 const MS_HORA = 3600000;
 
@@ -160,6 +161,9 @@ export async function onRequestGet({ request, env }) {
   // ?limite=N → solo las primeras N filas (la vista previa del Generador de reportes no necesita más)
   const limite = Number(p("limite"));
   if (Number.isInteger(limite) && limite > 0) filas = filas.slice(0, Math.min(limite, 200));
+
+  // Clientes afectados según las auditorías vigentes (solo con sesión): clientes_falla y clientes_sin_luz
+  if (!publico) { try { await agregarConteosClientes(env.DB, filas); } catch (e) { /* módulo de clientes no instalado: las columnas quedan vacías */ } }
 
   if (publico) {
     // Público: se quitan datos internos (quién lo creó, descripción libre, avance).

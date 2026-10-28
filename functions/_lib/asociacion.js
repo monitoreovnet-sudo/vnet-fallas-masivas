@@ -11,15 +11,15 @@ import { leerParametro } from "./cruce.js";
 const EQUIV_FIJAS = { CRC: "CRP", ESB: "ESM", SPS: "SCP", STS: "STB" };
 const OLT_VALIDA = /^[A-Z0-9]{2,8}-OL-[A-Z0-9-]+$/;
 const pad = (f) => { const s = String(f || "").trim(); return !s ? null : /T\d{2}:\d{2}$/.test(s) ? s + ":00" : s.slice(0, 19); };
-const numDe = (t) => { const m = /(\d+)/.exec(String(t ?? "")); return m ? Number(m[1]) : null; };
+export const numDe = (t) => { const m = /(\d+)/.exec(String(t ?? "")); return m ? Number(m[1]) : null; };
 const restarHoras = (iso, h) => new Date(Date.parse(iso + "Z") - h * 3600000).toISOString().slice(0, 19);
 
-async function mapaEquivalencias(db) {
+export async function mapaEquivalencias(db) {
   const m = { ...EQUIV_FIJAS };
   try { (await db.prepare("SELECT prefijo_alterno a, prefijo_canonico c FROM olt_equivalencias").all()).results.forEach((r) => { m[String(r.a).toUpperCase()] = String(r.c).toUpperCase(); }); } catch (e) { /* tabla aún no creada */ }
   return m;
 }
-const canon = (olt, eq) => {
+export const canon = (olt, eq) => {
   const s = String(olt || "").trim().toUpperCase();
   if (!OLT_VALIDA.test(s)) return null;
   const [pre, ...resto] = s.split("-");
