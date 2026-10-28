@@ -1,6 +1,7 @@
 import { json, badRequest, requireRole } from "../../../_lib/helpers.js";
 import { ROLES_CLIENTES } from "../../../_lib/clientes.js";
 import { resumenAuditoria } from "../../../_lib/cruce.js";
+import { reevaluarAuditoria } from "../../../_lib/asociacion.js";
 
 // POST /api/clientes/auditoria/finalizar   Body: { auditoria_id }
 export async function onRequestPost({ request, env }) {
@@ -18,5 +19,7 @@ export async function onRequestPost({ request, env }) {
     return badRequest(`Llegaron ${n} de ${esperadas} ONUs. La auditoría se descartó; intenta de nuevo.`);
   }
   await env.DB.prepare("UPDATE auditorias SET total_onus = ? WHERE id = ?").bind(n, aud.id).run();
-  return json({ ok: true, auditoria: { id: aud.id, olt: aud.olt_nombre, tarjeta: aud.tarjeta, puerto: aud.puerto, fecha_local: aud.fecha_auditoria_local }, resumen: await resumenAuditoria(env.DB, aud.id) });
+  let asociacion = null;
+  try { asociacion = await reevaluarAuditoria(env.DB, aud.id); } catch (e) { asociacion = { error: String(e && e.message || e) }; }
+  return json({ ok: true, asociacion, auditoria: { id: aud.id, olt: aud.olt_nombre, tarjeta: aud.tarjeta, puerto: aud.puerto, fecha_local: aud.fecha_auditoria_local }, resumen: await resumenAuditoria(env.DB, aud.id) });
 }

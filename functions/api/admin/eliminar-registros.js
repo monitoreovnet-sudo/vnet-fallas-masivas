@@ -1,4 +1,5 @@
 import { json, badRequest, nowIso } from "../../_lib/helpers.js";
+import { reabrirAlertasHuerfanas } from "../../_lib/asociacion.js";
 import { confirmarAdminConClave } from "../../_lib/confirmar.js";
 
 // POST /api/admin/eliminar-registros   (RUTA 2: registro ÚNICO / registros sueltos)
@@ -7,7 +8,7 @@ import { confirmarAdminConClave } from "../../_lib/confirmar.js";
 // Cada borrado queda en el log del ticket y en la tabla registros_eliminados (auditoría).
 // Si con esto el ticket se queda SIN registros, se elimina también (un ticket vacío no se
 // vería en ninguna pantalla) y queda anotado en tickets_eliminados.
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost({ request, env, waitUntil }) {
   const db = env.DB;
   const body = await request.json().catch(() => ({}));
 
@@ -97,6 +98,7 @@ export async function onRequestPost({ request, env }) {
     ticketsVaciadosEliminados += vacios.length;
   }
 
+  try { await reabrirAlertasHuerfanas(env.DB); } catch (e) { /* módulo no instalado */ }
   return json({
     ok: true,
     solicitados: ids.length,

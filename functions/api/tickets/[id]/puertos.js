@@ -1,4 +1,5 @@
 import { json, badRequest, notFound, currentUserEmail, logCambio, nowIso } from "../../../_lib/helpers.js";
+import { programarReevaluacion } from "../../../_lib/asociacion.js";
 
 // PATCH /api/tickets/:id/puertos
 // Body: { puertos: [{ id, oficina_id, olt, tarjeta, puerto, estado_puerto,
@@ -21,7 +22,7 @@ const CAMPOS_PERMITIDOS = [
   "nro_clientes_afectados",
 ];
 
-export async function onRequestPatch({ request, env, params }) {
+export async function onRequestPatch({ request, env, params, waitUntil }) {
   const db = env.DB;
   const usuario = currentUserEmail(request);
   const body = await request.json();
@@ -69,5 +70,6 @@ export async function onRequestPatch({ request, env, params }) {
     }
   }
 
+  await programarReevaluacion({ env, waitUntil }, [params.id]);
   return json({ ok: true });
 }

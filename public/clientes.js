@@ -242,7 +242,20 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
   const fmt = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || ""); return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : (iso || ""); };
   const NOMBRE_METODO = { serial: "serial (SN)", contact: "Contact = cuenta", cuenta_en_name: "cuenta en Name", cedula_en_name: "cédula en Name", nombre: "nombre exacto único" };
 
-  function pintarResumen(r, info, avisos) {
+  function asociacionHtml(aso) {
+    if (!aso) return "";
+    if (aso.error) return `<p class="msg error">No se pudo asociar con tickets: ${esc(aso.error)}</p>`;
+    const t = aso.tickets || [];
+    const filas = t.map((x) => `<tr><td>${esc(x.ticket_cmr)}</td><td>${x.puertos}</td><td>${x.afectados}</td><td>${x.sin_luz}</td><td>${x.caida_previa}</td><td>${x.duplicado ? "Revisar: posible ticket duplicado" : ""}</td></tr>`).join("");
+    const ab = (aso.alertas || []).filter((a) => a.estado === "abierta");
+    return `<h4>Asociación con tickets</h4>` + (t.length
+      ? `<table class="rows-table"><thead><tr><th>Ticket CMR</th><th>Puertos</th><th>Afectados por falla</th><th>Sin electricidad</th><th>Caída previa</th><th>Aviso</th></tr></thead><tbody>${filas}</tbody></table>`
+      : '<p class="hint">Ningún ticket cubre esta auditoría.</p>')
+      + `<div class="kv"><div><span>Caídas previas (no se cuentan):</span> <strong>${aso.caida_previa}</strong></div></div>`
+      + (ab.length ? `<p class="msg error">Posible falla no reportada: ${ab.map((a) => `${esc(a.olt)} tarjeta ${a.tarjeta} puerto ${a.puerto} (${a.n_onus} ONUs)`).join("; ")}. Revisa el cuadro de alertas.</p>` : "");
+  }
+
+  function pintarResumen(r, info, avisos, aso) {
     const m = r.metodos || {};
     const porMetodo = Object.keys(NOMBRE_METODO).filter((k) => m[k]).map((k) => `${NOMBRE_METODO[k]}: ${m[k]}`).join(" · ") || "—";
     el("cli_aud_resultado").innerHTML = `
@@ -257,7 +270,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
         <div><span>Online:</span> <strong>${r.online}</strong>${r.otro ? ` <small>· otros estados: ${r.otro}</small>` : ""}</div>
         <div><span>ONUs sin cruzar:</span> <strong>${r.sin_cruzar}</strong> <small>(${r.falla_sin_cruzar} de ellas en falla)</small></div>
       </div>
-      <p class="hint">Las "caídas previas", los tickets asociados y las alertas de falla no reportada se calculan en el siguiente paso.</p>
+      ${asociacionHtml(aso)}
       ${r.sin_cruzar_lista && r.sin_cruzar_lista.length ? `<details><summary>Ver ONUs sin cruzar (primeras ${r.sin_cruzar_lista.length})</summary>
         <table class="rows-table"><thead><tr><th>SN</th><th>Name</th><th>Contact</th><th>Estado</th><th>Tarjeta</th><th>Puerto</th><th>Último cambio</th></tr></thead><tbody>${
           r.sin_cruzar_lista.map((o) => `<tr><td>${esc(o.sn)}</td><td>${esc(o.name_smartolt)}</td><td>${esc(o.contact)}</td><td>${esc(o.status)}</td><td>${o.tarjeta ?? ""}</td><td>${o.puerto ?? ""}</td><td>${fmt(o.last_status_change)}</td></tr>`).join("")}</tbody></table></details>` : ""}`;
@@ -268,13 +281,32 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
     try {
       const d = await apiGet("/clientes/auditorias");
       cont.innerHTML = d.auditorias.length
-        ? `<table class="rows-table"><thead><tr><th>Fecha de auditoría</th><th>OLT</th><th>Tarj.</th><th>Puerto</th><th>ONUs</th><th>Cruzadas</th><th>Falla</th><th>Power fail</th><th>Base desact.</th><th>Subida por</th><th></th></tr></thead><tbody>${
-          d.auditorias.map((a) => `<tr><td>${fmt(a.fecha_auditoria_local)}</td><td>${esc(a.olt_nombre)}</td><td>${a.tarjeta ?? "—"}</td><td>${a.puerto ?? "—"}</td><td>${a.total_onus}</td><td>${a.cruzadas}</td><td>${a.falla}</td><td>${a.powerfail}</td><td>${a.desactualizadas ? "Sí" : "No"}</td><td>${esc(a.usuario)}</td><td><button type="button" class="btn-secondary cli-recruzar" data-id="${a.id}">Re-cruzar</button></td></tr>`).join("")}</tbody></table>`
+        ? `<table class="rows-table"><thead><tr><th>Fecha de auditoría</th><th>OLT</th><th>Tarj.</th><th>Puerto</th><th>ONUs</th><th>Cruzadas</th><th>Falla</th><th>Power fail</th><th>Caída previa</th><th>Tickets</th><th>Alertas</th><th>Base desact.</th><th>Subida por</th><th></th></tr></thead><tbody>${
+          d.auditorias.map((a) => `<tr><td>${fmt(a.fecha_auditoria_local)}</td><td>${esc(a.olt_nombre)}</td><td>${a.tarjeta ?? "—"}</td><td>${a.puerto ?? "—"}</td><td>${a.total_onus}</td><td>${a.cruzadas}</td><td>${a.falla}</td><td>${a.powerfail}</td><td>${a.caida_previa || 0}</td><td>${a.n_tickets || 0}</td><td>${a.n_alertas || 0}</td><td>${a.desactualizadas ? "Sí" : "No"}</td><td>${esc(a.usuario)}</td><td><button type="button" class="btn-secondary cli-recruzar" data-id="${a.id}">Re-cruzar</button></td></tr>`).join("")}</tbody></table>`
         : '<p class="hint">Todavía no hay auditorías cargadas.</p>';
       cont.querySelectorAll(".cli-recruzar").forEach((b) => b.addEventListener("click", () => recruzar(Number(b.dataset.id), b)));
     } catch (err) { cont.innerHTML = `<p class="msg error">${esc(err.message)}</p>`; }
   }
-  window.cliCargarAuditorias = cargarAuditorias;
+  async function cargarAlertas() {
+    const cont = el("cli_alertas");
+    if (!cont) return;
+    try {
+      const estado = el("cli_alertas_estado") ? el("cli_alertas_estado").value : "abierta";
+      const d = await apiGet("/clientes/alertas?estado=" + encodeURIComponent(estado));
+      cont.innerHTML = d.alertas.length
+        ? `<table class="rows-table"><thead><tr><th>Auditoría</th><th>OLT</th><th>Tarj.</th><th>Puerto</th><th>ONUs afectadas</th><th>Estado</th><th>Ticket</th><th>Comentario</th><th></th></tr></thead><tbody>${
+          d.alertas.map((a) => `<tr><td>${fmt(a.fecha_auditoria_local)}</td><td>${esc(a.olt)}</td><td>${a.tarjeta}</td><td>${a.puerto}</td><td>${a.n_onus}</td><td>${esc(a.estado)}</td><td>${esc(a.ticket_cmr || "")}</td><td>${esc(a.comentario || "")}</td><td>${a.estado === "abierta" ? `<button type="button" class="btn-secondary cli-descartar" data-id="${a.id}">Descartar</button>` : ""}</td></tr>`).join("")}</tbody></table>`
+        : '<p class="hint">No hay alertas en este estado.</p>';
+      cont.querySelectorAll(".cli-descartar").forEach((b) => b.addEventListener("click", async () => {
+        const c = window.prompt("Comentario para descartar la alerta (obligatorio):");
+        if (c === null) return;
+        try { await apiSend("/clientes/alertas/descartar", "POST", { id: Number(b.dataset.id), comentario: c }); cargarAlertas(); cargarAuditorias(); }
+        catch (err) { window.alert(err.message); }
+      }));
+    } catch (err) { cont.innerHTML = `<p class="msg error">${esc(err.message)}</p>`; }
+  }
+  if (el("cli_alertas_estado")) el("cli_alertas_estado").addEventListener("change", cargarAlertas);
+  window.cliCargarAuditorias = () => { cargarAuditorias(); cargarAlertas(); };
 
   async function recruzar(id, btn) {
     const msg = el("cli_aud_msg_carga");
@@ -340,7 +372,8 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
       const fin = await apiSend("/clientes/auditoria/finalizar", "POST", { auditoria_id: audId, esperadas: a.onus.length });
       audId = null;
       showMsg(msg, `Auditoría cargada: ${fin.resumen.cruzadas} de ${fin.resumen.total} ONUs cruzadas.`, true);
-      pintarResumen(fin.resumen, { olt, tarjeta: audMeta.tarjeta, puerto: audMeta.puerto, fecha_local: fin.auditoria.fecha_local }, avisos);
+      pintarResumen(fin.resumen, { olt, tarjeta: audMeta.tarjeta, puerto: audMeta.puerto, fecha_local: fin.auditoria.fecha_local }, avisos, fin.asociacion);
+      cargarAlertas();
       el("cli_aud_preview").classList.add("hidden"); el("cli_aud_archivo").value = ""; audAnalisis = null;
       cargarAuditorias();
     } catch (err) {
@@ -349,4 +382,5 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
     } finally { btn.disabled = false; }
   });
   cargarAuditorias();
+  cargarAlertas();
 }

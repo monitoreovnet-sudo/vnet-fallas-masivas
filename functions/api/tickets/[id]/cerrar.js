@@ -1,4 +1,5 @@
 import { json, badRequest, notFound, currentUserEmail, nowIso } from "../../../_lib/helpers.js";
+import { programarReevaluacion } from "../../../_lib/asociacion.js";
 
 // POST /api/tickets/:id/cerrar        (Modificar / Cerrar → "Cierre de Ticket": siempre masivo)
 // Body: { fecha_cierre_cmr, fecha_cierre_cda }
@@ -10,7 +11,7 @@ import { json, badRequest, notFound, currentUserEmail, nowIso } from "../../../_
 const FECHA = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
 const vacio = (v) => v === null || v === undefined || String(v).trim() === "";
 
-export async function onRequestPost({ request, env, params }) {
+export async function onRequestPost({ request, env, params, waitUntil }) {
   const db = env.DB;
   const usuario = currentUserEmail(request);
   const body = await request.json();
@@ -65,5 +66,6 @@ export async function onRequestPost({ request, env, params }) {
   if (copiar) log("fecha_solucion_cda", null, solucionCda);
 
   await db.batch(stmts);
+  await programarReevaluacion({ env, waitUntil }, [params.id]);
   return json({ ok: true, registros: registros.length, fecha_solucion_cda_copiada: copiar });
 }

@@ -1,4 +1,5 @@
 import { json, badRequest, nowIso } from "../../_lib/helpers.js";
+import { reabrirAlertasHuerfanas } from "../../_lib/asociacion.js";
 import { confirmarAdminConClave } from "../../_lib/confirmar.js";
 
 // POST /api/admin/eliminar-tickets   (RUTA 1: ticket COMPLETO)
@@ -6,7 +7,7 @@ import { confirmarAdminConClave } from "../../_lib/confirmar.js";
 // Solo administradores. Exige la contraseña de quien está conectado (confirmación),
 // borra cada ticket con TODOS sus registros de detalle y su historial (log), y deja
 // una huella en la tabla tickets_eliminados (quién, cuándo, qué ticket).
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost({ request, env, waitUntil }) {
   const db = env.DB;
   const body = await request.json().catch(() => ({}));
 
@@ -57,6 +58,7 @@ export async function onRequestPost({ request, env }) {
     registrosEliminados += tickets.reduce((s, t) => s + (t.n || 0), 0);
   }
 
+  try { await reabrirAlertasHuerfanas(env.DB); } catch (e) { /* módulo no instalado */ }
   return json({
     ok: true,
     solicitados: lista.length,

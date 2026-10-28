@@ -1,4 +1,5 @@
 import { json, badRequest, notFound, currentUserEmail, nowIso } from "../../../_lib/helpers.js";
+import { programarReevaluacion } from "../../../_lib/asociacion.js";
 
 // POST /api/tickets/:id/resolver      (Modificar / Cerrar → "Solución de Ticket")
 // Body: { alcance: "MASIVO" | "PUNTUAL", fecha_solucion_cmr, fecha_solucion_cda, registros?: [ids] (solo PUNTUAL) }
@@ -10,7 +11,7 @@ import { json, badRequest, notFound, currentUserEmail, nowIso } from "../../../_
 const FECHA = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
 const YA_RESUELTOS = ["RESUELTO", "CERRADO"];
 
-export async function onRequestPost({ request, env, params }) {
+export async function onRequestPost({ request, env, params, waitUntil }) {
   const db = env.DB;
   const usuario = currentUserEmail(request);
   const body = await request.json();
@@ -99,5 +100,6 @@ export async function onRequestPost({ request, env, params }) {
   }
 
   await db.batch(stmts);
+  await programarReevaluacion({ env, waitUntil }, [params.id]);
   return json({ ok: true, resueltos: objetivos.length, excluidos, pendientes, ticket_resuelto: ticketResuelto });
 }

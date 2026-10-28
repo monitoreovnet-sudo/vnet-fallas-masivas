@@ -7,7 +7,9 @@ export async function onRequestGet({ request, env }) {
   if (no) return no;
   const { results } = await env.DB.prepare(
     `SELECT a.id, a.archivo, a.olt_nombre, a.tarjeta, a.puerto, a.estado_filtro, a.fecha_auditoria_local, a.usuario, a.fecha_subida, a.total_onus,
-            SUM(o.cuenta IS NOT NULL) cruzadas, SUM(o.clasificacion = 'falla') falla, SUM(o.clasificacion = 'powerfail') powerfail,
+            SUM(o.cuenta IS NOT NULL) cruzadas, SUM(o.clasificacion = 'falla') falla, SUM(o.clasificacion = 'powerfail') powerfail, SUM(o.clasificacion = 'caida_previa') caida_previa,
+            (SELECT COUNT(DISTINCT ta.ticket_id) FROM ticket_auditoria ta WHERE ta.auditoria_id = a.id) n_tickets,
+            (SELECT COUNT(*) FROM alertas_no_reportadas al WHERE al.auditoria_id = a.id AND al.estado = 'abierta') n_alertas,
             SUM(o.base_desactualizada = 1) desactualizadas
        FROM auditorias a LEFT JOIN auditoria_onus o ON o.auditoria_id = a.id
       WHERE a.total_onus > 0 GROUP BY a.id ORDER BY a.id DESC LIMIT 30`).all();
