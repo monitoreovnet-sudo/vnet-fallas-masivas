@@ -1,4 +1,5 @@
 import { json, badRequest, notFound, currentUserEmail, logCambio, nowIso } from "../../../_lib/helpers.js";
+import { programarReevaluacion } from "../../../_lib/asociacion.js";
 
 // PATCH /api/tickets/:id/editar
 // Modo "Edición" de Consultar/Log: permite tocar cualquier campo de
@@ -7,7 +8,6 @@ import { json, badRequest, notFound, currentUserEmail, logCambio, nowIso } from 
 const CAMPOS_PERMITIDOS = [
   "ticket_cmr",
   "tickets_vinculados",
-  "fecha_apertura_cda",
   "fecha_apertura_cmr",
   "fecha_falla",
   "fecha_solucion_cda",
@@ -22,7 +22,7 @@ const CAMPOS_PERMITIDOS = [
   "oficina_id",
 ];
 
-export async function onRequestPatch({ request, env, params }) {
+export async function onRequestPatch({ request, env, params, waitUntil }) {
   const db = env.DB;
   const usuario = currentUserEmail(request);
   const body = await request.json();
@@ -75,5 +75,6 @@ export async function onRequestPatch({ request, env, params }) {
     });
   }
 
+  await programarReevaluacion({ env, waitUntil }, [params.id]);
   return json({ ok: true });
 }

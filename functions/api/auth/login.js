@@ -11,7 +11,7 @@ export async function onRequestPost({ request, env }) {
   if (!email || !password) return badRequest("Correo y contraseña son obligatorios.");
 
   const usuario = await env.DB
-    .prepare("SELECT email, nombre, rol, activo, password_cifrada FROM usuarios WHERE email = ?")
+    .prepare("SELECT email, nombre, rol, activo, password_cifrada, debe_cambiar_password FROM usuarios WHERE email = ?")
     .bind(email)
     .first();
 
@@ -24,10 +24,12 @@ export async function onRequestPost({ request, env }) {
   const ok = await verificarPassword(password, usuario.password_cifrada, env);
   if (!ok) return credencialesInvalidas();
 
-  const token = await crearTokenSesion(usuario.email, usuario.rol, env);
+  const debeCambiar = usuario.debe_cambiar_password === 1 || usuario.debe_cambiar_password === null;
+  // Primer inicio de sesión: la sesión solo sirve para crear la contraseña (el middleware bloquea el resto).
+  const token = await crearTokenSesion(usuario.email, usuario.rol, env, debeCambiar);
 
   return jsonConHeaders(
-    { email: usuario.email, nombre: usuario.nombre, rol: usuario.rol },
+    { email: usuario.email, nombre: usuario.nombre, rol: usuario.rol, ...(debeCambiar ? { debe_cambiar: true } : {}) },
     200,
     { "Set-Cookie": cookieSesionHeader(token) }
   );

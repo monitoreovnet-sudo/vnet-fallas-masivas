@@ -26,6 +26,7 @@ export async function onRequestPatch({ request, env, params }) {
   if (body.password) {
     if (body.password.length < 6) return badRequest("La contraseña debe tener al menos 6 caracteres.");
     campos.push("password_cifrada = ?"); binds.push(await cifrarPassword(body.password, env));
+    campos.push("debe_cambiar_password = 1");   // la que asigna el administrador es provisional: la persona crea la suya al entrar
   }
 
   if (campos.length === 0) return badRequest("No enviaste ningún campo para actualizar.");

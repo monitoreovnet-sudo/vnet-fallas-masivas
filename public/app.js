@@ -42,7 +42,7 @@ function toLocalInputValue(iso) {
   return String(iso).slice(0, 16);
 }
 // Fuerza solo dígitos mientras el usuario escribe (sin espacios ni caracteres
-// especiales), para los campos Ticket CMR-COR y Tickets Vinculados.
+// especiales), para los campos Ticket CMR-COR y Ticket de Incidencia previa.
 function soloDigitos(input) {
   input.addEventListener("input", () => {
     const limpio = input.value.replace(/[^0-9]/g, "");
@@ -238,8 +238,21 @@ function comentariosParaCategoria(catId) {
 }
 // Comentario del ticket: lista con casillas (varios a la vez). El valor que se envía son los nombres separados por " / ".
 const SEP_COMENTARIOS = " / ";
+// Para HERRAMIENTAS VNET y CENTRAL TELEFÓNICA el comentario funciona como el campo OLT: lista desplegable, pero se puede escribir libremente.
+function comentarioEsLibre() {
+  const cat = categoriaSeleccionada();
+  const n = cat ? normTxt(cat.nombre) : "";
+  return n.startsWith("HERRAMIENTAS") || n.startsWith("CENTRAL TEL");
+}
 function renderComentariosCrear() {
   const box = document.getElementById("c_comentario_multi");
+  const libre = comentarioEsLibre();
+  box.classList.toggle("hidden", libre);
+  const inpLibre = document.getElementById("c_comentario_libre");
+  inpLibre.classList.toggle("hidden", !libre);
+  document.getElementById("c_comentario_datalist").innerHTML = libre
+    ? comentariosParaCategoria(document.getElementById("c_categoria").value).map((c) => `<option value="${String(c.nombre).replace(/"/g, "&quot;")}"></option>`).join("") : "";
+  if (!libre) inpLibre.value = "";
   const previos = new Set(valoresComentarioCrear());
   const items = comentariosParaCategoria(document.getElementById("c_categoria").value);
   box.querySelector(".multi-lista").innerHTML = items.map((c) => `<label class="multi-op"><input type="checkbox" value="${String(c.nombre).replace(/"/g, "&quot;")}" ${previos.has(c.nombre) ? "checked" : ""} /> ${c.nombre}</label>`).join("") || '<span class="hint">Elige primero el Tipo de Incidencia</span>';
@@ -247,11 +260,13 @@ function renderComentariosCrear() {
 }
 function valoresComentarioCrear() { return [...document.querySelectorAll("#c_comentario_multi input:checked")].map((i) => i.value); }
 function sincronizarComentarioCrear() {
+  if (comentarioEsLibre()) { document.getElementById("c_comentario").value = document.getElementById("c_comentario_libre").value.trim(); return; }
   const v = valoresComentarioCrear();
   document.getElementById("c_comentario").value = v.join(SEP_COMENTARIOS);
   document.querySelector("#c_comentario_multi summary").textContent = v.length ? v.join(SEP_COMENTARIOS) : "Seleccione:";
 }
 document.getElementById("c_comentario_multi").addEventListener("change", sincronizarComentarioCrear);
+document.getElementById("c_comentario_libre").addEventListener("input", sincronizarComentarioCrear);
 
 // ---------------------------------------------------------------
 // CREAR TICKET: Tipo -> Tipo de ubicación -> (Oficinas | Enlace/Tramo | solo conteos)
@@ -397,6 +412,7 @@ document.getElementById("btn_add_oficina").addEventListener("click", async () =>
     olts_catalogo: oltsCatalogo,
     olts: Array.from({ length: NUM_OLTS_POR_OFICINA }, () => ({
       texto: "", sector: "DESCONOCIDO", edificio: "DESCONOCIDO", no_reportaron: 0, tarjetas: {},
+      todasTarjetas: false, afectados_olt: 0, minimizado: false,
     })),
   });
   renderOficinas();
@@ -410,25 +426,27 @@ function removeOficina(oIdx) {
 function toggleTarjeta(oIdx, oltIdx, tarjetaNombre, checked) {
   const olt = oficinasState[oIdx].olts[oltIdx];
   if (checked) {
-    if (!olt.tarjetas[tarjetaNombre]) olt.tarjetas[tarjetaNombre] = { puertos: {} };
+    olt.todasTarjetas = false;
+    if (!olt.tarjetas[tarjetaNombre]) olt.tarjetas[tarjetaNombre] = { puertos: {}, todosPuertos: false, afectados_tarjeta: 0 };
   } else {
     delete olt.tarjetas[tarjetaNombre];
   }
   renderOficinas();
 }
 
+// "Todas": no se desglosa nada; el OLT completo queda como Tarjeta "Todas" / Puerto "Todos" con un solo número de afectados.
+// Volver a pulsarlo desmarca todo.
 function selectAllTarjetas(oIdx, oltIdx) {
   const olt = oficinasState[oIdx].olts[oltIdx];
-  for (let i = 1; i <= NUM_TARJETAS; i++) {
-    const nombre = `Tarjeta ${i}`;
-    if (!olt.tarjetas[nombre]) olt.tarjetas[nombre] = { puertos: {} };
-  }
+  olt.todasTarjetas = !olt.todasTarjetas;
+  olt.tarjetas = {};
   renderOficinas();
 }
 
 function togglePuerto(oIdx, oltIdx, tarjetaNombre, puertoNombre, checked) {
   const tarjeta = oficinasState[oIdx].olts[oltIdx].tarjetas[tarjetaNombre];
   if (checked) {
+    tarjeta.todosPuertos = false;
     if (!tarjeta.puertos[puertoNombre]) tarjeta.puertos[puertoNombre] = { no_afectados: 0 };
   } else {
     delete tarjeta.puertos[puertoNombre];
@@ -436,12 +454,11 @@ function togglePuerto(oIdx, oltIdx, tarjetaNombre, puertoNombre, checked) {
   renderOficinas();
 }
 
+// "Todos" (puertos de una tarjeta): una sola fila Puerto "Todos". Volver a pulsarlo desmarca todo.
 function selectAllPuertos(oIdx, oltIdx, tarjetaNombre) {
   const tarjeta = oficinasState[oIdx].olts[oltIdx].tarjetas[tarjetaNombre];
-  for (let i = 1; i <= NUM_PUERTOS; i++) {
-    const nombre = `Puerto ${i}`;
-    if (!tarjeta.puertos[nombre]) tarjeta.puertos[nombre] = { no_afectados: 0 };
-  }
+  tarjeta.todosPuertos = !tarjeta.todosPuertos;
+  tarjeta.puertos = {};
   renderOficinas();
 }
 
@@ -477,14 +494,25 @@ function renderOficinas() {
       const oltBox = document.createElement("div");
       oltBox.className = "tree-box tree-olt";
       oltBox.innerHTML = `
-        <label>OLT ${oltIdx + 1}</label>
+        <div class="olt-cabecera">
+          <label>OLT ${oltIdx + 1}</label>
+          <button type="button" class="btn-secondary btn-minimizar" aria-expanded="${olt.minimizado ? "false" : "true"}">${olt.minimizado ? "▸ Expandir" : "▾ Minimizar"}</button>
+        </div>
         <input type="text" list="${datalistId}" placeholder="Escriba o seleccione el código de OLT" value="${olt.texto}" class="olt-texto" />
       `;
+      oltBox.querySelector(".btn-minimizar").addEventListener("click", () => { olt.minimizado = !olt.minimizado; renderOficinas(); });
+      if (olt.minimizado) oltBox.classList.add("olt-minimizado");
       const oltInput = oltBox.querySelector(".olt-texto");
       oltInput.addEventListener("input", () => { olt.texto = oltInput.value; });
       oltInput.addEventListener("change", () => { olt.texto = oltInput.value; renderOficinas(); });
 
-      if (olt.texto.trim()) {
+      if (olt.minimizado) {
+        const nT = olt.todasTarjetas ? "todas las tarjetas" : `${Object.keys(olt.tarjetas).length} tarjeta(s)`;
+        const resumen = document.createElement("p");
+        resumen.className = "hint olt-resumen";
+        resumen.textContent = olt.texto.trim() ? `${olt.texto.trim()} · ${nT} (la información se conserva)` : "Sin llenar";
+        oltBox.appendChild(resumen);
+      } else if (olt.texto.trim()) {
         const datosBox = document.createElement("div");
         datosBox.className = "tree-body";
         datosBox.innerHTML = `
@@ -506,11 +534,18 @@ function renderOficinas() {
             <label>Tarjeta (selección múltiple)</label>
             <div class="multiselect-row">
               <div class="checkbox-grid tarjetas-grid"></div>
-              <button type="button" class="btn-secondary btn-todas-tarjetas">Todas</button>
+              <button type="button" class="btn-secondary btn-todas-tarjetas${olt.todasTarjetas ? " activo" : ""}" aria-pressed="${olt.todasTarjetas ? "true" : "false"}">Todas</button>
             </div>
           </div>
           <div class="tarjetas-container"></div>
+          <div class="olt-todas-afectados"></div>
         `;
+        if (olt.todasTarjetas) {
+          const f = datosBox.querySelector(".olt-todas-afectados");
+          f.className = "olt-todas-afectados field puerto-field";
+          f.innerHTML = `<label>Nro de clientes afectados por la Incidencia en el OLT ${escHtml(olt.texto.trim())}</label><input type="number" min="0" value="${olt.afectados_olt}" />`;
+          f.querySelector("input").addEventListener("input", (e) => { olt.afectados_olt = Number(e.target.value || 0); });
+        }
         datosBox.querySelector(".olt-sector").addEventListener("input", (e) => { olt.sector = e.target.value; });
         datosBox.querySelector(".olt-edificio").addEventListener("input", (e) => { olt.edificio = e.target.value; });
         datosBox.querySelector(".olt-no-reportaron").addEventListener("input", (e) => { olt.no_reportaron = Number(e.target.value || 0); });
@@ -538,7 +573,7 @@ function renderOficinas() {
               <label>Puerto (selección múltiple)</label>
               <div class="multiselect-row">
                 <div class="checkbox-grid puertos-grid"></div>
-                <button type="button" class="btn-secondary btn-todos-puertos">Todos</button>
+                <button type="button" class="btn-secondary btn-todos-puertos${tarjeta.todosPuertos ? " activo" : ""}" aria-pressed="${tarjeta.todosPuertos ? "true" : "false"}">Todos</button>
               </div>
             </div>
             <div class="puertos-container"></div>
@@ -557,11 +592,18 @@ function renderOficinas() {
           }
 
           const puertosContainer = tBox.querySelector(".puertos-container");
+          if (tarjeta.todosPuertos) {
+            const pField = document.createElement("div");
+            pField.className = "field puerto-field";
+            pField.innerHTML = `<label>Nro de clientes afectados por la Incidencia en la ${escHtml(tarjetaNombre)} (todos los puertos)</label><input type="number" min="0" value="${tarjeta.afectados_tarjeta || 0}" />`;
+            pField.querySelector("input").addEventListener("input", (e) => { tarjeta.afectados_tarjeta = Number(e.target.value || 0); });
+            puertosContainer.appendChild(pField);
+          }
           Object.keys(tarjeta.puertos).forEach((puertoNombre) => {
             const pField = document.createElement("div");
             pField.className = "field puerto-field";
             pField.innerHTML = `
-              <label>${puertoNombre} — No. Afectados</label>
+              <label>Nro de clientes afectados por la Incidencia en el ${puertoNombre}</label>
               <input type="number" min="0" value="${tarjeta.puertos[puertoNombre].no_afectados}" />
             `;
             pField.querySelector("input").addEventListener("input", (e) => {
@@ -594,8 +636,17 @@ function flattenOficinasPuro(oficinasState) {
   for (const of of oficinasState) {
     for (const olt of of.olts) {
       if (!olt.texto.trim()) continue;
+      const base = { oficina_id: of.oficina_id, olt: olt.texto.trim(), sector: olt.sector || "DESCONOCIDO", edificio: olt.edificio || "DESCONOCIDO", no_clientes_reportaron: Number(olt.no_reportaron || 0) };
+      if (olt.todasTarjetas) {
+        puertos.push({ ...base, tarjeta: "Todas", puerto: "Todos", nro_clientes_afectados: Number(olt.afectados_olt || 0) });
+        continue;
+      }
       for (const tarjetaNombre of Object.keys(olt.tarjetas)) {
         const tarjeta = olt.tarjetas[tarjetaNombre];
+        if (tarjeta.todosPuertos) {
+          puertos.push({ ...base, tarjeta: tarjetaNombre, puerto: "Todos", nro_clientes_afectados: Number(tarjeta.afectados_tarjeta || 0) });
+          continue;
+        }
         for (const puertoNombre of Object.keys(tarjeta.puertos)) {
           puertos.push({
             oficina_id: of.oficina_id,
@@ -646,8 +697,8 @@ function construirPuertosSegunModo(ctx) {
   if (!modo) throw new Error("Seleccione el Tipo de ubicación.");
 
   if (modo === "NO_APLICA") {
-    const of = especialDe("SOPORTE TÉCNICO PERO NO APLICA");
-    if (!of) throw faltaEspecial("SOPORTE TÉCNICO PERO NO APLICA");
+    const of = especialDe("LÓGICO") || especialDe("SOPORTE TÉCNICO PERO NO APLICA");
+    if (!of) throw faltaEspecial("LÓGICO");
     return unico(of);
   }
 
@@ -733,15 +784,19 @@ async function revisarTicketRepetidoInterno(cmr) {
 }
 document.getElementById("c_ticket_cmr").addEventListener("blur", () => { revisarTicketRepetido(); });
 
-// Fecha de Apertura del CDA: por defecto es el momento actual (editable). Si la falla se reportó antes (ej. la plataforma
-// estaba en mantenimiento), la persona escribe la fecha y hora reales. Mientras no la toque, se refresca al abrir la pestaña.
+// Fecha del registro del CDA: campo oculto, siempre el momento en que se crea el ticket (no se edita después).
 let cdaAuto = true;
 function fijarCdaAhora() {
   const d = new Date(), p2 = (n) => String(n).padStart(2, "0");
   document.getElementById("c_fecha_cda").value = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`;
   cdaAuto = true;
 }
-document.getElementById("c_fecha_cda").addEventListener("input", () => { cdaAuto = false; });
+// Fecha de la falla: se copia sola de la Apertura del CMR mientras la persona no la cambie a mano.
+let fallaManual = false;
+document.getElementById("c_fecha_falla").addEventListener("input", () => { fallaManual = true; });
+document.getElementById("c_fecha_cmr").addEventListener("input", () => {
+  if (!fallaManual) document.getElementById("c_fecha_falla").value = document.getElementById("c_fecha_cmr").value;
+});
 document.querySelector('.tab-btn[data-tab="crear"]').addEventListener("click", () => { if (cdaAuto) fijarCdaAhora(); });
 fijarCdaAhora();
 
@@ -764,6 +819,7 @@ function limpiarFormularioCrear() {
     .forEach((id) => { document.getElementById(id).value = ""; });
   ["c_estado_ticket", "c_unidad_resolutoria", "c_ubicacion_tipo"]
     .forEach((id) => { document.getElementById(id).value = ""; });
+  fallaManual = false;
   actualizarBloqueResolucion();
   document.querySelectorAll("#c_comentario_multi input").forEach((i) => { i.checked = false; });
   const cat = document.getElementById("c_categoria");
@@ -793,7 +849,8 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
         no_reportaron: document.getElementById("c_otros_no_reportaron").value,
       },
     });
-    const faltan = [["c_fecha_cmr", "Fecha de Apertura del CMR"], ["c_fecha_cda", "Fecha de Apertura del CDA"], ["c_fecha_falla", "Fecha de la Falla"]]
+    fijarCdaAhora();
+    const faltan = [["c_fecha_cmr", "Fecha de Apertura del CMR"], ["c_fecha_falla", "Fecha de la Falla"]]
       .filter(([id]) => !document.getElementById(id).value).map(([, n]) => n);
     if (faltan.length && !dupVigente(document.getElementById("c_ticket_cmr").value.trim())) throw new Error(`Falta completar (obligatorio): ${faltan.join(", ")}.`);
     const payload = {
@@ -971,14 +1028,24 @@ document.getElementById("mc_btn_masivo").addEventListener("click", () => mcElegi
 document.getElementById("mc_btn_puertos").addEventListener("click", () => mcElegirAlcance("PUNTUAL"));
 
 // --- Escenario 1: <> Cerrado + Masivo ---
+// Misma regla que el servidor: varios registros que no son Todas/Todos → no se cambia "clientes afectados" en bloque.
+function mcAfectadosBloqueado() {
+  const ag = (r) => /^todas?$/i.test(String(r.tarjeta || "").trim()) || /^todos?$/i.test(String(r.puerto || "").trim());
+  return mcPuertos.length > 1 && !mcPuertos.every(ag);
+}
+function mcAplicarBloqueoAfectados(idInput) {
+  const inp = document.getElementById(idInput), bloq = mcAfectadosBloqueado();
+  inp.disabled = bloq; inp.value = "";
+  inp.title = bloq ? "Bloqueado: el ticket abarca varias tarjetas y puertos. Edita cada registro en Cambio puntual." : "";
+  inp.placeholder = bloq ? "Bloqueado (varios puertos)" : "No modificar";
+}
 function mcRenderEscenario1() {
   fillSelect(document.getElementById("e1_unidad_resolutoria"), LOOKUPS.unidades_resolutorias, { valueKey: "nombre", placeholder: "No modificar" });
   document.getElementById("e1_fecha_cmr").value = "";
-  document.getElementById("e1_fecha_cda").value = "";
   document.getElementById("e1_unidad_resolutoria").value = "";
   mcLlenarEstados(document.getElementById("e1_estado"), "No modificar", "");
   document.getElementById("e1_avance").value = "";
-  document.getElementById("e1_afectados").value = "";
+  mcAplicarBloqueoAfectados("e1_afectados");
   document.getElementById("e1_reportaron").value = "";
   document.getElementById("mc_escenario_1").classList.remove("hidden");
 }
@@ -996,16 +1063,14 @@ document.getElementById("e1_btn_guardar").addEventListener("click", async () => 
       if (!Number.isInteger(n) || n < 0) throw new Error(`${etiqueta}: indica un número entero igual o mayor que 0.`);
       return n;
     };
-    const afectados = conteo("e1_afectados", "Cantidad de clientes afectados");
+    const afectados = mcAfectadosBloqueado() ? null : conteo("e1_afectados", "Cantidad de clientes afectados");
     const reportaron = conteo("e1_reportaron", "Cantidad de clientes que reportaron");
     if (afectados !== null) body.nro_clientes_afectados = afectados;
     if (reportaron !== null) body.no_clientes_reportaron = reportaron;
     const fechaCmr = document.getElementById("e1_fecha_cmr").value;
-    const fechaCda = document.getElementById("e1_fecha_cda").value;
     const unidad = document.getElementById("e1_unidad_resolutoria").value;
     const avance = document.getElementById("e1_avance").value.trim();
     if (fechaCmr) body.fecha_apertura_cmr = fechaCmr;
-    if (fechaCda) body.fecha_apertura_cda = fechaCda;
     const fechaFalla = document.getElementById("e1_fecha_falla").value;
     if (fechaFalla) body.fecha_falla = fechaFalla;
     if (unidad) body.unidad_resolutoria = unidad;
@@ -1022,6 +1087,11 @@ document.getElementById("e1_btn_guardar").addEventListener("click", async () => 
 
 // --- Escenario 2: Cambio puntual (un registro: solo Oficina, OLT, Tarjeta y Puerto) ---
 function mcRenderEscenario2() {
+  if (!document.getElementById("e2_dl_tar")) {
+    const dl = (id, vals) => { const d = document.createElement("datalist"); d.id = id; d.innerHTML = vals.map((v) => `<option value="${v}"></option>`).join(""); document.body.appendChild(d); };
+    dl("e2_dl_tar", ["N/A", "Todas", ...Array.from({ length: NUM_TARJETAS }, (_, i) => `Tarjeta ${i + 1}`)]);
+    dl("e2_dl_pue", ["N/A", "Todos", ...Array.from({ length: NUM_PUERTOS }, (_, i) => `Puerto ${i + 1}`)]);
+  }
   const tbody = document.querySelector("#e2_table tbody");
   tbody.innerHTML = "";
   const oficinas = LOOKUPS.oficinas;
@@ -1036,14 +1106,27 @@ function mcRenderEscenario2() {
           ${oficinas.filter((o) => o.id !== p.oficina_id).map((o) => `<option value="${o.id}">${escHtml(o.nombre)}</option>`).join("")}
         </select>
       </td>
-      <td><input class="e2-olt" data-idx="${idx}" value="${escHtml(p.olt)}" disabled /></td>
-      <td><input class="e2-tarjeta" data-idx="${idx}" value="${escHtml(p.tarjeta)}" disabled /></td>
-      <td><input class="e2-puerto" data-idx="${idx}" value="${escHtml(p.puerto)}" disabled /></td>
+      <td><input class="e2-olt" list="e2_dl_olt_${idx}" autocomplete="off" data-idx="${idx}" value="${escHtml(p.olt)}" disabled /><datalist id="e2_dl_olt_${idx}"></datalist></td>
+      <td><input class="e2-tarjeta" list="e2_dl_tar" autocomplete="off" data-idx="${idx}" value="${escHtml(p.tarjeta)}" disabled /></td>
+      <td><input class="e2-puerto" list="e2_dl_pue" autocomplete="off" data-idx="${idx}" value="${escHtml(p.puerto)}" disabled /></td>
       <td><input class="e2-sector" data-idx="${idx}" value="${escHtml(p.sector ?? "")}" disabled /></td>
       <td><input class="e2-edificio" data-idx="${idx}" value="${escHtml(p.edificio ?? "")}" disabled /></td>
       <td><input class="e2-afectados" type="number" min="0" step="1" data-idx="${idx}" value="${escHtml(p.nro_clientes_afectados ?? 0)}" disabled /></td>
       <td><input class="e2-reportaron" type="number" min="0" step="1" data-idx="${idx}" value="${escHtml(p.no_clientes_reportaron ?? 0)}" disabled /></td>
     `;
+    // Listas desplegables: al entrar al cuadro se muestran todas las opciones (el valor actual vuelve si no eliges otra); también se puede escribir.
+    tr.querySelectorAll(".e2-olt, .e2-tarjeta, .e2-puerto").forEach((inp) => {
+      inp.addEventListener("focus", () => { inp.dataset.prev = inp.value; inp.value = ""; });
+      inp.addEventListener("blur", () => { if (!inp.value.trim()) inp.value = inp.dataset.prev || ""; });
+    });
+    const llenarOlts = async () => {
+      const ofId = tr.querySelector(".e2-oficina").value;
+      let codigos = (LOOKUPS.olts || []).map((o) => o.codigo);
+      if (ofId) { try { const d = await apiSend("/lookups", "POST", { oficina_id: ofId }); if (d.olts && d.olts.length) codigos = d.olts.map((o) => o.codigo); } catch (e) { /* se queda la lista general */ } }
+      tr.querySelector("datalist").innerHTML = [...new Set(["N/A", "NO INDICADO", ...codigos])].map((c) => `<option value="${escHtml(c)}"></option>`).join("");
+    };
+    tr.querySelector(".e2-oficina").addEventListener("change", llenarOlts);
+    llenarOlts();
     tr.querySelector(".e2-sel").addEventListener("change", () => {
       tbody.querySelectorAll("tr").forEach((fila) => {
         const activa = fila.querySelector(".e2-sel").checked;
@@ -1264,7 +1347,6 @@ function construirCambiosTicketEnlace({ ticket, alcance, cerrado, estado, unidad
   if (!cerrado) {
     if (estado && estado !== ticket.estado_ticket) masivoBody.estado_ticket = estado;
     if (apertura.cmr && apertura.cmr !== vTicket("fecha_apertura_cmr")) masivoBody.fecha_apertura_cmr = apertura.cmr;
-    if (apertura.cda && apertura.cda !== vTicket("fecha_apertura_cda")) masivoBody.fecha_apertura_cda = apertura.cda;
     if (apertura.falla && apertura.falla !== vTicket("fecha_falla")) masivoBody.fecha_falla = apertura.falla;
     if (avance && String(avance).trim()) masivoBody.avance_cmr = String(avance).trim();
   } else if (alcance === "MASIVO") {
@@ -1321,7 +1403,7 @@ function mcRenderEnlace(alcance, cerrado, estado) {
   document.getElementById("me_masivo_block").classList.toggle("hidden", porOlt);
   document.getElementById("me_porolt_block").classList.toggle("hidden", !porOlt);
   document.getElementById("me_m_olt").value = "";
-  document.getElementById("me_m_afectados").value = "";
+  mcAplicarBloqueoAfectados("me_m_afectados");
   document.getElementById("me_m_reportaron").value = "";
   meOpcionesUbicacion(document.getElementById("me_m_ubicacion"), "", "No modificar");
 
@@ -1362,7 +1444,6 @@ function mcRenderEnlace(alcance, cerrado, estado) {
   document.getElementById("me_bloque_avance").classList.toggle("hidden", cerrado);
   document.getElementById("me_bloque_cierre").classList.toggle("hidden", !cerrado);
   document.getElementById("me_apertura_cmr").value = toLocalInputValue(mcTicket.fecha_apertura_cmr);
-  document.getElementById("me_apertura_cda").value = toLocalInputValue(mcTicket.fecha_apertura_cda);
   document.getElementById("me_fecha_falla").value = toLocalInputValue(mcTicket.fecha_falla);
   document.getElementById("me_avance").value = "";
   // en MASIVO se precargan las fechas de cierre actuales del ticket; por OLT se piden nuevas
@@ -1406,7 +1487,7 @@ document.getElementById("me_btn_guardar").addEventListener("click", async () => 
     const { masivoBody, cerrarBody } = construirCambiosTicketEnlace({
       ticket: mcTicket, alcance, cerrado, estado: cerrado ? estado : val("me_estado"),
       unidad: cerrado ? "" : val("me_unidad"),
-      apertura: { cmr: val("me_apertura_cmr"), cda: val("me_apertura_cda"), falla: val("me_fecha_falla") },
+      apertura: { cmr: val("me_apertura_cmr"), falla: val("me_fecha_falla") },
       cierre, avance: val("me_avance"),
     });
 
@@ -1479,13 +1560,13 @@ function renderDetalle(editable, log) {
         <label><input type="checkbox" id="det_edicion" /> Edición</label>
       </div>
       <div class="kv">
-        ${campoTexto("Vinculados", t.tickets_vinculados)}
+        ${campoTexto("Incidencia previa", t.tickets_vinculados)}
         ${campoTexto("Oficina", t.oficina_nombre)}
         ${campoTexto("Unidad Resolutoria", t.unidad_resolutoria)}
         ${campoTexto("Categoría", t.categoria_afectacion)}
         ${campoTexto("Afectación", t.afectacion)}
         ${campoTexto("Comentario", t.comentario)}
-        ${campoTexto("Apertura CDA", t.fecha_apertura_cda)}
+        ${campoTexto("Fecha del registro del CDA", t.fecha_apertura_cda)}
         ${campoTexto("Fecha de la Falla", t.fecha_falla)}
         ${campoTexto("Apertura CMR", t.fecha_apertura_cmr)}
         ${campoTexto("Solución CDA", t.fecha_solucion_cda)}
@@ -1502,13 +1583,13 @@ function renderDetalle(editable, log) {
       </div>
       <div class="grid-3">
         <div class="field"><label>Ticket CMR-COR</label>${campoInput("d_ticket_cmr", t.ticket_cmr)}</div>
-        <div class="field"><label>Tickets Vinculados</label>${campoInput("d_vinculados", t.tickets_vinculados)}</div>
+        <div class="field"><label>Ticket de Incidencia previa</label>${campoInput("d_vinculados", t.tickets_vinculados)}</div>
         <div class="field"><label>Estado del Ticket</label>${campoSelect("d_estado", LOOKUPS.estados_ticket.map(e=>e.nombre), t.estado_ticket)}</div>
         <div class="field"><label>Unidad Resolutoria</label>${campoSelect("d_unidad", LOOKUPS.unidades_resolutorias.map(u=>u.nombre), t.unidad_resolutoria)}</div>
         <div class="field"><label>Categoría de la Afectación</label>${campoSelect("d_categoria", LOOKUPS.categorias.map(c=>c.nombre), t.categoria_afectacion)}</div>
         <div class="field"><label>Afectación</label>${campoSelect("d_afectacion", LOOKUPS.afectaciones.map(a=>a.nombre), t.afectacion)}</div>
         <div class="field"><label>Comentario</label>${campoSelect("d_comentario", LOOKUPS.comentarios.map(c=>c.nombre), t.comentario)}</div>
-        <div class="field"><label>Apertura CDA</label>${campoInput("d_fecha_apertura_cda", toLocalInputValue(t.fecha_apertura_cda), "datetime-local")}</div>
+        <div class="field"><label>Fecha del registro del CDA</label><span class="valor-fijo">${escHtml(formatearFechaHora(t.fecha_apertura_cda) || "-")}</span></div>
         <div class="field"><label>Fecha de la Falla</label>${campoInput("d_fecha_falla", toLocalInputValue(t.fecha_falla), "datetime-local")}</div>
         <div class="field"><label>Apertura CMR</label>${campoInput("d_fecha_apertura_cmr", toLocalInputValue(t.fecha_apertura_cmr), "datetime-local")}</div>
         <div class="field"><label>Solución CDA</label>${campoInput("d_fecha_solucion_cda", toLocalInputValue(t.fecha_solucion_cda), "datetime-local")}</div>
@@ -1588,7 +1669,7 @@ async function guardarEdicionDetalle() {
       ticket_cmr: "d_ticket_cmr", tickets_vinculados: "d_vinculados",
       estado_ticket: "d_estado", unidad_resolutoria: "d_unidad",
       categoria_afectacion: "d_categoria", afectacion: "d_afectacion", comentario: "d_comentario",
-      fecha_apertura_cda: "d_fecha_apertura_cda", fecha_apertura_cmr: "d_fecha_apertura_cmr", fecha_falla: "d_fecha_falla",
+      fecha_apertura_cmr: "d_fecha_apertura_cmr", fecha_falla: "d_fecha_falla",
       fecha_solucion_cda: "d_fecha_solucion_cda", fecha_solucion_cmr: "d_fecha_solucion_cmr",
       descripcion: "d_descripcion", avance_cmr: "d_avance",
     };
@@ -1647,6 +1728,23 @@ function llenarSelectSimple(id, opciones, placeholder) {
   el.innerHTML = `<option value="">${placeholder}</option>` + opciones.map((o) => `<option value="${o.value}">${o.label}</option>`).join("");
 }
 
+function clEscalera() {
+  const region = document.getElementById("cl_region").value;
+  const selOfi = document.getElementById("cl_oficina"), selOlt = document.getElementById("cl_olt");
+  const ofiPrev = selOfi.value, oltPrev = selOlt.value;
+  const ofis = LOOKUPS.oficinas.filter((o) => !region || o.estado === region);
+  llenarSelectSimple("cl_oficina", ofis.map((o) => ({ value: o.id, label: o.nombre })), "Todas");
+  selOfi.value = ofis.some((o) => String(o.id) === ofiPrev) ? ofiPrev : "";
+  const idsOfi = new Set(ofis.map((o) => String(o.id)));
+  const mapa = LOOKUPS.olt_oficina || [];
+  let olts;
+  if (selOfi.value) olts = mapa.filter((m) => String(m.oficina_id) === selOfi.value).map((m) => m.olt);
+  else if (region) olts = mapa.filter((m) => idsOfi.has(String(m.oficina_id))).map((m) => m.olt);
+  else olts = [...LOOKUPS.olts.map((o) => o.codigo), ...(LOOKUPS.olts_usados || [])];   // catálogo vigente + los que ya aparecen en tickets (históricos)
+  olts = [...new Set(olts)].sort((a, b) => a.localeCompare(b));
+  llenarSelectSimple("cl_olt", olts.map((c) => ({ value: c, label: c })), "Todos");
+  selOlt.value = olts.includes(oltPrev) ? oltPrev : "";
+}
 function initFiltrosConsulta() {
   llenarSelectSimple("cl_dia_apertura", [], "Día");
   llenarSelectSimple("cl_dia_cierre", [], "Día");
@@ -1663,11 +1761,11 @@ function initFiltrosConsulta() {
   llenarSelectSimple("cl_grupo_horario", ["MAÑANA","TARDE","NOCHE"].map((g)=>({value:g,label:g})), "Todos");
   llenarSelectSimple("cl_semaforo", ["VERDE","AMARILLO","NARANJA","ROJO"].map((s)=>({value:s,label:s})), "Todos");
   llenarSelectSimple("cl_unidad", LOOKUPS.unidades_resolutorias.map((u)=>({value:u.nombre,label:u.nombre})), "Todas");
-  llenarSelectSimple("cl_oficina", LOOKUPS.oficinas.map((o)=>({value:o.id,label:o.nombre})), "Todas");
-  // Catálogo vigente + los OLT que ya aparecen en tickets (para poder filtrar también los históricos)
-  llenarSelectSimple("cl_olt",
-    [...new Set([...LOOKUPS.olts.map((o) => o.codigo), ...(LOOKUPS.olts_usados || [])])]
-      .sort((a, b) => a.localeCompare(b)).map((c) => ({ value: c, label: c })), "Todos");
+  // Escalera Estado > Oficina > OLT: cada lista solo ofrece lo que existe dentro de lo elegido arriba (los demás filtros son independientes).
+  llenarSelectSimple("cl_region", Array.from(new Set(LOOKUPS.oficinas.map((o) => o.estado).filter((x) => x && x !== "N/A"))).sort((a, b) => a.localeCompare(b, "es")).map((r) => ({ value: r, label: r })), "Todos");
+  clEscalera();
+  document.getElementById("cl_region").addEventListener("change", clEscalera);
+  document.getElementById("cl_oficina").addEventListener("change", clEscalera);
 
   const estadoEl = document.getElementById("cl_estado");
   estadoEl.innerHTML = `<option value="">Todos</option><option value="__ABIERTOS__" selected>Distinto de Cerrado</option>` +
@@ -1717,7 +1815,7 @@ function construirQueryConsulta() {
     categoria_afectacion: "cl_categoria", afectacion: "cl_afectacion",
     grupo_horario: "cl_grupo_horario", semaforo: "cl_semaforo",
     estado_ticket: "cl_estado", unidad_resolutoria: "cl_unidad",
-    oficina_id: "cl_oficina", olt: "cl_olt",
+    region: "cl_region", oficina_id: "cl_oficina", olt: "cl_olt",
   };
   for (const [param, id] of Object.entries(campos)) {
     const v = document.getElementById(id).value;
@@ -1731,6 +1829,7 @@ function construirQueryConsulta() {
 // pulsa "Editar como cuadro de Excel" y vuelve a escribir su contraseña.
 // ---------------------------------------------------------------
 let clDatosActuales = [];   // filas de la última búsqueda mostrada en Consultar / Log
+let clQueryAplicada = null; // filtros con los que se hizo esa búsqueda (para no exportar datos que no corresponden a los filtros en pantalla)
 let clSeleccion = new Set();   // ids de REGISTRO (fila de detalle) marcados para eliminar (solo administrador)
 let clFilas = new Map();      // id de registro -> { ticket, total de registros que tiene ese ticket en la base }
 let clGrid = null, clGridRol = null, clGridListo = false;
@@ -1744,7 +1843,7 @@ let clOcupado = false;
 //   t: texto visible · tipo: cómo se muestra/edita · ed: editable · campo: nombre que entiende el servidor al guardar
 const CL_COLS = [
   { f: "ticket_cmr", t: "Ticket", tipo: "ticket", ed: true, w: 110, frozen: true },
-  { f: "tickets_vinculados", t: "Vinculados", tipo: "ticket", ed: true, w: 120 },
+  { f: "tickets_vinculados", t: "Incidencia previa", tipo: "ticket", ed: true, w: 120 },
   { f: "estado_ticket", t: "Estado del ticket", tipo: "lista", ed: true, w: 175, lista: () => (LOOKUPS.estados_ticket || []).map((x) => x.nombre) },
   { f: "unidad_resolutoria", t: "Unidad resolutoria", tipo: "lista", ed: true, w: 160, vacio: true, lista: () => (LOOKUPS.unidades_resolutorias || []).map((x) => x.nombre) },
   { f: "region", t: "Estado", tipo: "dato", w: 140 },
@@ -1761,7 +1860,7 @@ const CL_COLS = [
   { f: "descripcion", t: "Descripción", tipo: "texto", ed: true, vacio: true, w: 260 },
   { f: "comentario", t: "Comentario", tipo: "texto", ed: true, vacio: true, w: 220 },
   { f: "avance_cmr", t: "Avance CMR", tipo: "texto", ed: true, vacio: true, w: 260 },
-  { f: "fecha_apertura_cda", t: "Apertura CDA", tipo: "fecha", ed: true, w: 140 },
+  { f: "fecha_apertura_cda", t: "Registro CDA", tipo: "fecha", ed: false, w: 140 },
   { f: "fecha_apertura_cmr", t: "Apertura CMR", tipo: "fecha", ed: true, w: 140 },
   { f: "fecha_falla", t: "Fecha de la falla", tipo: "fecha", ed: true, w: 140 },
   { f: "dia_apertura", t: "Día apertura CMR", tipo: "dato", w: 90 },
@@ -2069,6 +2168,7 @@ function filasExportConsulta() {
   });
 }
 function exportarConsulta(formato) {
+  if (clQueryAplicada !== null && clQueryAplicada !== construirQueryConsulta()) { alert("Cambiaste filtros y todavía no pulsaste Filtrar. Pulsa Filtrar para que la tabla y la descarga coincidan."); return; }
   if (!clDatosActuales.length) { alert("No hay registros en pantalla para descargar. Aplica los filtros y pulsa Filtrar."); return; }
   const filas = filasExportConsulta();
   const fecha = new Date().toISOString().slice(0, 10);
@@ -2105,10 +2205,12 @@ async function cargarConsulta(opciones) {
   if (!clGrid || clGridRol !== (currentUser && currentUser.rol)) clCrearGrid();
   if (!silencioso) { contador.textContent = "Cargando..."; msgx.textContent = ""; }
   try {
-    const data = await apiGet(`/consulta?${construirQueryConsulta()}`);
+    const qActual = construirQueryConsulta();
+    const data = await apiGet(`/consulta?${qActual}`);
     clDatosActuales = data.filas;   // exactamente lo que se ve en la tabla (ya filtrado por el servidor)
     clFechas = data.fechas || { apertura: [], cierre: [] };
     clActualizarFechas("apertura"); clActualizarFechas("cierre");
+    clQueryAplicada = construirQueryConsulta();   // ya con los selectores de fecha ajustados
     if (clGridListo) clPonerDatos();     // si la tabla aún se está construyendo, lo hace al terminar (tableBuilt)
     contador.textContent = `${formatearMiles(data.filas.length)} registro(s) encontrados.`;
   } catch (err) {
@@ -2790,6 +2892,8 @@ const ESTADOS_UNIVERSO = {
   cic: ["RESUELTO", "CERRADO"],
 };
 function datosInforme(prefix) { return prefix === "piz" ? pizarraDatos : prefix === "rep" ? reporteDatos : cicloDatos; }
+// Lo que se exporta: exactamente lo que se ve en pantalla (universo del informe + filtros activos).
+function universoFiltrado(prefix, filas) { return filtrarDatos(universoInforme(prefix, filas), prefix); }
 function universoInforme(prefix, filas) { return filas.filter((f) => ESTADOS_UNIVERSO[prefix].includes(f.estado_ticket)); }
 function cargarInforme(prefix) { return prefix === "piz" ? cargarPizarra() : prefix === "rep" ? cargarReporte() : cargarCiclo(); }
 // Cada filtro admite varios valores a la vez (selección múltiple). Estado por informe: { id_del_filtro: Set de valores }.
@@ -2815,6 +2919,7 @@ const FILTROS_CASCADA = [
   { id: "unidad", campo: "unidad_resolutoria" },
   { id: "region", campo: "region" },
   { id: "oficina", campo: "oficina_id", labelCampo: "oficina_nombre" },
+  { id: "olt", campo: "olt" },
   { id: "semaforo", campo: "semaforo" },
   { id: "grupo_horario", campo: "grupo_horario" },
   // Fecha de apertura: tres filtros entrelazados entre sí y con todos los demás. Las opciones salen de los datos cargados.
@@ -2835,6 +2940,7 @@ function initFiltrosGenerico(prefix) {
   llenarSelectSimple(`${prefix}_tipo_falla`, LOOKUPS.categorias.map((c)=>({value:c.nombre,label:c.nombre})), "Todos");
   llenarSelectSimple(`${prefix}_unidad`, LOOKUPS.unidades_resolutorias.map((u)=>({value:u.nombre,label:u.nombre})), "Todas");
   llenarSelectSimple(`${prefix}_oficina`, LOOKUPS.oficinas.map((o)=>({value:o.id,label:o.nombre})), "Todas");
+  llenarSelectSimple(`${prefix}_olt`, [], "Todos");
   llenarSelectSimple(`${prefix}_semaforo`, ["VERDE","AMARILLO","NARANJA","ROJO"].map((s)=>({value:s,label:s})), "Todos");
   const regiones = Array.from(new Set(LOOKUPS.oficinas.map((o)=>o.estado).filter(Boolean))).sort();
   llenarSelectSimple(`${prefix}_region`, regiones.map((r)=>({value:r,label:r})), "Todos");
@@ -2947,17 +3053,23 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.querySelectorAll(".ms-panel").forEach((p) => p.classList.add("hidden")); });
 
-function filasQueCoincidenExcepto(filas, prefix, idExcluir) {
-  const texto = idExcluir === "ticket_sel" ? "" : soloDigitosTexto(document.getElementById(`${prefix}_ticket`).value);
-  return filas.filter((f) => (!texto || String(f.ticket_cmr).includes(texto)) && (idExcluir === "region" || pasaOtros(f, prefix)) && FILTROS_CASCADA.every((flt) => {
-    if (flt.id === idExcluir) return true;
-    const v = valorFiltro(prefix, flt.id);
-    if (!v.size) return true;
-    return coincideFiltro(f, flt, v);
+// Los filtros son independientes entre sí. Única excepción: la escalera Estado > Oficina > OLT (cada uno solo ofrece lo que
+// existe dentro de lo elegido arriba) y Día/Mes/Año entre ellos. Buscar o elegir un N° de ticket NO toca las opciones de los demás.
+const DEPENDENCIAS_FILTRO = {
+  oficina: ["region"], olt: ["region", "oficina"],
+  dia: ["mes", "anio"], mes: ["dia", "anio"], anio: ["dia", "mes"],
+};
+function filasQueCoincidenExcepto(filas, prefix, idFiltro) {
+  const deps = DEPENDENCIAS_FILTRO[idFiltro] || [];
+  return filas.filter((f) => (!deps.includes("region") || pasaOtros(f, prefix)) && deps.every((id) => {
+    const flt = FILTROS_CASCADA.find((x) => x.id === id);
+    const v = valorFiltro(prefix, id);
+    return !v.size || coincideFiltro(f, flt, v);
   }));
 }
 
 function actualizarCascada(prefix, datosCompletos) {
+  let descartado = false;
   FILTROS_CASCADA.forEach((flt) => {
     const disponibles = filasQueCoincidenExcepto(datosCompletos, prefix, flt.id);
     const valores = new Map();
@@ -2972,12 +3084,13 @@ function actualizarCascada(prefix, datosCompletos) {
     const ordenados = Array.from(valores.entries()).sort((a, b) =>
       flt.desc ? Number(b[0]) - Number(a[0]) : flt.numerico ? Number(a[0]) - Number(b[0]) : String(a[1]).localeCompare(String(b[1]), "es"));
     // lo seleccionado que ya no existe con los demás filtros se descarta (igual que antes con la selección simple)
-    [...set].forEach((v) => { if (!valores.has(v)) set.delete(v); });
+    [...set].forEach((v) => { if (!valores.has(v)) { set.delete(v); descartado = true; } });
     select.innerHTML = `<option value="">${placeholder}</option>` +
       ordenados.map(([v, l]) => `<option value="${escHtml(v)}">${escHtml(l)}</option>`).join("");
     select.value = set.size ? [...set][0] : "";
     msDibujar(prefix, flt, placeholder, ordenados.map(([v, l]) => [v, String(l)]));
   });
+  return descartado;
 }
 
 // sinEstado = true: aplica todos los filtros MENOS el de Estado del Ticket (lo usan las tarjetas de estado,
@@ -3035,7 +3148,12 @@ function aplicarFiltros(prefix) {
   paso("gráfica de oficinas", () => renderChartOficina(filtrados, `${prefix}_chart_oficina`));
   if (prefix === "cic") paso("top 10 de OLT", () => renderTop10Olt(filtrados, "cic_top10_olt"));
   else paso("desglose de activos", () => renderChartDesglose(filtrados, `${prefix}_chart_desglose`));
-  paso("filtros", () => actualizarCascada(prefix, universo));
+  let descartado = false;
+  paso("filtros", () => { descartado = actualizarCascada(prefix, universo); });
+  if (descartado && !aplicarFiltros._reintento) {   // un padre cambió y se descartó una selección que ya no existe: se redibuja con lo vigente
+    aplicarFiltros._reintento = true;
+    try { aplicarFiltros(prefix); } finally { aplicarFiltros._reintento = false; }
+  }
 }
 
 function ticketsUnicos(filas) {
@@ -3750,14 +3868,14 @@ function filasParaExcelDashboard(filas) {
 }
 
 document.getElementById("piz_btn_excel").addEventListener("click", () => {
-  if (pizarraDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
+  if (universoFiltrado("piz", pizarraDatos).length === 0) { alert("No hay datos para exportar con los filtros activos."); return; }
   const fecha = new Date().toISOString().slice(0, 10);
-  exportarExcelGenerico(filasParaExcelDashboard(universoInforme("piz", pizarraDatos)), "Pizarra", `pizarra_monitoreo_${fecha}.xlsx`);
+  exportarExcelGenerico(filasParaExcelDashboard(universoFiltrado("piz", pizarraDatos)), "Pizarra", `pizarra_monitoreo_${fecha}.xlsx`);
 });
 document.getElementById("piz_btn_csv").addEventListener("click", () => {
-  if (pizarraDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
+  if (universoFiltrado("piz", pizarraDatos).length === 0) { alert("No hay datos para exportar con los filtros activos."); return; }
   const fecha = new Date().toISOString().slice(0, 10);
-  exportarCSVGenerico(filasParaExcelDashboard(universoInforme("piz", pizarraDatos)), `pizarra_monitoreo_${fecha}.csv`);
+  exportarCSVGenerico(filasParaExcelDashboard(universoFiltrado("piz", pizarraDatos)), `pizarra_monitoreo_${fecha}.csv`);
 });
 
 // ---------------------------------------------------------------
@@ -3891,18 +4009,18 @@ function filasDetalleReporteParaExcel(filas) {
 }
 
 document.getElementById("rep_btn_excel").addEventListener("click", () => {
-  if (reporteDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
+  if (universoFiltrado("rep", reporteDatos).length === 0) { alert("No hay datos para exportar con los filtros activos."); return; }
   const wb = XLSX.utils.book_new();
-  const univ = universoInforme("rep", reporteDatos);
+  const univ = universoFiltrado("rep", reporteDatos);
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasResumenPorEstadoParaExcel(univ)), "Resumen por Estado");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasDetalleReporteParaExcel(univ)), "Detalle");
   const fecha = new Date().toISOString().slice(0, 10);
   XLSX.writeFile(wb, `reporte_diario_fallas_${fecha}.xlsx`);
 });
 document.getElementById("rep_btn_csv").addEventListener("click", () => {
-  if (reporteDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
+  if (universoFiltrado("rep", reporteDatos).length === 0) { alert("No hay datos para exportar con los filtros activos."); return; }
   const fecha = new Date().toISOString().slice(0, 10);
-  exportarCSVGenerico(filasDetalleReporteParaExcel(universoInforme("rep", reporteDatos)), `reporte_diario_fallas_${fecha}.csv`);
+  exportarCSVGenerico(filasDetalleReporteParaExcel(universoFiltrado("rep", reporteDatos)), `reporte_diario_fallas_${fecha}.csv`);
 });
 
 // ---------------------------------------------------------------
@@ -3927,16 +4045,16 @@ async function cargarCiclo() {
 }
 document.getElementById("cic_btn_actualizar").addEventListener("click", cargarCiclo);
 document.getElementById("cic_btn_excel").addEventListener("click", () => {
-  if (cicloDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
-  const univ = universoInforme("cic", cicloDatos);
+  if (universoFiltrado("cic", cicloDatos).length === 0) { alert("No hay datos para exportar con los filtros activos."); return; }
+  const univ = universoFiltrado("cic", cicloDatos);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasResumenPorEstadoParaExcel(univ)), "Resumen por Estado");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filasDetalleReporteParaExcel(univ)), "Detalle");
   XLSX.writeFile(wb, `ciclo_2026_${new Date().toISOString().slice(0, 10)}.xlsx`);
 });
 document.getElementById("cic_btn_csv").addEventListener("click", () => {
-  if (cicloDatos.length === 0) { alert("No hay datos cargados para exportar."); return; }
-  exportarCSVGenerico(filasDetalleReporteParaExcel(universoInforme("cic", cicloDatos)), `ciclo_2026_${new Date().toISOString().slice(0, 10)}.csv`);
+  if (universoFiltrado("cic", cicloDatos).length === 0) { alert("No hay datos para exportar con los filtros activos."); return; }
+  exportarCSVGenerico(filasDetalleReporteParaExcel(universoFiltrado("cic", cicloDatos)), `ciclo_2026_${new Date().toISOString().slice(0, 10)}.csv`);
 });
 
 // ---------------------------------------------------------------
@@ -4084,14 +4202,38 @@ function mostrarApp() {
   document.getElementById("app_shell").classList.remove("hidden");
 }
 
+// ---- Acceso público: sin sesión solo se ve la Pizarra de Monitoreo (y los botones de descarga piden iniciar sesión) ----
+let MODO_PUBLICO = false;
+function mostrarCambioPassword() {
+  ["login_screen", "app_shell"].forEach((id) => document.getElementById(id).classList.add("hidden"));
+  document.getElementById("cambio_screen").classList.remove("hidden");
+}
+async function entrarModoPublico() {
+  MODO_PUBLICO = true;
+  currentUser = { rol: "publico", nombre: "", email: "" };
+  mostrarApp();
+  document.querySelectorAll(".tab-btn[data-tab]").forEach((b) => b.classList.toggle("hidden", b.dataset.tab !== "pizarra"));
+  document.querySelector('.tab-btn[data-tab="pizarra"]').click();
+  document.getElementById("btn_logout").classList.add("hidden");
+  document.getElementById("btn_login_publico").classList.remove("hidden");
+  document.getElementById("topbar_usuario_nombre").textContent = "";
+  ["piz_btn_csv", "piz_btn_excel", "piz_btn_pdf"].forEach((id) => document.getElementById(id).classList.add("hidden"));
+  document.getElementById("piz_btn_login").classList.remove("hidden");
+  try { await loadLookups(); } catch (e) { console.warn("Modo público: no se pudo cargar todo", e); }
+  document.querySelector('.tab-btn[data-tab="pizarra"]').click();
+}
+const irAlLogin = () => { document.getElementById("app_shell").classList.add("hidden"); document.getElementById("login_screen").classList.remove("hidden"); };
+document.getElementById("btn_login_publico").addEventListener("click", irAlLogin);
+document.getElementById("piz_btn_login").addEventListener("click", irAlLogin);
+document.getElementById("login_volver").addEventListener("click", () => { document.getElementById("login_screen").classList.add("hidden"); document.getElementById("app_shell").classList.remove("hidden"); });
+
 async function iniciarSesionApp() {
-  try {
-    currentUser = await apiGet("/me");
-  } catch (e) {
-    currentUser = null;
-  }
-  if (!currentUser || !currentUser.registrado) {
-    mostrarLogin();
+  let me = null;
+  try { me = await (await fetch(API + "/me")).json(); } catch (e) { me = null; }
+  if (me && me.debe_cambiar) { mostrarCambioPassword(); return; }
+  currentUser = me && me.registrado ? me : null;
+  if (!currentUser) {
+    await entrarModoPublico();
     return;
   }
   mostrarApp();
@@ -4106,8 +4248,10 @@ document.getElementById("login_btn").addEventListener("click", async () => {
   if (!email || !password) { showMsg(msg, "Ingresa correo y contraseña.", false); return; }
   try {
     currentUser = await apiSend("/auth/login", "POST", { email, password });
-    currentUser.registrado = true;
     document.getElementById("login_password").value = "";
+    if (currentUser.debe_cambiar) { mostrarCambioPassword(); return; }
+    currentUser.registrado = true;
+    if (MODO_PUBLICO) { location.reload(); return; }   // viene de la pizarra pública: se recarga con todos los permisos
     mostrarApp();
     await loadLookups();
     aplicarPermisosRol();
@@ -4121,6 +4265,32 @@ document.getElementById("login_toggle_ojo").addEventListener("click", () => {
 });
 document.getElementById("login_password").addEventListener("keydown", (e) => {
   if (e.key === "Enter") document.getElementById("login_btn").click();
+});
+
+// ---- Primer inicio de sesión: crear y confirmar la contraseña ----
+document.getElementById("cambio_btn").addEventListener("click", async () => {
+  const msg = document.getElementById("cambio_msg");
+  const password = document.getElementById("cambio_password").value, confirmar = document.getElementById("cambio_confirmar").value;
+  const error = errorPasswordNueva(password);
+  if (error) { showMsg(msg, error, false); return; }
+  if (password !== confirmar) { showMsg(msg, "Las dos contraseñas no coinciden.", false); return; }
+  try {
+    await apiSend("/auth/cambiar-password", "POST", { password, confirmar });
+    location.reload();
+  } catch (err) { showMsg(msg, err.message, false); }
+});
+function errorPasswordNueva(p) {
+  if (String(p).length < 8) return "La contraseña debe tener al menos 8 caracteres.";
+  if (!/[0-9]/.test(p)) return "La contraseña debe incluir al menos un número.";
+  if (!/[A-ZÁÉÍÓÚÑ]/.test(p)) return "La contraseña debe incluir al menos una letra mayúscula.";
+  return null;
+}
+document.getElementById("cambio_toggle_ojo").addEventListener("click", () => {
+  ["cambio_password", "cambio_confirmar"].forEach((id) => { const i = document.getElementById(id); i.type = i.type === "password" ? "text" : "password"; });
+});
+document.getElementById("cambio_cancelar").addEventListener("click", async () => {
+  try { await apiSend("/auth/logout", "POST"); } catch (e) { /* nada */ }
+  location.reload();
 });
 
 document.getElementById("btn_logout").addEventListener("click", async () => {
@@ -4213,7 +4383,7 @@ function construirRegistrosRepo(filasCrudas, ctx) {
   });
   const resolverOficina = (txt) => {
     if (vacioRepo(txt)) return null;
-    if (normTxt(txt) === "1 SOPORTE TECNICO PERO NO APLICA") txt = "SOPORTE TÉCNICO PERO NO APLICA";   // nombre anterior
+    if (["1 SOPORTE TECNICO PERO NO APLICA", "SOPORTE TECNICO PERO NO APLICA"].includes(normTxt(txt))) txt = "LÓGICO";   // nombres anteriores
     const porNombre = idxNombre.get(normTxt(txt));
     if (porNombre) return porNombre;
     const m = String(txt).trim().match(/^([A-Za-z0-9]{2,6})\s*-\s*/);

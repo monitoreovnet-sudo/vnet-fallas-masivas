@@ -1,7 +1,12 @@
 import { usuarioDeSesion } from "./_lib/auth.js";
 
 // Rutas de la API que NO requieren sesión iniciada.
-const RUTAS_PUBLICAS = new Set(["/api/auth/login", "/api/auth/logout"]);
+const RUTAS_PUBLICAS = new Set(["/api/auth/login", "/api/auth/logout", "/api/me"]);
+// Acceso público (sin sesión) SOLO de lectura y solo lo que necesita la Pizarra de Monitoreo.
+// /api/consulta, sin sesión, devuelve los datos recortados (sin autor, descripción ni avance).
+const RUTAS_PUBLICAS_GET = new Set(["/api/lookups", "/api/config-reportes", "/api/consulta"]);
+// Primer inicio de sesión: con la sesión limitada solo se puede crear la contraseña.
+const RUTAS_SESION_LIMITADA = new Set(["/api/auth/cambiar-password", "/api/auth/logout", "/api/me"]);
 
 export async function onRequest(context) {
   const { request, next, env } = context;
@@ -25,7 +30,14 @@ export async function onRequest(context) {
   const esApi = url.pathname.startsWith("/api/");
   if (esApi && !RUTAS_PUBLICAS.has(url.pathname)) {
     const sesion = await usuarioDeSesion(request, env);
-    if (!sesion) {
+    const publicoGet = request.method === "GET" && RUTAS_PUBLICAS_GET.has(url.pathname);
+    if (sesion && sesion.cambio && !RUTAS_SESION_LIMITADA.has(url.pathname) && !publicoGet) {
+      return new Response(JSON.stringify({ error: "Primero crea tu contraseña definitiva.", debe_cambiar: true }), {
+        status: 403,
+        headers: { "content-type": "application/json;charset=UTF-8" },
+      });
+    }
+    if (!sesion && !publicoGet) {
       return new Response(JSON.stringify({ error: "No autenticado. Inicia sesión." }), {
         status: 401,
         headers: { "content-type": "application/json;charset=UTF-8" },

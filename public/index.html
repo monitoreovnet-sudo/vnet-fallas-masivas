@@ -28,7 +28,27 @@
         </div>
       </div>
       <button id="login_btn" class="btn-primary" type="button">Entrar</button>
+      <button id="login_volver" class="btn-secondary" type="button">Volver a la pizarra</button>
       <div id="login_msg" class="msg"></div>
+    </div>
+  </div>
+
+  <div id="cambio_screen" class="login-screen hidden">
+    <div class="login-box">
+      <img src="assets/atc-logo.png" alt="Gerencia General de ATC" class="login-logo-atc" />
+      <div class="brand-mark" style="font-size:22px;">vnet</div>
+      <h2>Crea tu contraseña</h2>
+      <p class="hint">Es tu primer ingreso. Escribe una contraseña nueva: mínimo 8 caracteres, con al menos un número y una letra mayúscula. Puedes usar cualquier carácter especial.</p>
+      <div class="field"><label>Contraseña nueva</label><input id="cambio_password" type="password" autocomplete="new-password" /></div>
+      <div class="field"><label>Confirmar contraseña</label>
+        <div class="search-row">
+          <input id="cambio_confirmar" type="password" autocomplete="new-password" />
+          <button id="cambio_toggle_ojo" class="btn-secondary" type="button">👁</button>
+        </div>
+      </div>
+      <button id="cambio_btn" class="btn-primary" type="button">Guardar y entrar</button>
+      <button id="cambio_cancelar" class="btn-secondary" type="button">Cancelar</button>
+      <div id="cambio_msg" class="msg"></div>
     </div>
   </div>
 
@@ -41,6 +61,7 @@
     <div class="topbar-usuario">
       <span id="topbar_usuario_nombre"></span>
       <button id="btn_logout" class="btn-secondary" type="button">Cerrar Sesión</button>
+      <button id="btn_login_publico" class="btn-primary hidden" type="button">Iniciar sesión</button>
     </div>
   </header>
 
@@ -67,16 +88,14 @@
         <input id="c_ticket_cmr" placeholder="Ej: 123456" inputmode="numeric" maxlength="20" />
       </div>
       <div class="field">
-        <label>Tickets Vinculados <small>(solo números)</small></label>
+        <label>Ticket de Incidencia previa <small>(solo números)</small></label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">El ticket que causo esta falla.</span></span>
         <input id="c_tickets_vinculados" placeholder="Ej: 123456" inputmode="numeric" maxlength="20" />
       </div>
       <div class="fechas-trio">
         <div class="field campo-info"><label>Fecha de Apertura del CMR *</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">La hora de apertura en GLPI</span></span>
           <input id="c_fecha_cmr" type="datetime-local" />
         </div>
-        <div class="field campo-info"><label>Fecha de Apertura del CDA *</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">El momento en que usted esta llenando este reporte</span></span>
-          <input id="c_fecha_cda" type="datetime-local" />
-        </div>
+        <input id="c_fecha_cda" type="hidden" />
         <div class="field campo-info"><label>Fecha de la Falla *</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">El momento en que se detectó la existencia de la falla</span></span>
           <input id="c_fecha_falla" type="datetime-local" />
         </div>
@@ -103,6 +122,8 @@
       <div class="field">
         <label>Comentario</label>
         <details id="c_comentario_multi" class="multi-cat"><summary>Seleccione:</summary><div class="multi-lista"></div></details>
+        <input id="c_comentario_libre" class="hidden" list="c_comentario_datalist" maxlength="300" placeholder="Escriba o seleccione el comentario" autocomplete="off" />
+        <datalist id="c_comentario_datalist"></datalist>
         <input type="hidden" id="c_comentario" />
       </div>
     </div>
@@ -117,7 +138,7 @@
         <label>Tipo de ubicación</label>
         <select id="c_ubicacion_tipo">
           <option value="">Seleccione:</option>
-          <option value="NO_APLICA">SOPORTE TÉCNICO PERO NO APLICA</option>
+          <option value="NO_APLICA">LÓGICO</option>
           <option value="ENLACE">ENLACE</option>
           <option value="TRAMO">TRAMO</option>
           <option value="TRONCAL">TRONCAL</option>
@@ -202,7 +223,7 @@
     <!-- Indicadores del ticket (solo en "Cambio de Campo") -->
     <div id="mc_cards" class="mc-cards hidden">
       <div class="mc-card"><span class="mc-card-titulo">Fecha de apertura de CMR</span><span class="mc-card-valor" id="mc_card_apertura_cmr">-</span></div>
-      <div class="mc-card"><span class="mc-card-titulo">Fecha de apertura de CDA</span><span class="mc-card-valor" id="mc_card_apertura_cda">-</span></div>
+      <div class="mc-card"><span class="mc-card-titulo">Fecha del registro del CDA</span><span class="mc-card-valor" id="mc_card_apertura_cda">-</span></div>
       <div class="mc-card"><span class="mc-card-titulo">Oficina</span><span class="mc-card-valor" id="mc_card_oficina">-</span></div>
       <div class="mc-card"><span class="mc-card-titulo">Unidad resolutoria</span><span class="mc-card-valor" id="mc_card_unidad">-</span></div>
       <div class="mc-card"><span class="mc-card-titulo">Estado del ticket</span><span class="mc-card-valor" id="mc_card_estado">-</span></div>
@@ -219,9 +240,6 @@
         <div class="fechas-trio">
           <div class="field campo-info"><label>Fecha Apertura CMR</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">La hora de apertura en GLPI</span></span>
           <input id="e1_fecha_cmr" type="datetime-local" />
-          </div>
-          <div class="field campo-info"><label>Fecha Apertura CDA</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">El momento en que usted esta llenando este reporte</span></span>
-          <input id="e1_fecha_cda" type="datetime-local" />
           </div>
           <div class="field campo-info"><label>Fecha de la Falla</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">El momento en que se detectó la existencia de la falla</span></span>
           <input id="e1_fecha_falla" type="datetime-local" />
@@ -334,7 +352,6 @@
       </div>
       <div id="me_bloque_apertura" class="fechas-trio hidden">
         <div class="field campo-info"><label>Fecha Apertura CMR</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">La hora de apertura en GLPI</span></span><input id="me_apertura_cmr" type="datetime-local" /></div>
-        <div class="field campo-info"><label>Fecha Apertura CDA</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">El momento en que usted esta llenando este reporte</span></span><input id="me_apertura_cda" type="datetime-local" /></div>
         <div class="field campo-info"><label>Fecha de la Falla</label><span class="info-i" tabindex="0" role="note" aria-label="Información">i<span class="info-tip">El momento en que se detectó la existencia de la falla</span></span><input id="me_fecha_falla" type="datetime-local" /></div>
       </div>
       <div id="me_bloque_cierre" class="grid-2 hidden">
@@ -368,6 +385,7 @@
       <div class="db-acciones">
         <button id="piz_btn_actualizar" class="db-btn-circular" type="button">Actualizar</button>
         <div class="db-btns-exportar">
+          <button id="piz_btn_login" class="db-btn-rect hidden" type="button">Iniciar sesión</button>
           <button id="piz_btn_csv" class="db-btn-rect" type="button">Exportar csv</button>
           <button id="piz_btn_excel" class="db-btn-rect" type="button">Exportar xlsx</button>
           <button id="piz_btn_pdf" class="db-btn-rect" type="button">Exportar pdf</button>
@@ -388,6 +406,7 @@
       <div class="db-filtro-item"><label>Unidad Resolutoria</label><select id="piz_unidad"></select></div>
       <div class="db-filtro-item"><label>Estado</label><select id="piz_region"></select></div>
       <div class="db-filtro-item"><label>Oficina</label><select id="piz_oficina"></select></div>
+      <div class="db-filtro-item"><label>OLT</label><select id="piz_olt"></select></div>
       <div class="db-filtro-item"><label>Semáforo</label><select id="piz_semaforo"></select></div>
       <div class="db-filtro-item"><label>Grupo Horario</label><select id="piz_grupo_horario"></select></div>
       <div class="db-filtro-item db-filtro-fecha-item">
@@ -474,6 +493,7 @@
       <div class="db-filtro-item"><label>Unidad Resolutoria</label><select id="rep_unidad"></select></div>
       <div class="db-filtro-item"><label>Estado</label><select id="rep_region"></select></div>
       <div class="db-filtro-item"><label>Oficina</label><select id="rep_oficina"></select></div>
+      <div class="db-filtro-item"><label>OLT</label><select id="rep_olt"></select></div>
       <div class="db-filtro-item"><label>Semáforo</label><select id="rep_semaforo"></select></div>
       <div class="db-filtro-item"><label>Grupo Horario</label><select id="rep_grupo_horario"></select></div>
       <div class="db-filtro-item db-filtro-fecha-item">
@@ -560,6 +580,7 @@
       <div class="db-filtro-item"><label>Unidad Resolutoria</label><select id="cic_unidad"></select></div>
       <div class="db-filtro-item"><label>Estado</label><select id="cic_region"></select></div>
       <div class="db-filtro-item"><label>Oficina</label><select id="cic_oficina"></select></div>
+      <div class="db-filtro-item"><label>OLT</label><select id="cic_olt"></select></div>
       <div class="db-filtro-item"><label>Semáforo</label><select id="cic_semaforo"></select></div>
       <div class="db-filtro-item"><label>Grupo Horario</label><select id="cic_grupo_horario"></select></div>
       <div class="db-filtro-item db-filtro-fecha-item">
@@ -627,7 +648,7 @@
       <p id="cl_ayuda_sel" class="hint hidden">Al marcar una fila se marca todo el ticket. Desmarca las filas que quieras conservar, o usa Ctrl+clic para marcar solo un registro. Si quedan marcados todos los registros de un ticket se elimina el ticket completo; si no, solo los registros marcados.</p>
       <div id="cl_filtros" class="filtros-grid">
       <div class="field"><label>Ticket CMR-COR</label><input id="cl_ticket_cmr" inputmode="numeric" placeholder="Número" /></div>
-      <div class="field"><label>Tickets Vinculados</label><input id="cl_tickets_vinculados" inputmode="numeric" placeholder="Número" /></div>
+      <div class="field"><label>Ticket de Incidencia previa</label><input id="cl_tickets_vinculados" inputmode="numeric" placeholder="Número" /></div>
 
       <div class="field"><label>Día Apert. CMR</label><select id="cl_dia_apertura"></select></div>
       <div class="field"><label>Mes Apert. CMR</label><select id="cl_mes_apertura"></select></div>
@@ -643,6 +664,7 @@
       <div class="field"><label>Semáforo</label><select id="cl_semaforo"></select></div>
       <div class="field"><label>Estado del Ticket</label><select id="cl_estado"></select></div>
       <div class="field"><label>Unidad Resolutoria</label><select id="cl_unidad"></select></div>
+      <div class="field"><label>Estado</label><select id="cl_region"></select></div>
       <div class="field"><label>Oficina</label><select id="cl_oficina"></select></div>
       <div class="field"><label>OLT</label><select id="cl_olt"></select></div>
 
@@ -858,6 +880,10 @@
     </div>
     <div id="cli_aud_msg_carga" class="msg"></div>
     <div id="cli_aud_resultado"></div>
+
+    <h3>Alertas: posible falla no reportada</h3>
+    <label>Estado <select id="cli_alertas_estado"><option value="abierta">Abiertas</option><option value="cubierta">Cubiertas por un ticket</option><option value="descartada">Descartadas</option><option value="todas">Todas</option></select></label>
+    <div id="cli_alertas"></div>
 
     <h3>Auditorías cargadas</h3>
     <div id="cli_auditorias"></div>

@@ -1,4 +1,5 @@
 import { json, badRequest, currentUserEmail, logCambio, nowIso } from "../../_lib/helpers.js";
+import { programarReevaluacion } from "../../_lib/asociacion.js";
 import { verificarTokenDuplicado } from "../../_lib/auth.js";
 
 // GET /api/tickets?cmr=326159&estado=EN+CURSO&oficina_id=3&limit=50
@@ -42,10 +43,12 @@ export async function onRequestGet({ request, env }) {
 
 // POST /api/tickets
 // Crea el ticket junto con todos sus OLT/Tarjeta/Puerto en una sola operación.
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost({ request, env, waitUntil }) {
   const db = env.DB;
   const body = await request.json();
   const usuario = currentUserEmail(request);
+  // La Fecha del registro del CDA es automática: si no llega, se pone la hora actual de Caracas (UTC-4).
+  if (!String(body.fecha_apertura_cda || "").trim()) body.fecha_apertura_cda = new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 16);
 
   const {
     ticket_cmr,
@@ -84,7 +87,8 @@ export async function onRequestPost({ request, env }) {
 
   // Ticket NUEVO: las tres fechas son obligatorias (los registros que se agregan a un ticket existente no tocan sus datos generales).
   if (!agregando) {
-    const OBLIG = { fecha_apertura_cmr: "Fecha de Apertura del CMR", fecha_apertura_cda: "Fecha de Apertura del CDA", fecha_falla: "Fecha de la Falla" };
+    // La Fecha del registro del CDA es automática: si no llega, se pone la hora actual de Caracas (UTC-4).
+    const OBLIG = { fecha_apertura_cmr: "Fecha de Apertura del CMR", fecha_apertura_cda: "Fecha del registro del CDA", fecha_falla: "Fecha de la Falla" };
     const FECHA_OBL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
     for (const [campo, nombre] of Object.entries(OBLIG)) {
       const v = String(body[campo] || "").trim();
@@ -141,7 +145,7 @@ export async function onRequestPost({ request, env }) {
   const ticketId = agregando ? existing.id : insertTicket.meta.last_row_id;
 
   // Integridad: oficinas especiales sin ubicación física => todo "N/A" (aunque el cliente envíe otra cosa)
-  const NOMBRES_NA = ["SOPORTE TÉCNICO PERO NO APLICA", "CENTRAL TELEFÓNICA", "HERRAMIENTAS VNET", "MERCADEO", "PAGOS"];
+  const NOMBRES_NA = ["LÓGICO", "SOPORTE TÉCNICO PERO NO APLICA", "CENTRAL TELEFÓNICA", "HERRAMIENTAS VNET", "MERCADEO", "PAGOS"];
   const { results: ofNA } = await db
     .prepare(`SELECT id FROM oficinas WHERE nombre IN (${NOMBRES_NA.map(() => "?").join(",")})`)
     .bind(...NOMBRES_NA)
@@ -201,5 +205,6 @@ export async function onRequestPost({ request, env }) {
     usuario_email: usuario,
   });
 
+  await programarReevaluacion({ env, waitUntil }, [ticketId]);
   return json({ id: ticketId, ticket_cmr: String(ticket_cmr), creado_en: nowIso(), agregado: agregando }, 201);
 }

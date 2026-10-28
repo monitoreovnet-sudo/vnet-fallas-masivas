@@ -47,7 +47,7 @@ export async function onRequestPost({ request, env }) {
   const passwordCifrada = password ? await cifrarPassword(password, env) : null;
 
   const ins = await env.DB
-    .prepare("INSERT INTO usuarios (email, nombre, rol, activo, password_cifrada) VALUES (?, ?, ?, 1, ?)")
+    .prepare("INSERT INTO usuarios (email, nombre, rol, activo, password_cifrada, debe_cambiar_password) VALUES (?, ?, ?, 1, ?, 1)")
     .bind(email, nombre || null, rol, passwordCifrada)
     .run();
 

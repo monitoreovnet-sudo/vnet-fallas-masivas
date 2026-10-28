@@ -30,6 +30,15 @@ export async function onRequestGet({ env }) {
   afectaciones.results.forEach((a) => { a.categoria_ids = afCat.get(a.id) || (a.categoria_id ? [a.categoria_id] : []); });
   comentarios.results.forEach((c) => { c.categoria_ids = comCat.get(c.id) || (c.categoria_id ? [c.categoria_id] : []); });   // vacío = aplica a todos los tipos
 
+  // OLT → oficina (catálogo + lo ya registrado en tickets): para los filtros escalonados Estado > Oficina > OLT
+  let oltOficina = [];
+  try {
+    const a = await db.prepare("SELECT codigo AS olt, oficina_id FROM olts WHERE activo = 1 AND oficina_id IS NOT NULL").all();
+    const b = await db.prepare("SELECT DISTINCT olt, oficina_id FROM ticket_puertos WHERE olt IS NOT NULL AND olt <> '' AND oficina_id IS NOT NULL").all();
+    const vistos = new Set();
+    oltOficina = [...a.results, ...b.results].filter((r) => { const k = r.olt + "|" + r.oficina_id; if (vistos.has(k)) return false; vistos.add(k); return true; });
+  } catch (e) { oltOficina = []; }
+
   return json({
     oficinas: oficinas.results,
     categorias: categorias.results,
@@ -40,6 +49,7 @@ export async function onRequestGet({ env }) {
     estados_puerto: estadosPuerto.results,
     olts: olts.results,
     olts_usados: oltsUsados.results.map((r) => r.olt),
+    olt_oficina: oltOficina,
   });
 }
 

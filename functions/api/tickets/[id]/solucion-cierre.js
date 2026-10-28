@@ -71,20 +71,27 @@ export async function onRequestPost({ request, env, params, waitUntil }) {
 
   const despues = new Map();   // estado y fechas de cada registro tras el cambio (para decidir el estado del ticket)
   registros.forEach((r) => despues.set(r.id, { ...r }));
+  let nuevoCmrAlgunoR = false, nuevoCdaAlgunoR = false;
   for (const r of objetivos) {
     const nuevoEstado = cierra || r.estado_puerto === "CERRADO" || !vacio(r.fecha_cierre_cmr) ? "CERRADO" : "RESUELTO";
     // Solución CDA vacía + Cierre CDA llena → la solución toma la fecha del cierre (solo si el registro no tenía solución CDA)
-    const solCda = sCda ?? (cCda && vacio(r.fecha_solucion_cda) ? cCda : null);
+    let solCda = sCda ?? (cCda && vacio(r.fecha_solucion_cda) ? cCda : null);
+    // Sincronía CMR ↔ CDA: si una de las dos fechas de solución queda vacía y la otra existe, se duplica.
+    let solCmr = sCmr;
+    if (vacio(solCmr) && vacio(r.fecha_solucion_cmr)) solCmr = solCda ?? (vacio(r.fecha_solucion_cda) ? null : r.fecha_solucion_cda);
+    if (vacio(solCda) && vacio(r.fecha_solucion_cda)) solCda = solCmr ?? (vacio(r.fecha_solucion_cmr) ? null : r.fecha_solucion_cmr);
+    if (solCmr) nuevoCmrAlgunoR = true;
+    if (solCda) nuevoCdaAlgunoR = true;
     stmts.push(
       db.prepare(
         `UPDATE ticket_puertos SET estado_puerto = ?, fecha_solucion_cmr = COALESCE(?, fecha_solucion_cmr), fecha_cierre_cmr = COALESCE(?, fecha_cierre_cmr),
            fecha_solucion_cda = COALESCE(?, fecha_solucion_cda), fecha_cierre_cda = COALESCE(?, fecha_cierre_cda),
            causa_falla = COALESCE(?, causa_falla), correctivo = COALESCE(?, correctivo), actualizado_en = ? WHERE id = ?`
-      ).bind(nuevoEstado, sCmr, cCmr, solCda, cCda, causa, correctivo, ahora, r.id)
+      ).bind(nuevoEstado, solCmr, cCmr, solCda, cCda, causa, correctivo, ahora, r.id)
     );
     const tipoSol = "solucion", tipoCie = "cierre";
     log(nuevoEstado === "CERRADO" ? tipoCie : tipoSol, "estado_puerto", r.estado_puerto, nuevoEstado, r.id);
-    if (sCmr) log(tipoSol, "fecha_solucion_cmr", r.fecha_solucion_cmr, sCmr, r.id);
+    if (solCmr) log(tipoSol, "fecha_solucion_cmr", r.fecha_solucion_cmr, solCmr, r.id);
     if (solCda) log(tipoSol, "fecha_solucion_cda", r.fecha_solucion_cda, solCda, r.id);
     if (cCmr) log(tipoCie, "fecha_cierre_cmr", r.fecha_cierre_cmr, cCmr, r.id);
     if (cCda) log(tipoCie, "fecha_cierre_cda", r.fecha_cierre_cda, cCda, r.id);
@@ -92,7 +99,7 @@ export async function onRequestPost({ request, env, params, waitUntil }) {
     if (correctivo) log(nuevoEstado === "CERRADO" ? tipoCie : tipoSol, "correctivo", r.correctivo, correctivo, r.id);
     despues.set(r.id, {
       ...r, estado_puerto: nuevoEstado,
-      fecha_solucion_cmr: sCmr ?? r.fecha_solucion_cmr, fecha_solucion_cda: solCda ?? r.fecha_solucion_cda,
+      fecha_solucion_cmr: solCmr ?? r.fecha_solucion_cmr, fecha_solucion_cda: solCda ?? r.fecha_solucion_cda,
       fecha_cierre_cmr: cCmr ?? r.fecha_cierre_cmr, fecha_cierre_cda: cCda ?? r.fecha_cierre_cda,
     });
   }
@@ -108,8 +115,8 @@ export async function onRequestPost({ request, env, params, waitUntil }) {
     // fechas de solución del ticket: la más reciente de sus registros. Si el usuario no escribió esa fecha, solo se llena cuando el ticket la tenía vacía.
     let tSolCmr = null, tSolCda = null;
     todos.forEach((r) => { tSolCmr = mayor(tSolCmr, r.fecha_solucion_cmr); tSolCda = mayor(tSolCda, r.fecha_solucion_cda); });
-    const nuevoSolCmr = tSolCmr && (sCmr || vacio(ticket.fecha_solucion_cmr)) ? tSolCmr : null;
-    const nuevoSolCda = tSolCda && (sCda || vacio(ticket.fecha_solucion_cda)) ? tSolCda : null;
+    const nuevoSolCmr = tSolCmr && (sCmr || nuevoCmrAlgunoR || vacio(ticket.fecha_solucion_cmr)) ? tSolCmr : null;
+    const nuevoSolCda = tSolCda && (sCda || nuevoCdaAlgunoR || vacio(ticket.fecha_solucion_cda)) ? tSolCda : null;
     stmts.push(
       db.prepare(`UPDATE tickets SET estado_ticket = ?, fecha_solucion_cmr = COALESCE(?, fecha_solucion_cmr), fecha_solucion_cda = COALESCE(?, fecha_solucion_cda), actualizado_en = ? WHERE id = ?`)
         .bind(estadoTicket, nuevoSolCmr, nuevoSolCda, ahora, ticket.id)

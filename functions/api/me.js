@@ -5,6 +5,7 @@ import { usuarioDeSesion } from "../_lib/auth.js";
 export async function onRequestGet({ request, env }) {
   const sesion = await usuarioDeSesion(request, env);
   if (!sesion) return json({ registrado: false, rol: null }, 401);
+  if (sesion.cambio) return json({ registrado: false, rol: null, debe_cambiar: true, email: sesion.email }, 401);
 
   const usuario = await env.DB
     .prepare("SELECT email, nombre, rol, activo FROM usuarios WHERE email = ?")

@@ -73,7 +73,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
   nombre TEXT,
   rol TEXT NOT NULL DEFAULT 'analista',   -- administrador | supervisor | especialista | analista
   activo INTEGER NOT NULL DEFAULT 1,
-  password_cifrada TEXT
+  password_cifrada TEXT,
+  debe_cambiar_password INTEGER NOT NULL DEFAULT 1   -- migration_033
 );
 
 -- ---------- Tickets ----------

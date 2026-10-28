@@ -1,15 +1,16 @@
 import { json, badRequest, notFound, currentUserEmail, logCambio, nowIso } from "../../../_lib/helpers.js";
+import { programarReevaluacion } from "../../../_lib/asociacion.js";
+import { afectadosBloqueado, MSG_AFECTADOS_BLOQUEADO } from "../../../_lib/afectados.js";
 
 // PATCH /api/tickets/:id/masivo
 // Único endpoint autorizado a tocar estos campos a la vez, replicando
 // exactamente los campos editables de la pantalla "Cambiar Todo el Ticket":
 //   estado_ticket, olt (aplica a TODOS los puertos del ticket), avance_cmr,
-//   fecha_apertura_cda, fecha_apertura_cmr, fecha_falla, unidad_resolutoria, oficina_id
+//   fecha_apertura_cmr, fecha_falla, unidad_resolutoria, oficina_id
 const CAMPOS_PERMITIDOS = [
   "estado_ticket",
   "olt",
   "avance_cmr",
-  "fecha_apertura_cda",
   "fecha_apertura_cmr",
   "fecha_falla",
   "unidad_resolutoria",
@@ -20,7 +21,7 @@ const CAMPOS_PERMITIDOS = [
 const PROPAGADOS = ["olt", "nro_clientes_afectados", "no_clientes_reportaron"];
 const CONTEOS = ["nro_clientes_afectados", "no_clientes_reportaron"];
 
-export async function onRequestPatch({ request, env, params }) {
+export async function onRequestPatch({ request, env, params, waitUntil }) {
   const db = env.DB;
   const usuario = currentUserEmail(request);
   const body = await request.json();
@@ -34,6 +35,11 @@ export async function onRequestPatch({ request, env, params }) {
   const campos = Object.keys(body).filter((k) => CAMPOS_PERMITIDOS.includes(k));
   if (campos.length === 0) {
     return badRequest(`Ningún campo enviado es editable en modificación masiva. Permitidos: ${CAMPOS_PERMITIDOS.join(", ")}`);
+  }
+
+  if (campos.includes("nro_clientes_afectados")) {
+    const regs = (await db.prepare("SELECT tarjeta, puerto FROM ticket_puertos WHERE ticket_id = ?").bind(ticket.id).all()).results;
+    if (afectadosBloqueado(regs)) return badRequest(MSG_AFECTADOS_BLOQUEADO);
   }
 
   for (const c of CONTEOS) {
@@ -113,5 +119,6 @@ export async function onRequestPatch({ request, env, params }) {
     }
   }
 
+  await programarReevaluacion({ env, waitUntil }, [params.id]);
   return json({ ok: true });
 }

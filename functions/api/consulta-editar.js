@@ -1,4 +1,5 @@
 import { json, badRequest, forbidden, getCurrentUser, nowIso } from "../_lib/helpers.js";
+import { programarReevaluacion } from "../_lib/asociacion.js";
 import { verificarTokenEdicion } from "../_lib/auth.js";
 
 // POST /api/consulta-editar     (tabla "tipo Excel" de Consultar / Log)
@@ -12,7 +13,7 @@ import { verificarTokenEdicion } from "../_lib/auth.js";
 const ROLES_EDITORES = ["administrador", "supervisor"];
 const MAX_CAMBIOS = 1000;
 
-const NOMBRES_NA = ["SOPORTE TÉCNICO PERO NO APLICA", "CENTRAL TELEFÓNICA", "HERRAMIENTAS VNET", "MERCADEO", "PAGOS"];
+const NOMBRES_NA = ["LÓGICO", "SOPORTE TÉCNICO PERO NO APLICA", "CENTRAL TELEFÓNICA", "HERRAMIENTAS VNET", "MERCADEO", "PAGOS"];
 const CAMPOS_NA = ["olt", "tarjeta", "puerto", "sector", "edificio"];
 
 // tipo: num = solo dígitos · numvac = solo dígitos o vacío · cat = valor del catálogo · catvac = catálogo o vacío · txt = texto libre
@@ -27,7 +28,6 @@ const CAMPOS_TICKET = {
   comentario: { tipo: "txt", max: 300 },
   descripcion: { tipo: "txt", max: 2000 },
   avance_cmr: { tipo: "txt", max: 2000 },
-  fecha_apertura_cda: { tipo: "fecha" },
   fecha_falla: { tipo: "fecha" },
   fecha_apertura_cmr: { tipo: "fecha", noVacio: true },
   fecha_solucion_cda: { tipo: "fecha" },
@@ -78,7 +78,7 @@ function validar(def, valorBruto, catalogos) {
 
 function enLotes(arr, n) { const r = []; for (let i = 0; i < arr.length; i += n) r.push(arr.slice(i, i + n)); return r; }
 
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost({ request, env, waitUntil }) {
   const db = env.DB;
   const body = await request.json().catch(() => ({}));
 
@@ -206,5 +206,6 @@ export async function onRequestPost({ request, env }) {
   }
   if (!stmts.length) return json({ ok: true, celdas: 0, tickets: 0, registros: 0, mensaje: "No había diferencias con lo guardado." });
   await db.batch(stmts);
+  await programarReevaluacion({ env, waitUntil }, [...new Set([...nuevosTicket.keys(), ...[...nuevosRegistro.keys()].map((r) => registros.get(r)?.ticket_id)])]);
   return json({ ok: true, celdas: nCeldas, tickets: nTickets, registros: nRegistros });
 }

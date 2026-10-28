@@ -1,5 +1,6 @@
 import { json } from "../_lib/helpers.js";
 import { columnasBD, TABLAS_REPORTE } from "../_lib/campos-reportes.js";
+import { usuarioDeSesion } from "../_lib/auth.js";
 
 const MS_HORA = 3600000;
 
@@ -34,11 +35,14 @@ function partesFecha(fechaIso) {
 export async function onRequestGet({ request, env }) {
   const url = new URL(request.url);
   const p = (nombre) => url.searchParams.get(nombre) || "";
+  // Sin sesión (o con sesión limitada de primer ingreso) = acceso público a la Pizarra: datos recortados y sin columnas extra.
+  const ses = await usuarioDeSesion(request, env);
+  const publico = !ses || !!ses.cambio;
 
   // Columnas extra pedidas por el Generador de reportes (?extras=tickets.creado_por,ticket_puertos.fecha_cierre_cmr).
   // Solo se aceptan columnas que existen de verdad en la BD (lista blanca leída con PRAGMA); nunca se arma SQL con texto del usuario.
   let extrasSql = "";
-  const pedidas = p("extras").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 40);
+  const pedidas = publico ? [] : p("extras").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 40);
   if (pedidas.length) {
     const permitidas = new Map((await columnasBD(env.DB)).map((c) => [c.db_column_name, c]));
     for (const clave of new Set(pedidas)) {
@@ -90,10 +94,9 @@ export async function onRequestGet({ request, env }) {
 
   const ahora = Date.now();
   let filas = results.map((r) => {
-    // Fin del CMR: su fecha de solución; si el ticket se cerró sin pasar por "solución", la fecha de cierre del registro
-    // (así los informes de tickets cerrados siguen midiendo igual que siempre).
-    const finCmr = r.fecha_solucion_cmr || (r.estado_ticket === "CERRADO" ? r.fecha_cierre_cmr : null) || null;
-    const finCda = r.fecha_solucion_cda || (r.estado_ticket === "CERRADO" ? r.fecha_cierre_cda : null) || null;
+    // Tiempo de afectación real = Fecha de SOLUCIÓN − Fecha de apertura (ya no se usa la fecha de cierre).
+    const finCmr = r.fecha_solucion_cmr || null;
+    const finCda = r.fecha_solucion_cda || null;
     const inicio = r.fecha_apertura_cmr ? new Date(r.fecha_apertura_cmr).getTime() : null;
     const fin = finCmr ? new Date(finCmr).getTime() : ahora;
     const horasAbierta = inicio ? (fin - inicio) / MS_HORA : null;
@@ -158,5 +161,10 @@ export async function onRequestGet({ request, env }) {
   const limite = Number(p("limite"));
   if (Number.isInteger(limite) && limite > 0) filas = filas.slice(0, Math.min(limite, 200));
 
+  if (publico) {
+    // Público: se quitan datos internos (quién lo creó, descripción libre, avance).
+    const QUITAR = ["creado_por", "creado_por_nombre", "descripcion", "avance_cmr"];
+    filas.forEach((f) => QUITAR.forEach((k) => { delete f[k]; }));
+  }
   return json({ filas, fechas });
 }
