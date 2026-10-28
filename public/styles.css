@@ -837,3 +837,12 @@ input:focus, select:focus, textarea:focus {
 #cat_add_row .multi-cat summary { font-size: 14px; }
 input, select, textarea, .multi-cat summary, .multi-cat .multi-lista { font-family: inherit; }
 .multi-cat summary { padding: 10px 14px; box-sizing: border-box; }
+
+/* Clientes Afectados: consulta y descarga (Paso 6) */
+.cca-opciones { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; margin: 10px 0; font-size: 13px; }
+.cca-opciones .chk { display: inline-flex; align-items: center; gap: 5px; }
+.cca-sep { flex-basis: 1px; height: 18px; background: #E5DAEA; }
+.cca-botones { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+#cca_resumen .ml-tiles { margin-top: 10px; }
+#cca_tabla { overflow: auto; max-height: 60vh; max-width: 100%; }
+#cca_tabla th { white-space: nowrap; position: sticky; top: 0; background: #f7f3fa; }

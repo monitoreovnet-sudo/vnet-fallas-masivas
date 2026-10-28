@@ -9,8 +9,8 @@ const ent = (v) => { const m = /^\s*(\d+)\s*$/.exec(String(v ?? "")); return m ?
 export const SQL_INSERT_ONU =
   `INSERT INTO auditoria_onus (auditoria_id, carga_id, base_desactualizada, sn, sn_norm, olt_nombre, tarjeta, puerto, onu_num, name_smartolt,
      contact, status, last_status_change, zona, direccion_smartolt, clasificacion, cuenta, metodo_cruce,
-     cli_nombre, cli_telefono, cli_cedula, cli_sector, cli_estado_contrato, cli_sucursal)
-   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+     cli_nombre, cli_telefono, cli_cedula, cli_sector, cli_estado_contrato, cli_sucursal, cli_tel_casa, cli_tel_oficina, cli_ident_externo)
+   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
 // POST /api/clientes/auditoria/lote   Body: { auditoria_id, onus: [ {sn,name,olt,board,port,onu,zone,address,status,lsc,contact} ] }
 export async function onRequestPost({ request, env }) {
@@ -38,7 +38,7 @@ export async function onRequestPost({ request, env }) {
       t(o.contact, 80), t(o.status, 30), normFechaCambio(o.lsc), t(o.zone, 150), t(o.address, 300), clasificar(o.status),
       c ? c.cuenta : null, metodo,
       c ? c.nombre : null, c ? (c.telefono_casa || c.telefono_oficina || null) : null, c ? c.cedula_norm : null, c ? c.sector : null,
-      c ? c.estado_contrato : null, c ? c.sucursal : null);
+      c ? c.estado_contrato : null, c ? c.sucursal : null, c ? c.telefono_casa || null : null, c ? c.telefono_oficina || null : null, c ? c.cedula || null : null);
   });
   await env.DB.batch(stmts);
   return json({ guardadas: stmts.length });

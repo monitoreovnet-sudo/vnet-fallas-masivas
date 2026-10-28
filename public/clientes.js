@@ -384,3 +384,129 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
   cargarAuditorias();
   cargarAlertas();
 }
+
+
+// ---------------------------------------------------------------
+// CLIENTES AFECTADOS — Paso 6: consulta y descarga (Excel con dos hojas)
+// ---------------------------------------------------------------
+// CCA-PURE-START (sin DOM: se prueba aparte)
+const CCA_ETIQUETA_TIPO = { falla: "Afectado (falla)", powerfail: "Sin electricidad", caida_previa: "Caída previa" };
+// Primero las columnas que necesita el bot y después las del ticket
+const CCA_COLUMNAS = [
+  ["nombre", "Nombre / Compañía"], ["telefono_casa", "Teléfono de casa"], ["telefono_oficina", "Teléfono de oficina"], ["cuenta", "Número de cuenta"],
+  ["sector", "Sector"], ["identificacion_externo", "Identificación externo"], ["estado_contrato", "Estado del contrato"],
+  ["ticket_cmr", "Nº Ticket"], ["oficina", "Oficina"], ["olt", "OLT"], ["tarjeta", "Tarjeta"], ["puerto", "Puerto"],
+  ["fecha_auditoria", "Fecha de la auditoría"], ["clasificacion", "Tipo de afectación"],
+  ["apertura_cda", "Registro CDA"], ["apertura_cmr", "Apertura CMR"], ["solucion_cda", "Solución CDA"], ["solucion_cmr", "Solución CMR"],
+  ["cierre_cda", "Cierre CDA"], ["cierre_cmr", "Cierre CMR"], ["observacion", "Observación"],
+];
+const CCA_CAMPOS_FECHA = new Set(["fecha_auditoria", "apertura_cda", "apertura_cmr", "solucion_cda", "solucion_cmr", "cierre_cda", "cierre_cmr"]);
+const CCA_HOJA_CLIENTES = "Clientes afectados";
+const CCA_TITULO_SECTORES = "Sectores por cantidad de clientes activos";
+const CCA_HOJA_SECTORES = "Sectores por clientes activos";   // Excel limita el nombre de una hoja a 31 caracteres
+function ccaNormSector(s) {
+  const t = String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[.,;:()\-_/]+/g, " ").replace(/\s+/g, " ").trim();
+  return t || "SIN SECTOR";
+}
+function ccaValorCelda(campo, v, fmtFecha) {
+  if (v === null || v === undefined) return "";
+  if (campo === "clasificacion") return CCA_ETIQUETA_TIPO[v] || v;
+  if (CCA_CAMPOS_FECHA.has(campo)) return v ? fmtFecha(v) : "";
+  return v;
+}
+function ccaFilasExcel(filas, fmtFecha) {
+  return filas.map((f) => { const o = {}; CCA_COLUMNAS.forEach(([c, t]) => { o[t] = ccaValorCelda(c, f[c], fmtFecha); }); return o; });
+}
+// Sectores con más clientes activos primero (cada cliente cuenta una vez aunque salga en varias ONUs o tickets)
+function ccaSectores(filas) {
+  const vistos = new Set(), cuenta = new Map();
+  filas.forEach((f) => {
+    if (!f.cuenta || String(f.estado_contrato || "").trim().toLowerCase() !== "activo" || vistos.has(f.cuenta)) return;
+    vistos.add(f.cuenta);
+    const k = ccaNormSector(f.sector);
+    cuenta.set(k, (cuenta.get(k) || 0) + 1);
+  });
+  const total = vistos.size;
+  return [...cuenta.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "es"))
+    .map(([sector, n]) => ({ sector, clientes: n, porcentaje: total ? Math.round((n / total) * 10000) / 100 : 0 }));
+}
+function ccaHojaSectores(filas) {
+  const sec = ccaSectores(filas);
+  return [[CCA_TITULO_SECTORES], [], ["Sector", "Clientes activos", "% del total"], ...sec.map((s) => [s.sector, s.clientes, s.porcentaje]),
+    [], ["Total de clientes activos", sec.reduce((a, s) => a + s.clientes, 0), sec.length ? 100 : 0]];
+}
+// CCA-PURE-END
+
+(function () {
+  const el = (id) => document.getElementById(id);
+  if (!el("cca_buscar")) return;
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fmtF = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || ""); return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : (iso || ""); };
+  const num = (n) => Number(n || 0).toLocaleString("es-VE");
+  let ultimo = null, ultimaQuery = null;   // lo que se ve en pantalla y con qué filtros se buscó
+
+  function queryActual() {
+    const p = new URLSearchParams();
+    const v = (id) => el(id).value.trim();
+    if (v("cca_ticket")) p.set("ticket", v("cca_ticket"));
+    if (v("cca_oficina")) p.set("oficina_id", v("cca_oficina"));
+    if (v("cca_olt")) p.set("olt", v("cca_olt").toUpperCase());
+    if (v("cca_desde")) p.set("desde", v("cca_desde"));
+    if (v("cca_hasta")) p.set("hasta", v("cca_hasta"));
+    p.set("tipos", ["falla", "powerfail", "caida_previa"].filter((t) => el("cca_t_" + t).checked).join(","));
+    if (el("cca_activos").checked) p.set("activos", "1");
+    if (el("cca_sin_cruzar").checked) p.set("sin_cruzar", "1");
+    return p.toString();
+  }
+  function cargarOpciones() {
+    const L = (typeof LOOKUPS !== "undefined" && LOOKUPS) || {};
+    const sel = el("cca_oficina"), actual = sel.value;
+    sel.innerHTML = '<option value="">Todas</option>' + (L.oficinas || []).map((o) => `<option value="${esc(o.id)}">${esc(o.nombre)}</option>`).join("");
+    sel.value = actual;
+    el("cca_olts").innerHTML = (L.olts || []).map((o) => `<option value="${esc(o.codigo)}"></option>`).join("");
+  }
+  function pintar(d) {
+    const r = d.resumen, filas = d.filas;
+    const tile = (n, t) => `<div class="ml-tile"><b>${num(n)}</b><span>${t}</span></div>`;
+    el("cca_resumen").innerHTML = `<div class="ml-tiles">${tile(r.clientes, "Clientes")}${tile(r.onus, "ONUs en la lista")}${tile(r.tickets, "Tickets")}` +
+      `${tile(r.sin_cruzar_excluidas, "ONUs sin cruzar no incluidas")}${tile(r.no_activos_excluidos, "Clientes no activos no incluidos")}</div>` +
+      (r.truncado ? '<div class="ml-badge b-aviso">La lista es muy grande: se muestran solo los primeros 60.000 registros. Acota los filtros.</div>' : "");
+    if (!filas.length) { el("cca_tabla").innerHTML = '<p class="hint">No hay clientes con esos filtros. Prueba quitando algún filtro o revisando que el ticket tenga una auditoría asociada.</p>'; return; }
+    const VISTA = CCA_COLUMNAS.filter(([c]) => ["nombre", "telefono_casa", "telefono_oficina", "cuenta", "sector", "estado_contrato", "ticket_cmr", "oficina", "olt", "tarjeta", "puerto", "clasificacion", "observacion"].includes(c));
+    const MAX = 300;
+    el("cca_tabla").innerHTML = `<p class="hint">Vista previa de los primeros ${num(Math.min(MAX, filas.length))} de ${num(filas.length)} registros. El Excel trae todos y más columnas.</p>` +
+      `<table class="rows-table"><thead><tr>${VISTA.map(([, t]) => `<th>${esc(t)}</th>`).join("")}</tr></thead><tbody>${
+        filas.slice(0, MAX).map((f) => `<tr>${VISTA.map(([c]) => `<td>${esc(ccaValorCelda(c, f[c], fmtF))}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  }
+  async function buscar() {
+    const msg = el("cca_msg");
+    if (!["falla", "powerfail", "caida_previa"].some((t) => el("cca_t_" + t).checked)) { msg.className = "msg error"; msg.textContent = "Marca al menos un tipo de afectación."; return; }
+    msg.className = "msg"; msg.textContent = "Buscando...";
+    const q = queryActual();
+    try {
+      const d = await apiGet("/clientes/afectados?" + q);
+      ultimo = d; ultimaQuery = q;
+      msg.textContent = ""; pintar(d);
+      el("cca_xlsx").disabled = el("cca_csv").disabled = !d.filas.length;
+    } catch (err) { ultimo = null; msg.className = "msg error"; msg.textContent = err.message; el("cca_xlsx").disabled = el("cca_csv").disabled = true; }
+  }
+  function sinCambios() {
+    if (!ultimo) return false;
+    if (ultimaQuery !== queryActual()) { window.alert("Cambiaste los filtros y todavía no pulsaste Buscar. Pulsa Buscar para que la pantalla y la descarga coincidan."); return false; }
+    return true;
+  }
+  const hoy = () => new Date().toISOString().slice(0, 10);
+  el("cca_xlsx").addEventListener("click", () => {
+    if (!sinCambios()) return;
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ccaFilasExcel(ultimo.filas, fmtF)), CCA_HOJA_CLIENTES);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ccaHojaSectores(ultimo.filas)), CCA_HOJA_SECTORES);
+    XLSX.writeFile(wb, `clientes_afectados_${hoy()}.xlsx`);
+  });
+  el("cca_csv").addEventListener("click", () => { if (sinCambios()) exportarCSVGenerico(ccaFilasExcel(ultimo.filas, fmtF), `clientes_afectados_${hoy()}.csv`); });
+  el("cca_buscar").addEventListener("click", buscar);
+  ["cca_ticket", "cca_olt"].forEach((id) => el(id).addEventListener("keydown", (e) => { if (e.key === "Enter") buscar(); }));
+  const previo = window.cliCargarAuditorias;
+  window.cliCargarAuditorias = () => { if (previo) previo(); cargarOpciones(); };
+  cargarOpciones();
+})();

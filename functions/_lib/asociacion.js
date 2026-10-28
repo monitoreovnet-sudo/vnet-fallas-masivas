@@ -25,7 +25,7 @@ export const canon = (olt, eq) => {
   const [pre, ...resto] = s.split("-");
   return [eq[pre] || pre, ...resto].join("-");
 };
-const variantes = (canonOlt, eq) => {
+export const variantes = (canonOlt, eq) => {
   const [pre, ...resto] = canonOlt.split("-");
   const pres = [pre, ...Object.entries(eq).filter(([, c]) => c === pre).map(([a]) => a)];
   return pres.map((p) => [p, ...resto].join("-"));

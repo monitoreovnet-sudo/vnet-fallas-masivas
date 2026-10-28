@@ -25,9 +25,10 @@ export async function onRequestPost({ request, env }) {
     const desact = c ? (mapa.get(c.carga_id) ? 1 : 0) : (alguna ? 1 : 0);
     return env.DB.prepare(
       `UPDATE auditoria_onus SET carga_id = ?, base_desactualizada = ?, cuenta = ?, metodo_cruce = ?, cli_nombre = ?, cli_telefono = ?,
-         cli_cedula = ?, cli_sector = ?, cli_estado_contrato = ?, cli_sucursal = ? WHERE id = ?`)
+         cli_cedula = ?, cli_sector = ?, cli_estado_contrato = ?, cli_sucursal = ?, cli_tel_casa = ?, cli_tel_oficina = ?, cli_ident_externo = ? WHERE id = ?`)
       .bind(c ? c.carga_id : null, desact, c ? c.cuenta : null, metodo, c ? c.nombre : null, c ? (c.telefono_casa || c.telefono_oficina || null) : null,
-        c ? c.cedula_norm : null, c ? c.sector : null, c ? c.estado_contrato : null, c ? c.sucursal : null, o.id);
+        c ? c.cedula_norm : null, c ? c.sector : null, c ? c.estado_contrato : null, c ? c.sucursal : null,
+        c ? c.telefono_casa || null : null, c ? c.telefono_oficina || null : null, c ? c.cedula || null : null, o.id);
   });
   await env.DB.batch(stmts);
   return json({ siguiente: onus[onus.length - 1].id, procesadas: onus.length });

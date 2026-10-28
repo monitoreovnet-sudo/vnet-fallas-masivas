@@ -43,7 +43,7 @@ export function claves(onu) {
 }
 
 const chunks = (arr, n) => { const r = []; for (let i = 0; i < arr.length; i += n) r.push(arr.slice(i, i + n)); return r; };
-const COLS = `c.carga_id, c.cuenta, c.sucursal, c.nombre, c.telefono_casa, c.telefono_oficina, c.cedula_norm, c.sector,
+const COLS = `c.carga_id, c.cuenta, c.sucursal, c.nombre, c.telefono_casa, c.telefono_oficina, c.cedula, c.cedula_norm, c.sector,
               c.estado_contrato, c.serial_norm, c.nombre_norm, g.fecha_base`;
 const FROM = `FROM clientes_base c JOIN cargas_base g ON g.id = c.carga_id AND g.estado = 'vigente'`;
 

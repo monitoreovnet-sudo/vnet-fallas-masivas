@@ -888,6 +888,33 @@
     <h3>Auditorías cargadas</h3>
     <div id="cli_auditorias"></div>
 
+    <h3>3. Consulta y descarga de clientes afectados</h3>
+    <p class="hint">Clientes de las auditorías asociadas a tickets (se usa la auditoría más reciente de cada puerto). El Excel trae los datos para el bot y los del ticket, más una hoja con los sectores ordenados por cantidad de clientes activos.</p>
+    <div id="cca_filtros" class="filtros-grid">
+      <div class="field"><label>Ticket CMR-COR</label><input id="cca_ticket" inputmode="numeric" placeholder="Número" /></div>
+      <div class="field"><label>Oficina</label><select id="cca_oficina"></select></div>
+      <div class="field"><label>OLT</label><input id="cca_olt" list="cca_olts" autocomplete="off" placeholder="Código de OLT" /><datalist id="cca_olts"></datalist></div>
+      <div class="field"><label>Auditoría desde</label><input id="cca_desde" type="date" /></div>
+      <div class="field"><label>Auditoría hasta</label><input id="cca_hasta" type="date" /></div>
+    </div>
+    <div class="cca-opciones">
+      <b>Tipo de afectación:</b>
+      <label class="chk"><input type="checkbox" id="cca_t_falla" checked /> Afectados (falla)</label>
+      <label class="chk"><input type="checkbox" id="cca_t_powerfail" checked /> Sin electricidad</label>
+      <label class="chk"><input type="checkbox" id="cca_t_caida_previa" /> Caída previa</label>
+      <span class="cca-sep"></span>
+      <label class="chk"><input type="checkbox" id="cca_activos" checked /> Solo contratos activos</label>
+      <label class="chk"><input type="checkbox" id="cca_sin_cruzar" /> Incluir ONUs sin cruzar</label>
+    </div>
+    <div class="cca-botones">
+      <button id="cca_buscar" class="btn-primary" type="button">Buscar</button>
+      <button id="cca_xlsx" class="btn-secondary" type="button" disabled>Descargar Excel</button>
+      <button id="cca_csv" class="btn-secondary" type="button" disabled>Descargar CSV</button>
+    </div>
+    <div id="cca_msg" class="msg"></div>
+    <div id="cca_resumen"></div>
+    <div id="cca_tabla"></div>
+
   </section>
 
   </main>
