@@ -903,3 +903,11 @@ input, select, textarea, .multi-cat summary, .multi-cat .multi-lista { font-fami
 .adm-subtabs { display: flex; gap: 4px; border-bottom: 2px solid #E5DAEA; margin: 4px 0 14px; flex-wrap: wrap; }
 .adm-subtab { background: #f7f3fa; border: 1px solid #E5DAEA; border-bottom: 0; border-radius: 8px 8px 0 0; padding: 9px 18px; font: inherit; font-size: 14px; cursor: pointer; color: var(--db-primary, #4A1259); }
 .adm-subtab.activo { background: var(--db-primary, #4A1259); color: #fff; font-weight: 700; }
+
+/* Editar Ticket: revisión del análisis de SmartOLT */
+.modal-box.mcs-modal { max-width: 760px; }
+.mcs-modal h4 { margin: 14px 0 6px; color: var(--db-primary, #4A1259); }
+.mcs-modal .rows-table td, .mcs-modal .rows-table th { padding: 4px 8px; font-size: 13px; }
+.mcs-modal .mcs-acciones { display: flex; gap: 8px; margin: 4px 0 6px; }
+.mcs-modal .mcs-acciones button { padding: 3px 10px; font-size: 12px; }
+.mcs-modal .mcs-dif { color: #b45309; font-weight: 700; }

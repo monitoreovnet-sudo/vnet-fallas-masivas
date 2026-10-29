@@ -641,7 +641,77 @@ function smoAplicarAEstado(oficinasState, grupos, ctx) {
   }
   return { aplicadas, sinOficina, fuera, onus };
 }
+// Editar Ticket: compara el análisis con los registros que el ticket ya tiene.
+//  · tarjeta/puerto que no está registrado -> "nuevos" (se agregan)
+//  · registrado con otro número de clientes afectados -> "cambios" (el usuario decide puerto por puerto)
+//  · registrado con el mismo número -> "iguales" · cubierto por un registro "Todas/Todos" -> "cubiertos" (no se agrega)
+const smoNum = (v) => { const m = /\d+/.exec(String(v ?? "")); return m ? parseInt(m[0], 10) : null; };
+function smoCompararConTicket(grupos, registros, ctx) {
+  const { oficinas, oltOficina, maxTarjeta, maxPuerto } = ctx;
+  const r = { nuevos: [], cambios: [], iguales: 0, cubiertos: [], sinOficina: [], fuera: [], onus: [] };
+  for (const g of grupos) {
+    const delOlt = registros.filter((x) => String(x.olt || "").trim().toUpperCase() === g.olt.toUpperCase());
+    const ref = delOlt[0] || null;
+    let ofi = ref ? { id: ref.oficina_id, nombre: ref.oficina_nombre } : smoOficinaDeOlt(g.olt, oficinas, oltOficina);
+    for (const p of g.puertos) {
+      if (p.afectados <= 0) continue;
+      if (p.board < 1 || p.board > maxTarjeta || p.port < 1 || p.port > maxPuerto) { r.fuera.push(`${g.olt} tarjeta ${p.board} puerto ${p.port}`); continue; }
+      r.onus.push(...p.onus);
+      const exacto = delOlt.find((x) => smoNum(x.tarjeta) === p.board && smoNum(x.puerto) === p.port && !/^todos?$/i.test(String(x.puerto)));
+      if (exacto) {
+        if (Number(exacto.nro_clientes_afectados || 0) === p.afectados) r.iguales++;
+        else r.cambios.push({ id: exacto.id, olt: g.olt, tarjeta: `Tarjeta ${p.board}`, puerto: `Puerto ${p.port}`, registrado: Number(exacto.nro_clientes_afectados || 0), smartolt: p.afectados });
+        continue;
+      }
+      const cubre = delOlt.find((x) => /^todas?$/i.test(String(x.tarjeta || "").trim()) || (smoNum(x.tarjeta) === p.board && /^todos?$/i.test(String(x.puerto || "").trim())));
+      if (cubre) { r.cubiertos.push(`${g.olt} tarjeta ${p.board} puerto ${p.port}`); continue; }
+      if (!ofi || !ofi.id) { r.sinOficina.push(g.olt); continue; }
+      r.nuevos.push({ oficina_id: ofi.id, oficina_nombre: ofi.nombre || "", olt: g.olt, tarjeta: `Tarjeta ${p.board}`, puerto: `Puerto ${p.port}`,
+        sector: (ref && ref.sector) || "DESCONOCIDO", edificio: (ref && ref.edificio && ref.edificio !== "DESCONOCIDO") ? ref.edificio : smoEdificioDeOlt(g.direcciones),
+        ubicacion: p.ubicacion || "", nro_clientes_afectados: p.afectados });
+    }
+  }
+  r.sinOficina = [...new Set(r.sinOficina)];
+  return r;
+}
 // SMARTOLT-PURE-END
+// Ventana flotante: el usuario marca qué estados distintos de LOS forman parte de la falla masiva. Devuelve Set (o null si cancela).
+function smoPreguntarEstados(analisis, estadosOtros) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("modal_smo"), lista = document.getElementById("smo_lista");
+    lista.innerHTML = estadosOtros.map((e) => {
+      const ejemplos = {};
+      analisis.onus.filter((o) => smoEstado(o.status) === e).forEach((o) => { const k = `${o.olt} · Tarjeta ${parseInt(o.board, 10)} · Puerto ${parseInt(o.port, 10)}`; ejemplos[k] = (ejemplos[k] || 0) + 1; });
+      const det = Object.entries(ejemplos).map(([k, n]) => `${escHtml(k)}: ${n}`).join("<br>");
+      return `<label class="smo-estado"><input type="checkbox" data-e="${escHtml(e)}" /> <span><b>${escHtml(e)}</b> — ${analisis.estados[e]} ONU(s)<small>${det}</small></span></label>`;
+    }).join("");
+    modal.classList.remove("hidden");
+    const cerrar = (v) => { modal.classList.add("hidden"); document.getElementById("smo_ok").onclick = document.getElementById("smo_cancel").onclick = null; resolve(v); };
+    document.getElementById("smo_ok").onclick = () => cerrar(new Set([...lista.querySelectorAll("input:checked")].map((c) => c.dataset.e)));
+    document.getElementById("smo_cancel").onclick = () => cerrar(null);
+  });
+}
+// Lee los CSV elegidos y devuelve { analisis, incluidos, malos } (null si el usuario canceló la ventana de estados).
+async function smoLeerYPreguntar(files) {
+  if (typeof cliParsearAuditoria !== "function") throw new Error("No se cargó el lector de SmartOLT; recargue la página (Ctrl+F5).");
+  const archivos = [], malos = [];
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    try {
+      const a = cliParsearAuditoria(cliDecodificar(new Uint8Array(await f.arrayBuffer())));
+      const nm = cliParsearNombreSmartolt(f.name);
+      archivos.push({ nombre: f.name, fecha: nm ? nm.local : "", orden: i, onus: a.onus });
+      if (a.malformadas.length) malos.push(`${f.name}: ${a.malformadas.length} línea(s) ilegible(s) omitidas`);
+    } catch (e) { malos.push(`${f.name}: ${e.message}`); }
+  }
+  if (!archivos.length) throw new Error(malos.join(" · "));
+  const analisis = smoAnalizar(archivos);
+  if (!analisis.onus.length) throw new Error("Los archivos no traen ONUs.");
+  const otros = Object.keys(analisis.estados).filter((e) => !smoEsLos(e)).sort();
+  let incluidos = new Set();
+  if (otros.length) { incluidos = await smoPreguntarEstados(analisis, otros); if (!incluidos) return null; }
+  return { analisis, incluidos, malos };
+}
 let SMO_ONUS = [];   // ONUs del último análisis de SmartOLT: se guardan con el ticket al crearlo
 
 (function () {
@@ -651,45 +721,14 @@ let SMO_ONUS = [];   // ONUs del último análisis de SmartOLT: se guardan con e
   const nuevaOlt = () => ({ texto: "", sector: "DESCONOCIDO", edificio: "DESCONOCIDO", no_reportaron: 0, tarjetas: {}, todasTarjetas: false, afectados_olt: 0, minimizado: false });
   const msg = (t, cls) => { el("smo_msg").className = "msg" + (cls ? " " + cls : ""); el("smo_msg").innerHTML = t; };
 
-  // Ventana flotante: el usuario marca qué estados distintos de LOS forman parte de la falla masiva. Devuelve Set (o null si cancela).
-  function preguntarEstados(analisis, estadosOtros) {
-    return new Promise((resolve) => {
-      const modal = el("modal_smo");
-      el("smo_lista").innerHTML = estadosOtros.map((e, i) => {
-        const ejemplos = {};
-        analisis.onus.filter((o) => smoEstado(o.status) === e).forEach((o) => { const k = `${o.olt} · Tarjeta ${parseInt(o.board, 10)} · Puerto ${parseInt(o.port, 10)}`; ejemplos[k] = (ejemplos[k] || 0) + 1; });
-        const det = Object.entries(ejemplos).map(([k, n]) => `${escHtml(k)}: ${n}`).join("<br>");
-        return `<label class="smo-estado"><input type="checkbox" data-e="${escHtml(e)}" /> <span><b>${escHtml(e)}</b> — ${analisis.estados[e]} ONU(s)<small>${det}</small></span></label>`;
-      }).join("");
-      modal.classList.remove("hidden");
-      const cerrar = (v) => { modal.classList.add("hidden"); el("smo_ok").onclick = el("smo_cancel").onclick = null; resolve(v); };
-      el("smo_ok").onclick = () => cerrar(new Set([...el("smo_lista").querySelectorAll("input:checked")].map((c) => c.dataset.e)));
-      el("smo_cancel").onclick = () => cerrar(null);
-    });
-  }
-
   btn.addEventListener("click", async () => {
     const files = [...el("smo_archivos").files];
     if (!files.length) { msg("Seleccione al menos un archivo CSV de SmartOLT.", "error"); return; }
-    if (typeof cliParsearAuditoria !== "function") { msg("No se cargó el lector de SmartOLT; recargue la página (Ctrl+F5).", "error"); return; }
     btn.disabled = true; msg("Analizando...");
     try {
-      const archivos = [], malos = [];
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        try {
-          const a = cliParsearAuditoria(cliDecodificar(new Uint8Array(await f.arrayBuffer())));
-          const nm = cliParsearNombreSmartolt(f.name);
-          archivos.push({ nombre: f.name, fecha: nm ? nm.local : "", orden: i, onus: a.onus });
-          if (a.malformadas.length) malos.push(`${f.name}: ${a.malformadas.length} línea(s) ilegible(s) omitidas`);
-        } catch (e) { malos.push(`${f.name}: ${e.message}`); }
-      }
-      if (!archivos.length) { msg(escHtml(malos.join(" · ")), "error"); return; }
-      const analisis = smoAnalizar(archivos);
-      if (!analisis.onus.length) { msg("Los archivos no traen ONUs.", "error"); return; }
-      const otros = Object.keys(analisis.estados).filter((e) => !smoEsLos(e)).sort();
-      let incluidos = new Set();
-      if (otros.length) { incluidos = await preguntarEstados(analisis, otros); if (!incluidos) { msg("Análisis cancelado: no se modificó nada."); return; } }
+      const lectura = await smoLeerYPreguntar(files);
+      if (!lectura) { msg("Análisis cancelado: no se modificó nada."); return; }
+      const { analisis, incluidos, malos } = lectura;
       const grupos = smoAgrupar(analisis, incluidos);
 
       // catálogo de OLTs de las oficinas que todavía no están en el ticket
@@ -1257,6 +1296,7 @@ function mcLlenarEstados(select, textoVacio, actual) {
 // Los clientes siguen la lógica de los tableros (1.er registro del ticket).
 function mcRenderCards() {
   const c = document.getElementById("mc_cards");
+  mcMostrarSmartolt();
   if (!mcTicket || !mcAccionActual().campo) { c.classList.add("hidden"); return; }
   const p0 = mcPuertos[0] || {};
   const oficinas = [...new Set(mcPuertos.map((p) => p.oficina_nombre).filter(Boolean))];
@@ -1304,6 +1344,8 @@ function mcLimpiarPantalla() {
   mcTicket = null; mcPuertos = [];
   mcOcultarEscenarios();
   document.getElementById("mc_cards").classList.add("hidden");
+  document.getElementById("mc_smartolt").classList.add("hidden");
+  document.getElementById("mcs_msg").textContent = ""; document.getElementById("mcs_archivos").value = "";
   document.getElementById("mc_alcance").classList.add("hidden");
   document.getElementById("mc_msg").textContent = "";
   document.getElementById("mc_msg_busqueda").textContent = "";
@@ -1363,6 +1405,66 @@ function mcElegirAlcance(alcance) {
   if (!mcTicket) return;
   document.getElementById("mc_msg").textContent = "";
   mcAlcance = alcance; mcMarcarAlcance(); mcRenderSegunAccion();
+}
+// --- SmartOLT en Cambio de campo: agrega puertos faltantes y ofrece actualizar los clientes afectados puerto por puerto ---
+function mcMostrarSmartolt() {
+  const caja = document.getElementById("mc_smartolt");
+  const ok = !!mcTicket && mcAccionActual().campo && !["RESUELTO", "CERRADO"].includes(mcTicket.estado_ticket)
+    && mcPuertos.length > 0 && mcPuertos.every((p) => p.olt && p.olt !== "N/A") && !mcEsEnlace(mcPuertos);
+  caja.classList.toggle("hidden", !ok);
+}
+document.getElementById("mcs_btn").addEventListener("click", async () => {
+  const msg = document.getElementById("mcs_msg"), btn = document.getElementById("mcs_btn");
+  const files = [...document.getElementById("mcs_archivos").files];
+  if (!mcTicket) return;
+  if (!files.length) { showMsg(msg, "Seleccione al menos un archivo CSV de SmartOLT.", false); return; }
+  btn.disabled = true; showMsg(msg, "Analizando...", true);
+  try {
+    const lectura = await smoLeerYPreguntar(files);
+    if (!lectura) { showMsg(msg, "Análisis cancelado: no se modificó nada.", true); return; }
+    const { analisis, incluidos, malos } = lectura;
+    const grupos = smoAgrupar(analisis, incluidos);
+    const cmp = smoCompararConTicket(grupos, mcPuertos, { oficinas: LOOKUPS.oficinas, oltOficina: LOOKUPS.olt_oficina, maxTarjeta: NUM_TARJETAS, maxPuerto: NUM_PUERTOS });
+    msg.textContent = "";
+    const decision = await mcsRevisar(cmp, analisis);
+    if (!decision) { showMsg(msg, "Cancelado: no se modificó nada.", true); return; }
+    const res = await apiSend(`/tickets/${encodeURIComponent(mcTicket.ticket_cmr)}/smartolt`, "POST", {
+      agregar: cmp.nuevos, actualizar: decision.actualizar, onus: cmp.onus, descripcion_bloque: smoTextoDescripcion(analisis, grupos, incluidos),
+    });
+    await mcRefrescarTicket();
+    document.getElementById("mcs_archivos").value = "";
+    showMsg(msg, `Listo: ${res.agregados} puerto(s) agregado(s), ${res.actualizados} con clientes afectados actualizados, ${res.onus_guardadas > 0 ? res.onus_guardadas : 0} ONU(s) registradas. El detalle quedó en la descripción.` +
+      (malos.length ? " " + malos.join(" · ") : ""), true);
+  } catch (err) { showMsg(msg, err.message, false); }
+  finally { btn.disabled = false; }
+});
+// Ventana de revisión: muestra lo que se agregará y deja marcar, puerto por puerto, qué números de clientes afectados se actualizan.
+function mcsRevisar(cmp, analisis) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("modal_mcs");
+    const lista = (arr) => arr.length ? `<p class="hint">${arr.map(escHtml).join("; ")}</p>` : "";
+    document.getElementById("mcs_resumen").innerHTML =
+      `<p class="hint">${analisis.onus.length} ONU(s) analizadas · ${cmp.nuevos.length} puerto(s) nuevo(s) · ${cmp.cambios.length} con otro número de clientes afectados · ${cmp.iguales} igual(es) a lo registrado (no se tocan).</p>` +
+      (cmp.cubiertos.length ? `<p class="hint">Ya cubiertos por un registro "Todas/Todos" (no se agregan): ${cmp.cubiertos.map(escHtml).join("; ")}.</p>` : "") +
+      (cmp.sinOficina.length ? `<div class="msg error">No encontré la oficina de: ${cmp.sinOficina.map(escHtml).join(", ")}. Sus puertos no se agregan.</div>` : "") +
+      (cmp.fuera.length ? `<div class="msg error">Fuera del rango del formulario (tarjetas 1-${NUM_TARJETAS}, puertos 1-${NUM_PUERTOS}): ${cmp.fuera.map(escHtml).join("; ")}.</div>` : "");
+    document.getElementById("mcs_nuevos").innerHTML = cmp.nuevos.length
+      ? `<h4>Puertos nuevos que se agregarán (${cmp.nuevos.length})</h4><table class="rows-table"><thead><tr><th>OLT</th><th>Tarjeta</th><th>Puerto</th><th>Clientes afectados</th><th>Ubicación</th></tr></thead><tbody>${
+          cmp.nuevos.map((n) => `<tr><td>${escHtml(n.olt)}</td><td>${escHtml(n.tarjeta)}</td><td>${escHtml(n.puerto)}</td><td>${n.nro_clientes_afectados}</td><td>${escHtml(n.ubicacion || "-")}</td></tr>`).join("")}</tbody></table>`
+      : `<h4>Puertos nuevos</h4><p class="hint">Ningún puerto nuevo: todos los de SmartOLT ya estaban registrados.</p>`;
+    document.getElementById("mcs_cambios").innerHTML = cmp.cambios.length
+      ? `<h4>Clientes afectados distintos (${cmp.cambios.length})</h4><p class="hint">Marca los puertos cuyo número quieres actualizar con el de SmartOLT. Los que no marques quedan como están.</p>` +
+        `<div class="mcs-acciones"><button type="button" class="btn-secondary" id="mcs_todos">Marcar todos</button><button type="button" class="btn-secondary" id="mcs_ninguno">Desmarcar todos</button></div>` +
+        `<table class="rows-table"><thead><tr><th>Actualizar</th><th>OLT</th><th>Tarjeta</th><th>Puerto</th><th>Registrado</th><th>SmartOLT</th></tr></thead><tbody>${
+          cmp.cambios.map((c, i) => `<tr><td><input type="checkbox" class="mcs-chk" data-i="${i}" /></td><td>${escHtml(c.olt)}</td><td>${escHtml(c.tarjeta)}</td><td>${escHtml(c.puerto)}</td><td>${c.registrado}</td><td class="mcs-dif">${c.smartolt}</td></tr>`).join("")}</tbody></table>`
+      : `<h4>Clientes afectados</h4><p class="hint">No hay diferencias con los números ya registrados.</p>`;
+    const marcar = (v) => modal.querySelectorAll(".mcs-chk").forEach((c) => { c.checked = v; });
+    if (cmp.cambios.length) { modal.querySelector("#mcs_todos").onclick = () => marcar(true); modal.querySelector("#mcs_ninguno").onclick = () => marcar(false); }
+    modal.classList.remove("hidden");
+    const cerrar = (v) => { modal.classList.add("hidden"); document.getElementById("mcs_ok").onclick = document.getElementById("mcs_cancel").onclick = null; resolve(v); };
+    document.getElementById("mcs_ok").onclick = () => cerrar({ actualizar: [...modal.querySelectorAll(".mcs-chk:checked")].map((c) => ({ id: cmp.cambios[Number(c.dataset.i)].id, nro_clientes_afectados: cmp.cambios[Number(c.dataset.i)].smartolt })) });
+    document.getElementById("mcs_cancel").onclick = () => cerrar(null);
+  });
 }
 document.getElementById("mc_btn_masivo").addEventListener("click", () => mcElegirAlcance("MASIVO"));
 document.getElementById("mc_btn_puertos").addEventListener("click", () => mcElegirAlcance("PUNTUAL"));

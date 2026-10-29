@@ -241,6 +241,17 @@
       <div class="mc-card"><span class="mc-card-titulo">Cantidad de clientes que reportaron</span><span class="mc-card-valor" id="mc_card_reportaron">-</span></div>
     </div>
 
+    <!-- Archivos de SmartOLT (solo en "Cambio de Campo" de tickets por Oficina que no estén resueltos/cerrados) -->
+    <div id="mc_smartolt" class="smo-box hidden">
+      <label for="mcs_archivos">Cargar archivos de SmartOLT (opcional)</label>
+      <p class="hint">Sube uno o varios CSV de "ONUs list". Los puertos y tarjetas que falten se agregan al ticket; los que ya están se dejan como están y, si SmartOLT trae otro número de clientes afectados, podrás decidir puerto por puerto si lo actualizas.</p>
+      <div class="search-row">
+        <input type="file" id="mcs_archivos" accept=".csv,.txt" multiple />
+        <button id="mcs_btn" class="btn-secondary" type="button">Analizar archivos</button>
+      </div>
+      <div id="mcs_msg" class="msg"></div>
+    </div>
+
     <!-- Escenario 1: <> Cerrado + Masivo -->
     <div id="mc_escenario_1" class="hidden">
       <hr />
@@ -972,6 +983,19 @@
       <div class="modal-botones">
         <button id="smo_cancel" class="btn-secondary" type="button">Cancelar</button>
         <button id="smo_ok" class="btn-primary" type="button">Continuar</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="modal_mcs" class="modal-overlay hidden">
+    <div class="modal-box smo-modal mcs-modal">
+      <h3>Resultado del análisis de SmartOLT</h3>
+      <div id="mcs_resumen"></div>
+      <div id="mcs_nuevos"></div>
+      <div id="mcs_cambios"></div>
+      <div class="modal-botones">
+        <button id="mcs_cancel" class="btn-secondary" type="button">Cancelar</button>
+        <button id="mcs_ok" class="btn-primary" type="button">Guardar en el ticket</button>
       </div>
     </div>
   </div>
