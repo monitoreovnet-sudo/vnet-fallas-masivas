@@ -159,6 +159,16 @@
       <h3>Oficinas afectadas</h3>
       <p class="hint">Agrega cada oficina donde ocurrió la falla. Dentro de cada oficina podrás registrar sus OLTs, y dentro de cada OLT sus Tarjetas y Puertos.</p>
 
+      <div class="smo-box">
+        <label for="smo_archivos">Cargar archivos de SmartOLT (opcional)</label>
+        <p class="hint">Suba uno o varios CSV de "ONUs list". Se llenan solos las oficinas, OLTs, tarjetas, puertos, edificio y clientes afectados por puerto, y el detalle queda en la descripción. Si una ONU está en dos archivos se cuenta una sola vez.</p>
+        <div class="search-row">
+          <input type="file" id="smo_archivos" accept=".csv,.txt" multiple />
+          <button id="smo_btn" class="btn-secondary" type="button">Analizar y llenar</button>
+        </div>
+        <div id="smo_msg" class="msg"></div>
+      </div>
+
       <div class="search-row">
         <select id="add_oficina_select"></select>
         <button id="btn_add_oficina" class="btn-secondary" type="button">+ Agregar Oficina</button>
@@ -837,8 +847,12 @@
 
     <h3>1. Base de clientes (Grafana: Detalle de Cuentas)</h3>
     <p class="hint">
-      Sube el CSV "Descargar para Excel" de Grafana, <strong>una sucursal por vez</strong>. Cada carga <strong>reemplaza</strong> la sucursal completa
-      (la base anterior solo se borra cuando la nueva llegó completa).
+      Sube el CSV "Descargar para Excel" de Grafana con <strong>todas las sucursales juntas</strong>. Reglas del archivo: solo clientes con Estado del contrato
+      <strong>"Activo"</strong> y <strong>ninguna ONU (Serial) repetida</strong>; si no se cumple, no se carga hasta que lo corrijas en Grafana.
+      La base es <strong>acumulativa</strong>: cada carga <strong>agrega los clientes nuevos</strong> (lo que ya estaba se salta, nada se borra; si una ONU pasó a otro cliente, se actualiza).
+      Para el mes a mes basta subir solo los clientes nuevos. La primera carga (unas 220.000 cuentas) se reparte en varios días por el límite del plan gratuito
+      (máximo 80.000 nuevos por día): al llegar al tope la app avisa y al día siguiente subes el MISMO archivo y continúa.
+      La fecha de la base sale del nombre del archivo (viene en UTC y se muestra en hora de Caracas).
     </p>
     <div class="field">
       <label>Archivo (.csv)</label>
@@ -858,11 +872,11 @@
       </div>
       <div id="cli_prev_malas"></div>
       <div class="field">
-        <label>Sucursal de esta carga</label>
-        <input id="cli_sucursal" />
+        <label>Sucursales del archivo (cuentas)</label>
+        <input id="cli_sucursal" readonly />
         <small id="cli_aviso_sucursal"></small>
       </div>
-      <button id="cli_btn_cargar" class="btn-primary" type="button">2. Confirmar y cargar (reemplaza la sucursal)</button>
+      <button id="cli_btn_cargar" class="btn-primary" type="button">2. Confirmar y cargar (reemplaza cada sucursal del archivo)</button>
     </div>
     <div id="cli_msg_carga" class="msg"></div>
     <div id="cli_resultado"></div>
@@ -938,6 +952,18 @@
   </div>
 
   <!-- Ventanas de mantenimiento (lista) -->
+  <div id="modal_smo" class="modal-overlay hidden">
+    <div class="modal-box smo-modal">
+      <h3>Se detectaron ONUs que no están en LOS</h3>
+      <p class="hint">Solo usted sabe si estas ONUs forman parte de la falla masiva. Marque los estados que desea <strong>sumar</strong> a los clientes afectados; los que no marque se ignoran para el conteo (igual quedan anotados en la descripción).</p>
+      <div id="smo_lista"></div>
+      <div class="modal-botones">
+        <button id="smo_cancel" class="btn-secondary" type="button">Cancelar</button>
+        <button id="smo_ok" class="btn-primary" type="button">Continuar</button>
+      </div>
+    </div>
+  </div>
+
   <div id="modal_ventanas" class="modal-overlay hidden">
     <div class="modal-box modal-log">
       <div class="ml-cab">
