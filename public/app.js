@@ -185,7 +185,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (btn.dataset.tab === "pizarra" && pizarraDatos.length === 0) cargarPizarra();
     if (btn.dataset.tab === "reporte" && reporteDatos.length === 0) cargarReporte();
     if (btn.dataset.tab === "ciclo" && cicloDatos.length === 0) cargarCiclo();
-    if (btn.dataset.tab === "clientes" && window.cliCargarBases) { window.cliCargarBases(); if (window.cliCargarAuditorias) window.cliCargarAuditorias(); }
+    if (btn.dataset.tab === "clientes" && window.cliCargarBases) { window.cliCargarBases(); if (window.cliCargarFrescura) window.cliCargarFrescura(); if (window.cliCargarAuditorias) window.cliCargarAuditorias(); }
     ajustarTodasLasTablas();
     if (btn.dataset.tab === "consultar" && clGrid && clGridListo) clGrid.redraw(true);
   });
@@ -281,8 +281,11 @@ function categoriaEsSoporte() {
   const cat = categoriaSeleccionada();
   return !!cat && normTxt(cat.nombre).startsWith("SOPORTE TEC");
 }
+// Oficinas que se pueden elegir al crear o modificar un ticket. No se muestran las "especiales" (Central Telefónica, Soporte Técnico, Pagos,
+// Mercadeo, Herramientas VNET, Enlace, Tramo...) ni CDA, CCS, CDC y CORP. Siguen existiendo en el catálogo de Administración y en los filtros de Consultar/Log.
+const OFICINAS_NO_SELECCIONABLES = ["CDA", "CCS", "CDC", "CORP"];
 function oficinasReales() {
-  return (LOOKUPS.oficinas || []).filter((o) => (o.tipo || "oficina") === "oficina");
+  return (LOOKUPS.oficinas || []).filter((o) => (o.tipo || "oficina") === "oficina" && !OFICINAS_NO_SELECCIONABLES.includes(String(o.codigo || "").toUpperCase()));
 }
 function modoUbicacion() {
   return document.getElementById("c_ubicacion_tipo").value;   // "", NO_APLICA, ENLACE, TRAMO, TRONCAL, OFICINA
@@ -1538,7 +1541,7 @@ function e2Opciones(vals, actual) {
 function mcRenderEscenario2() {
   const tbody = document.querySelector("#e2_table tbody");
   tbody.innerHTML = "";
-  const oficinas = LOOKUPS.oficinas;
+  const oficinas = oficinasReales();
 
   mcPuertos.forEach((p, idx) => {
     const tr = document.createElement("tr");
@@ -2050,7 +2053,7 @@ function renderDetalle(editable, log) {
     <th>No. Reportaron</th><th>Nro. Afectados</th><th>Estado</th></tr></thead>
     <tbody>${detPuertos.map((p, idx) => editable ? `
       <tr>
-        <td>${campoSelect(`p_oficina_${idx}`, LOOKUPS.oficinas.map(o=>o.nombre), p.oficina_nombre)}</td>
+        <td>${campoSelect(`p_oficina_${idx}`, [...new Set([p.oficina_nombre, ...oficinasReales().map(o=>o.nombre)].filter(Boolean))], p.oficina_nombre)}</td>
         <td>${campoInput(`p_olt_${idx}`, p.olt)}</td>
         <td>${campoInput(`p_sector_${idx}`, p.sector)}</td>
         <td>${campoInput(`p_edificio_${idx}`, p.edificio)}</td>
@@ -2287,7 +2290,7 @@ const CL_COLS = [
   { f: "estado_ticket", t: "Estado del ticket", tipo: "lista", ed: true, w: 175, lista: () => (LOOKUPS.estados_ticket || []).map((x) => x.nombre) },
   { f: "unidad_resolutoria", t: "Unidad resolutoria", tipo: "lista", ed: true, w: 160, vacio: true, lista: () => (LOOKUPS.unidades_resolutorias || []).map((x) => x.nombre) },
   { f: "region", t: "Estado", tipo: "dato", w: 140 },
-  { f: "oficina_nombre", t: "Oficina", tipo: "lista", ed: true, campo: "oficina", w: 200, lista: () => (LOOKUPS.oficinas || []).map((x) => x.nombre) },
+  { f: "oficina_nombre", t: "Oficina", tipo: "lista", ed: true, campo: "oficina", w: 200, lista: () => oficinasReales().map((x) => x.nombre) },
   { f: "olt", t: "OLT", tipo: "texto", ed: true, w: 190 },
   { f: "tarjeta", t: "Tarjeta", tipo: "texto", ed: true, w: 90 },
   { f: "puerto", t: "Puerto", tipo: "texto", ed: true, w: 90 },
