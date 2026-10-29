@@ -871,8 +871,14 @@ function renderOficinas() {
           const tarjeta = olt.tarjetas[tarjetaNombre];
           const tBox = document.createElement("div");
           tBox.className = "tree-box tree-tarjeta";
+          const nPuertos = Object.keys(tarjeta.puertos).length;
+          const totAfect = tarjeta.todosPuertos ? Number(tarjeta.afectados_tarjeta || 0) : Object.values(tarjeta.puertos).reduce((t, x) => t + Number(x.no_afectados || 0), 0);
           tBox.innerHTML = `
-            <div class="tree-header"><strong>${tarjetaNombre}</strong></div>
+            <div class="tree-header olt-cabecera"><strong>${tarjetaNombre}</strong>
+              <button type="button" class="btn-secondary btn-min-tarjeta" aria-expanded="${tarjeta.minimizado ? "false" : "true"}">${tarjeta.minimizado ? "▸ Expandir" : "▾ Minimizar"}</button>
+            </div>
+            <p class="hint tarjeta-resumen${tarjeta.minimizado ? "" : " hidden"}">${tarjeta.todosPuertos ? "Todos los puertos" : nPuertos + " puerto(s)"} · ${totAfect} cliente(s) afectado(s) (la información se conserva)</p>
+            <div class="tarjeta-cuerpo${tarjeta.minimizado ? " hidden" : ""}">
             <div class="field">
               <label>Puerto (selección múltiple)</label>
               <div class="multiselect-row">
@@ -881,7 +887,9 @@ function renderOficinas() {
               </div>
             </div>
             <div class="puertos-container"></div>
+            </div>
           `;
+          tBox.querySelector(".btn-min-tarjeta").addEventListener("click", () => { tarjeta.minimizado = !tarjeta.minimizado; renderOficinas(); });
           tBox.querySelector(".btn-todos-puertos").addEventListener("click", () => selectAllPuertos(oIdx, oltIdx, tarjetaNombre));
 
           const puertosGrid = tBox.querySelector(".puertos-grid");
@@ -898,7 +906,7 @@ function renderOficinas() {
           const puertosContainer = tBox.querySelector(".puertos-container");
           if (tarjeta.todosPuertos) {
             const pField = document.createElement("div");
-            pField.className = "field puerto-field";
+            pField.className = "field puerto-field puerto-todos";
             pField.innerHTML = `<label>Nro de clientes afectados por la Incidencia en la ${escHtml(tarjetaNombre)} (todos los puertos)</label><input type="number" min="0" value="${tarjeta.afectados_tarjeta || 0}" />`;
             pField.querySelector("input").addEventListener("input", (e) => { tarjeta.afectados_tarjeta = Number(e.target.value || 0); });
             puertosContainer.appendChild(pField);
@@ -907,9 +915,10 @@ function renderOficinas() {
             const pField = document.createElement("div");
             pField.className = "field puerto-field";
             pField.innerHTML = `
-              <label>Nro de clientes afectados por la Incidencia en el ${puertoNombre}</label>
+              <div class="puerto-titulo">${puertoNombre}</div>
+              <label title="Nro de clientes afectados por la Incidencia en el ${puertoNombre}">Clientes afectados</label>
               <input type="number" min="0" value="${tarjeta.puertos[puertoNombre].no_afectados}" />
-              <label class="ub-label">Ubicación del ${puertoNombre} (opcional)</label>
+              <label class="ub-label">Ubicación (opcional)</label>
               <input type="text" class="puerto-ubicacion" maxlength="200" placeholder="Ej. Edif. Madrigal" value="${escHtml(tarjeta.puertos[puertoNombre].ubicacion || "")}" />
             `;
             pField.querySelector("input[type=number]").addEventListener("input", (e) => {
@@ -4650,6 +4659,12 @@ async function abrirModalLog(cmr) {
     if (cuerpo) cuerpo.innerHTML = `<div class="msg error">${escHtml(err.message)}</div>`;
   }
 }
+
+// Administración: una sub-pestaña por módulo (usuarios, catálogos, generador de reportes)
+document.querySelectorAll(".adm-subtab").forEach((b) => b.addEventListener("click", () => {
+  document.querySelectorAll(".adm-subtab").forEach((x) => x.classList.toggle("activo", x === b));
+  document.querySelectorAll(".adm-sub").forEach((d) => d.classList.toggle("hidden", d.id !== `adm_sub_${b.dataset.sub}`));
+}));
 
 // ---------------------------------------------------------------
 // Arranque

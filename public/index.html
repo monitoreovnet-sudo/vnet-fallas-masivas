@@ -701,6 +701,13 @@
 
   <!-- ===================== ADMINISTRACIÓN (solo administrador) ===================== -->
   <section id="tab-admin" class="tab-panel">
+    <div class="adm-subtabs" role="tablist">
+      <button type="button" class="adm-subtab activo" data-sub="usuarios">Administración de usuarios</button>
+      <button type="button" class="adm-subtab" data-sub="catalogos">Catálogos</button>
+      <button type="button" class="adm-subtab" data-sub="reportes">Generador de reportes</button>
+    </div>
+
+    <div id="adm_sub_usuarios" class="adm-sub">
     <h2>Administración de Usuarios</h2>
 
     <div class="grid-3">
@@ -736,7 +743,9 @@
       <tbody></tbody>
     </table>
 
-    <hr />
+    </div>
+
+    <div id="adm_sub_catalogos" class="adm-sub hidden">
     <h2>Catálogos</h2>
     <div class="field">
       <label>Catálogo a editar</label>
@@ -752,7 +761,9 @@
       <tbody></tbody>
     </table>
 
-    <hr />
+    </div>
+
+    <div id="adm_sub_reportes" class="adm-sub hidden">
     <h2>Generador de reportes</h2>
     <p class="hint">
       Arma las columnas de la Pizarra de Monitoreo, el Reporte Diario y el Ciclo 2026 con <strong>cualquier campo de la base de datos</strong>:
@@ -787,6 +798,7 @@
     <h3>Vista previa</h3>
     <div class="db-table-scroll rpt-preview">
       <table class="rows-table db-tabla-maestra" id="rpt_preview"><thead></thead><tbody></tbody></table>
+    </div>
     </div>
   </section>
 

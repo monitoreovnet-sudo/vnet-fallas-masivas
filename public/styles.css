@@ -438,7 +438,16 @@ input:focus, select:focus, textarea:focus {
 }
 .checkbox-grid .chk input { width: auto; }
 
-.puerto-field { max-width: 260px; }
+.puerto-field { max-width: none; border: 1px solid #e3d9ea; border-radius: 8px; padding: 8px 10px; background: #fff; margin: 0; }
+.puerto-field .puerto-titulo { font-weight: 700; color: var(--db-primary, #4A1259); margin-bottom: 4px; }
+.puerto-field label { font-size: 12px; }
+.puerto-field input { width: 100%; box-sizing: border-box; }
+.puertos-container { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 8px; }
+.puertos-container .puerto-todos { grid-column: span 2; }
+@media (max-width: 1100px) { .puertos-container { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .puertos-container { grid-template-columns: 1fr; } .puertos-container .puerto-todos { grid-column: auto; } }
+.tarjeta-resumen { margin: 4px 0 2px; }
+.tree-tarjeta .olt-cabecera { margin-bottom: 6px; }
 
 .filtros-grid {
   display: grid;
@@ -889,3 +898,8 @@ input, select, textarea, .multi-cat summary, .multi-cat .multi-lista { font-fami
 .smo-estado input { width: auto; margin-top: 3px; }
 .smo-estado small { display: block; color: #666; font-size: 12px; margin-top: 3px; max-height: 110px; overflow: auto; }
 .puerto-field .ub-label { display: block; margin-top: 6px; font-size: 12px; color: #666; }
+
+/* Administración con sub-pestañas */
+.adm-subtabs { display: flex; gap: 4px; border-bottom: 2px solid #E5DAEA; margin: 4px 0 14px; flex-wrap: wrap; }
+.adm-subtab { background: #f7f3fa; border: 1px solid #E5DAEA; border-bottom: 0; border-radius: 8px 8px 0 0; padding: 9px 18px; font: inherit; font-size: 14px; cursor: pointer; color: var(--db-primary, #4A1259); }
+.adm-subtab.activo { background: var(--db-primary, #4A1259); color: #fff; font-weight: 700; }
