@@ -59,7 +59,7 @@ export async function onRequestGet({ request, env }) {
       t.fecha_solucion_cmr, t.fecha_solucion_cda, t.estado_ticket, t.unidad_resolutoria,
       t.categoria_afectacion, t.afectacion, t.comentario, t.descripcion, t.avance_cmr,
       p.id AS puerto_id, p.oficina_id, o.nombre AS oficina_nombre, o.estado AS region, o.localidad,
-      p.olt, p.sector, p.edificio, p.tarjeta, p.puerto,
+      p.olt, p.sector, p.edificio, p.ubicacion, p.tarjeta, p.puerto,
       p.no_clientes_reportaron, p.nro_clientes_afectados, p.estado_puerto,
       p.fecha_cierre_cda, p.fecha_cierre_cmr,
       t.creado_por, COALESCE(NULLIF(u.nombre, ''), t.creado_por) AS creado_por_nombre,

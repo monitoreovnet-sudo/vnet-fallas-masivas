@@ -879,3 +879,13 @@ input, select, textarea, .multi-cat summary, .multi-cat .multi-lista { font-fami
 .sector-op { display: flex; gap: 6px; align-items: center; padding: 3px 6px; cursor: pointer; font-size: 13px; border-radius: 4px; }
 .sector-op:hover { background: #f0f5ff; }
 .sector-op input { width: auto; margin: 0; }
+
+/* Carga de archivos SmartOLT en Crear Ticket */
+.smo-box { border: 1px dashed #b9a3c4; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; background: #faf7fc; }
+.smo-box label { font-weight: 600; }
+.modal-box.smo-modal { max-width: 560px; text-align: left; max-height: 85vh; overflow: auto; }
+.modal-box.smo-modal h3 { color: var(--db-primary, #4A1259); }
+.smo-estado { display: flex; gap: 8px; align-items: flex-start; padding: 8px; border: 1px solid #e3d9ea; border-radius: 6px; margin-bottom: 6px; cursor: pointer; }
+.smo-estado input { width: auto; margin-top: 3px; }
+.smo-estado small { display: block; color: #666; font-size: 12px; margin-top: 3px; max-height: 110px; overflow: auto; }
+.puerto-field .ub-label { display: block; margin-top: 6px; font-size: 12px; color: #666; }

@@ -35,7 +35,7 @@ const ETIQUETAS = {
   "tickets.comentario": "Comentario", "tickets.descripcion": "Descripción", "tickets.avance_cmr": "Avance CMR",
   "tickets.creado_por": "Creado por", "tickets.creado_en": "Creado en", "tickets.actualizado_en": "Actualizado en",
   "ticket_puertos.olt": "OLT", "ticket_puertos.tarjeta": "Tarjeta", "ticket_puertos.puerto": "Puerto",
-  "ticket_puertos.sector": "Sector / Ubicación", "ticket_puertos.edificio": "Edificio",
+  "ticket_puertos.sector": "Sector / Ubicación", "ticket_puertos.edificio": "Edificio", "ticket_puertos.ubicacion": "Ubicación (puerto)",
   "ticket_puertos.no_clientes_reportaron": "N° Cltes Reportaron", "ticket_puertos.nro_clientes_afectados": "N° Cltes Afectados",
   "ticket_puertos.estado_puerto": "Estado del Puerto", "ticket_puertos.fecha_cierre_cmr": "Cierre CMR (puerto)",
   "ticket_puertos.fecha_cierre_cda": "Cierre CDA (puerto)",

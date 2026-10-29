@@ -1,6 +1,7 @@
 import { json, badRequest, currentUserEmail, logCambio, nowIso } from "../../_lib/helpers.js";
 import { programarReevaluacion } from "../../_lib/asociacion.js";
 import { verificarTokenDuplicado } from "../../_lib/auth.js";
+import { normCedula, normSerial } from "../../_lib/clientes.js";
 
 // GET /api/tickets?cmr=326159&estado=EN+CURSO&oficina_id=3&limit=50
 export async function onRequestGet({ request, env }) {
@@ -41,6 +42,7 @@ export async function onRequestGet({ request, env }) {
   return json({ tickets: results });
 }
 
+const MAX_ONUS = 3000;
 // POST /api/tickets
 // Crea el ticket junto con todos sus OLT/Tarjeta/Puerto en una sola operación.
 export async function onRequestPost({ request, env, waitUntil }) {
@@ -67,7 +69,8 @@ export async function onRequestPost({ request, env, waitUntil }) {
     comentario,
     descripcion,
     oficina_id,
-    puertos, // [{ olt, tarjeta, puerto, sector, edificio, no_clientes_reportaron, nro_clientes_afectados }]
+    puertos, // [{ olt, tarjeta, puerto, sector, edificio, ubicacion, no_clientes_reportaron, nro_clientes_afectados }]
+    onus, // opcional: ONUs de los archivos de SmartOLT [{ olt, tarjeta, puerto, serial, cuenta, cedula, nombre, estado, direccion }]
   } = body;
 
   if (!ticket_cmr || !/^[0-9]+$/.test(String(ticket_cmr))) {
@@ -161,9 +164,9 @@ export async function onRequestPost({ request, env, waitUntil }) {
     const ins = await db
       .prepare(
         `INSERT INTO ticket_puertos
-          (ticket_id, oficina_id, olt, tarjeta, puerto, sector, edificio, no_clientes_reportaron, nro_clientes_afectados, estado_puerto,
+          (ticket_id, oficina_id, olt, tarjeta, puerto, sector, edificio, ubicacion, no_clientes_reportaron, nro_clientes_afectados, estado_puerto,
            fecha_solucion_cmr, fecha_solucion_cda, fecha_cierre_cmr, fecha_cierre_cda)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
         ticketId,
@@ -173,6 +176,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
         p.puerto,
         p.sector || "DESCONOCIDO",
         p.edificio || "DESCONOCIDO",
+        String(p.ubicacion || "").trim().slice(0, 200) || null,
         Number(p.no_clientes_reportaron || 0),
         Number(p.nro_clientes_afectados || 0),
         esResuelto ? estadoFinal : (p.estado_puerto || "EN CURSO (ASIGNADO)"),
@@ -194,6 +198,21 @@ export async function onRequestPost({ request, env, waitUntil }) {
     });
   }
 
+  // ONUs de SmartOLT del ticket (serial, cédula si la traían, nombre...). Si falla no se pierde el ticket ya creado.
+  let onusGuardadas = 0;
+  if (Array.isArray(onus) && onus.length) {
+    try {
+      const t = (v, n) => String(v ?? "").trim().slice(0, n) || null;
+      const ahora = nowIso();
+      const stmts = onus.slice(0, MAX_ONUS).map((o) => db.prepare(
+        `INSERT INTO ticket_onus (ticket_id, olt, tarjeta, puerto, serial, cuenta, cedula, nombre, estado, direccion, creado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
+        .bind(ticketId, t(o.olt, 80), t(o.tarjeta, 30), t(o.puerto, 30), normSerial(o.serial) || null, t(String(o.cuenta ?? "").replace(/\D/g, ""), 20),
+          normCedula(o.cedula), t(o.nombre, 200), t(o.estado, 40), t(o.direccion, 300), ahora));
+      for (let i = 0; i < stmts.length; i += 100) await db.batch(stmts.slice(i, i + 100));
+      onusGuardadas = stmts.length;
+    } catch (e) { onusGuardadas = -1; }
+  }
+
   await logCambio(db, {
     ticket_id: ticketId,
     tipo_cambio: "creacion",
@@ -206,5 +225,5 @@ export async function onRequestPost({ request, env, waitUntil }) {
   });
 
   await programarReevaluacion({ env, waitUntil }, [ticketId]);
-  return json({ id: ticketId, ticket_cmr: String(ticket_cmr), creado_en: nowIso(), agregado: agregando }, 201);
+  return json({ id: ticketId, ticket_cmr: String(ticket_cmr), creado_en: nowIso(), agregado: agregando, onus_guardadas: onusGuardadas }, 201);
 }
