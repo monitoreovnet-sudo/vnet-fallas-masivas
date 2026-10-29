@@ -39,7 +39,15 @@ export async function onRequestGet({ env }) {
     oltOficina = [...a.results, ...b.results].filter((r) => { const k = r.olt + "|" + r.oficina_id; if (vistos.has(k)) return false; vistos.add(k); return true; });
   } catch (e) { oltOficina = []; }
 
+  // Sectores por oficina (migración 037): { "<oficina_id>": ["Sector A", ...] }. Si aún no se aplicó, queda vacío.
+  const sectores = {};
+  try {
+    (await db.prepare("SELECT oficina_id, sector FROM oficina_sectores ORDER BY sector COLLATE NOCASE").all()).results
+      .forEach((r) => { (sectores[r.oficina_id] || (sectores[r.oficina_id] = [])).push(r.sector); });
+  } catch (e) { /* sin migración: el campo Sector sigue funcionando como texto libre */ }
+
   return json({
+    sectores,
     oficinas: oficinas.results,
     categorias: categorias.results,
     afectaciones: afectaciones.results,

@@ -379,7 +379,7 @@
     <div class="db-estado-row">
       <div class="db-estado-card"><div class="titulo">En Curso Asignado</div><div class="valor" id="piz_kpi_curso">-</div></div>
       <div class="db-estado-card"><div class="titulo">En Observación</div><div class="valor" id="piz_kpi_observacion">-</div></div>
-      <div class="db-estado-card"><div class="titulo">Ventana de Mantenimiento</div><div class="valor" id="piz_kpi_ventana">-</div></div>
+      <div class="db-estado-card db-ventana-card" data-prefix="piz"><div class="titulo">Ventana de Mantenimiento</div><div class="valor" id="piz_kpi_ventana">-</div><div class="vent-act" id="piz_vent_act"></div><button type="button" class="vent-menu hidden" id="piz_vent_menu">Ver ventanas de mantenimiento</button></div>
       <div class="db-estado-card"><div class="titulo">Resuelto</div><div class="valor" id="piz_kpi_resuelto">-</div></div>
       <div class="db-estado-card"><div class="titulo">Cerrado</div><div class="valor" id="piz_kpi_cerrado">-</div></div>
       <div class="db-acciones">
@@ -467,7 +467,7 @@
     <div class="db-estado-row">
       <div class="db-estado-card"><div class="titulo">En Curso Asignado</div><div class="valor" id="rep_kpi_curso">-</div></div>
       <div class="db-estado-card"><div class="titulo">En Observación</div><div class="valor" id="rep_kpi_observacion">-</div></div>
-      <div class="db-estado-card"><div class="titulo">Ventana de Mantenimiento</div><div class="valor" id="rep_kpi_ventana">-</div></div>
+      <div class="db-estado-card db-ventana-card" data-prefix="rep"><div class="titulo">Ventana de Mantenimiento</div><div class="valor" id="rep_kpi_ventana">-</div><div class="vent-act" id="rep_vent_act"></div><button type="button" class="vent-menu hidden" id="rep_vent_menu">Ver ventanas de mantenimiento</button></div>
       <div class="db-estado-card"><div class="titulo">Resuelto</div><div class="valor" id="rep_kpi_resuelto">-</div></div>
       <div class="db-estado-card"><div class="titulo">Cerrado</div><div class="valor" id="rep_kpi_cerrado">-</div></div>
       <div class="db-acciones">
@@ -554,7 +554,7 @@
     <div class="db-estado-row">
       <div class="db-estado-card"><div class="titulo">En Curso Asignado</div><div class="valor" id="cic_kpi_curso">-</div></div>
       <div class="db-estado-card"><div class="titulo">En Observación</div><div class="valor" id="cic_kpi_observacion">-</div></div>
-      <div class="db-estado-card"><div class="titulo">Ventana de Mantenimiento</div><div class="valor" id="cic_kpi_ventana">-</div></div>
+      <div class="db-estado-card db-ventana-card" data-prefix="cic"><div class="titulo">Ventana de Mantenimiento</div><div class="valor" id="cic_kpi_ventana">-</div><div class="vent-act" id="cic_vent_act"></div><button type="button" class="vent-menu hidden" id="cic_vent_menu">Ver ventanas de mantenimiento</button></div>
       <div class="db-estado-card"><div class="titulo">Resuelto</div><div class="valor" id="cic_kpi_resuelto">-</div></div>
       <div class="db-estado-card"><div class="titulo">Cerrado</div><div class="valor" id="cic_kpi_cerrado">-</div></div>
       <div class="db-acciones">
@@ -783,6 +783,23 @@
   <!-- ===================== REPOSITORIO (solo administrador) ===================== -->
   <section id="tab-repositorio" class="tab-panel">
     <h2>Repositorio</h2>
+
+    <h3>Ventanas de mantenimiento</h3>
+    <p class="hint">
+      Sube el Excel <strong>"Ficha Resumen Comité"</strong> (.xlsx). Se lee solo la primera hoja <strong>"Resumen"</strong>; si el archivo trae más hojas, los usuarios podrán descargarlo completo.
+      Cada archivo nuevo <strong>reemplaza</strong> al anterior. El indicador "Ventana de Mantenimiento" de los informes muestra la cantidad de tickets únicos (ID del Cambio).
+    </p>
+    <p class="hint" id="vent_vigente">Cargando...</p>
+    <div class="field">
+      <label>Archivo (.xlsx)</label>
+      <input type="file" id="vent_archivo" accept=".xlsx,.xls" />
+    </div>
+    <button id="vent_btn_subir" class="btn-primary" type="button" disabled>Subir ventanas de mantenimiento</button>
+    <div id="vent_msg" class="msg"></div>
+    <div id="vent_preview"></div>
+
+    <hr />
+    <h3>Tickets históricos (base de datos)</h3>
     <p class="hint">
       Sube un archivo <strong>.csv</strong> o <strong>.xlsx</strong> con las columnas de la base de datos:
       Title, Tickets Vinculados, AFECTACIÓN, UNIDAD RESOLUTORIA, TIPO, ESTADO DEL TICKET, OLT, Tarjeta, PUERTO, OFICINA,
@@ -918,6 +935,21 @@
   </section>
 
   </main>
+  </div>
+
+  <!-- Ventanas de mantenimiento (lista) -->
+  <div id="modal_ventanas" class="modal-overlay hidden">
+    <div class="modal-box modal-log">
+      <div class="ml-cab">
+        <h3 id="mv_titulo">Ventanas de mantenimiento</h3>
+        <div class="modal-botones" style="margin:0;">
+          <a id="mv_descargar" class="btn-secondary" href="/api/ventanas/archivo" download>Descargar archivo</a>
+          <button id="mv_cerrar" class="btn-secondary" type="button">Cerrar</button>
+        </div>
+      </div>
+      <p class="hint" id="mv_sub"></p>
+      <div id="mv_lista"></div>
+    </div>
   </div>
 
   <!-- Confirmación con contraseña (eliminar tickets) -->

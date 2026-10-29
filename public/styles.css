@@ -846,3 +846,36 @@ input, select, textarea, .multi-cat summary, .multi-cat .multi-lista { font-fami
 #cca_resumen .ml-tiles { margin-top: 10px; }
 #cca_tabla { overflow: auto; max-height: 60vh; max-width: 100%; }
 #cca_tabla th { white-space: nowrap; position: sticky; top: 0; background: #f7f3fa; }
+
+/* ---- Ventanas de mantenimiento ---- */
+.db-ventana-card { position: relative; }
+.db-ventana-card.vent-click { cursor: pointer; }
+.db-ventana-card .vent-act { font-size: 10px; color: #333; text-align: left; margin-top: 4px; min-height: 12px; }
+.db-ventana-card .vent-menu { position: absolute; left: 12px; right: 12px; top: calc(100% + 4px); z-index: 20; background: #fff; border: 1px solid var(--db-primary, #4A1259); color: var(--db-primary, #4A1259); border-radius: 10px; padding: 8px 10px; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+.db-ventana-card .vent-menu:hover { background: #f4eaf7; }
+.vent-item { border: 1px solid #ddd; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: #fafafa; }
+.vent-item > .vent-cab { display: flex; justify-content: space-between; gap: 10px; cursor: pointer; align-items: baseline; flex-wrap: wrap; }
+.vent-item .vent-id { font-weight: 700; color: var(--db-primary, #4A1259); }
+.vent-item .vent-cuando { font-size: 12px; color: #444; }
+.vent-item .vent-det { display: none; margin-top: 8px; }
+.vent-item.abierta .vent-det { display: block; }
+.vent-item .vent-det .kv > div { margin-bottom: 3px; }
+.vent-item .vent-det button { margin-top: 8px; }
+.vent-prev table { width: 100%; font-size: 12px; border-collapse: collapse; }
+.vent-prev th, .vent-prev td { border: 1px solid #ddd; padding: 3px 6px; text-align: left; }
+
+/* Plazos: botón del encabezado para alternar "d h m" / "[h]:mm" */
+.db-tabla-maestra thead th .plazo-toggle { display: inline-block; margin-left: 4px; padding: 0 5px; border: 1px solid currentColor; border-radius: 8px; font-size: 10px; font-weight: 600; cursor: pointer; white-space: nowrap; opacity: .85; }
+.db-tabla-maestra thead th .plazo-toggle:hover { opacity: 1; background: rgba(255,255,255,.18); }
+
+/* Selector de Sector por OLT (buscar, marcar/desmarcar, escribir libre) */
+.sector-multi { position: relative; }
+.sector-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; min-height: 20px; }
+.sector-chip { background: #e6f0ff; border: 1px solid #b7d0f5; border-radius: 12px; padding: 1px 4px 1px 8px; font-size: 12px; display: inline-flex; align-items: center; gap: 2px; }
+.sector-x { border: 0; background: transparent; cursor: pointer; font-size: 15px; line-height: 1; color: #555; padding: 0 4px; }
+.sector-x:hover { color: #c00; }
+.sector-lista { position: absolute; z-index: 30; left: 0; right: 0; max-height: 240px; overflow-y: auto; background: #fff; border: 1px solid #bbb; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,.18); padding: 4px; }
+.sector-lista.hidden { display: none; }
+.sector-op { display: flex; gap: 6px; align-items: center; padding: 3px 6px; cursor: pointer; font-size: 13px; border-radius: 4px; }
+.sector-op:hover { background: #f0f5ff; }
+.sector-op input { width: auto; margin: 0; }

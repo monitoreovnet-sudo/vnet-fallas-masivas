@@ -4,7 +4,7 @@ import { usuarioDeSesion } from "./_lib/auth.js";
 const RUTAS_PUBLICAS = new Set(["/api/auth/login", "/api/auth/logout", "/api/me"]);
 // Acceso público (sin sesión) SOLO de lectura y solo lo que necesita la Pizarra de Monitoreo.
 // /api/consulta, sin sesión, devuelve los datos recortados (sin autor, descripción ni avance).
-const RUTAS_PUBLICAS_GET = new Set(["/api/lookups", "/api/config-reportes", "/api/consulta"]);
+const RUTAS_PUBLICAS_GET = new Set(["/api/lookups", "/api/config-reportes", "/api/consulta", "/api/ventanas"]);
 // Primer inicio de sesión: con la sesión limitada solo se puede crear la contraseña.
 const RUTAS_SESION_LIMITADA = new Set(["/api/auth/cambiar-password", "/api/auth/logout", "/api/me"]);
 

@@ -118,7 +118,20 @@ export async function onRequestGet({ request, env }) {
     const cerrarCda = finCda ? horasEntre(r.fecha_apertura_cda, finCda) : null;
     const sem = (h) => (h === null ? null : semaforo(h));
 
+    // Plazos (horas, pueden salir con decimales; el navegador los muestra en d/h/m o en [h]:mm).
+    //   Solución = solución − apertura · Cierre = cierre − apertura · Certificar = cierre − solución (CMR y CDA por separado).
+    //   Si falta alguna de las dos fechas, el plazo queda vacío.
+    const plazos = {
+      plazo_solucion_cmr_h: horasEntre(r.fecha_apertura_cmr, r.fecha_solucion_cmr),
+      plazo_solucion_cda_h: horasEntre(r.fecha_apertura_cda, r.fecha_solucion_cda),
+      plazo_cierre_cmr_h: horasEntre(r.fecha_apertura_cmr, r.fecha_cierre_cmr),
+      plazo_cierre_cda_h: horasEntre(r.fecha_apertura_cda, r.fecha_cierre_cda),
+      plazo_certificar_cmr_h: horasEntre(r.fecha_solucion_cmr, r.fecha_cierre_cmr),
+      plazo_certificar_cda_h: horasEntre(r.fecha_solucion_cda, r.fecha_cierre_cda),
+    };
+
     return {
+      ...plazos,
       ...r,
       tiempo_curso_cmr_h: cursoCmr, tiempo_curso_cda_h: cursoCda,
       tiempo_cerrar_cmr_h: cerrarCmr, tiempo_cerrar_cda_h: cerrarCda,

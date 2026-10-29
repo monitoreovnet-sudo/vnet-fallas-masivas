@@ -214,6 +214,7 @@ async function loadLookups() {
   initFiltrosGenerico("rep");
   initFiltrosGenerico("cic");
   cargarConsulta();
+  cargarVentanas();
 }
 
 document.getElementById("c_categoria").addEventListener("change", (e) => {
@@ -418,6 +419,55 @@ document.getElementById("btn_add_oficina").addEventListener("click", async () =>
   renderOficinas();
 });
 
+// ---- Selector de Sector (por OLT): se puede escribir para buscar en la lista de la sucursal, marcar/desmarcar varios y
+// también escribir un sector que no esté en la lista (Enter). Se guarda en olt.sector como "A; B" (o "DESCONOCIDO" si no hay ninguno).
+const SECTOR_SEP = "; ";
+const normSectorBusq = (t) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+function sectoresDeTexto(t) {
+  return String(t ?? "").split(";").map((x) => x.trim()).filter((x) => x && x.toUpperCase() !== "DESCONOCIDO");
+}
+function montarSelectorSectores(cont, olt, opciones) {
+  let sel = sectoresDeTexto(olt.sector);
+  cont.innerHTML = `<div class="sector-chips"></div>
+    <input type="text" class="olt-sector" placeholder="${opciones.length ? "Buscar o escribir nuevo + Enter" : "Escribir sector + Enter"}" autocomplete="off" />
+    <div class="sector-lista hidden"></div>`;
+  const chips = cont.querySelector(".sector-chips"), input = cont.querySelector(".olt-sector"), lista = cont.querySelector(".sector-lista");
+  const guardar = () => { olt.sector = sel.length ? sel.join(SECTOR_SEP) : "DESCONOCIDO"; };
+  const estaSel = (x) => sel.some((y) => normSectorBusq(y) === normSectorBusq(x));
+  const alternar = (x) => { sel = estaSel(x) ? sel.filter((y) => normSectorBusq(y) !== normSectorBusq(x)) : [...sel, x]; guardar(); pintar(); };
+  function pintar() {
+    chips.innerHTML = sel.length ? sel.map((x, i) => `<span class="sector-chip">${escHtml(x)}<button type="button" class="sector-x" data-i="${i}" title="Quitar" aria-label="Quitar ${escHtml(x)}">×</button></span>`).join("")
+      : '<span class="hint">Sin sector (se guarda como DESCONOCIDO)</span>';
+    const q = normSectorBusq(input.value);
+    const vistos = q ? opciones.filter((o) => normSectorBusq(o).includes(q)) : opciones;
+    const extra = sel.filter((x) => !opciones.some((o) => normSectorBusq(o) === normSectorBusq(x)));   // escritos a mano
+    const filas = [...extra.filter((x) => !q || normSectorBusq(x).includes(q)), ...vistos].slice(0, 300);
+    lista.innerHTML = filas.length
+      ? filas.map((o) => `<label class="sector-op"><input type="checkbox" data-v="${escHtml(o)}"${estaSel(o) ? " checked" : ""} /> <span>${escHtml(o)}</span></label>`).join("")
+        + (vistos.length > 300 ? '<div class="hint">Hay más resultados: siga escribiendo para filtrar.</div>' : "")
+      : `<div class="hint">${input.value.trim() ? "Sin coincidencias: presione Enter para agregar «" + escHtml(input.value.trim()) + "»." : "Esta sucursal no tiene sectores en la lista: escriba el sector y Enter."}</div>`;
+  }
+  chips.addEventListener("click", (e) => { const b = e.target.closest(".sector-x"); if (!b) return; sel.splice(Number(b.dataset.i), 1); guardar(); pintar(); });
+  lista.addEventListener("change", (e) => { const c = e.target.closest("input[type=checkbox]"); if (c) alternar(c.dataset.v); });
+  lista.addEventListener("mousedown", (e) => e.preventDefault());   // no quita el foco del cuadro al marcar
+  input.addEventListener("focus", () => { pintar(); lista.classList.remove("hidden"); });
+  input.addEventListener("input", () => { pintar(); lista.classList.remove("hidden"); });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { lista.classList.add("hidden"); return; }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const t = input.value.replace(/;/g, ",").trim();
+    if (!t) return;
+    const igual = opciones.find((o) => normSectorBusq(o) === normSectorBusq(t));
+    const unica = !igual && opciones.filter((o) => normSectorBusq(o).includes(normSectorBusq(t)));
+    const elegido = igual || (unica && unica.length === 1 ? unica[0] : t);
+    if (!estaSel(elegido)) { sel = [...sel, elegido]; guardar(); }
+    input.value = ""; pintar();
+  });
+  input.addEventListener("blur", () => { lista.classList.add("hidden"); });
+  guardar(); pintar();
+}
+
 function removeOficina(oIdx) {
   oficinasState.splice(oIdx, 1);
   renderOficinas();
@@ -519,7 +569,7 @@ function renderOficinas() {
           <div class="grid-3">
             <div class="field">
               <label>Sector</label>
-              <input type="text" class="olt-sector" value="${olt.sector}" />
+              <div class="sector-multi"></div>
             </div>
             <div class="field">
               <label>Edificio</label>
@@ -546,7 +596,7 @@ function renderOficinas() {
           f.innerHTML = `<label>Nro de clientes afectados por la Incidencia en el OLT ${escHtml(olt.texto.trim())}</label><input type="number" min="0" value="${olt.afectados_olt}" />`;
           f.querySelector("input").addEventListener("input", (e) => { olt.afectados_olt = Number(e.target.value || 0); });
         }
-        datosBox.querySelector(".olt-sector").addEventListener("input", (e) => { olt.sector = e.target.value; });
+        montarSelectorSectores(datosBox.querySelector(".sector-multi"), olt, (LOOKUPS.sectores || {})[of.oficina_id] || []);
         datosBox.querySelector(".olt-edificio").addEventListener("input", (e) => { olt.edificio = e.target.value; });
         datosBox.querySelector(".olt-no-reportaron").addEventListener("input", (e) => { olt.no_reportaron = Number(e.target.value || 0); });
         datosBox.querySelector(".btn-todas-tarjetas").addEventListener("click", () => selectAllTarjetas(oIdx, oltIdx));
@@ -2540,7 +2590,8 @@ function rptFilasVistaPrevia() {
   if (rptMuestra.length) return rptMuestra;
   return [{ ticket_cmr: "334455", oficina_nombre: "Caracas - Chacao", olt: "CHA-OL-ZT-AC-001", tarjeta: "Tarjeta 4", puerto: "Puerto 12",
     fecha_apertura_cmr: "2026-10-04T09:30:00", horas_abierta: 52.4, semaforo: "NARANJA", estado_ticket: "EN CURSO (ASIGNADO)", afectacion: "SIN CONEXIÓN",
-    nro_clientes_afectados: 120, no_clientes_reportaron: 15, unidad_resolutoria: "REPARACIONES", grupo_horario: "MAÑANA", region: "MIRANDA", avance_cmr: "Cuadrilla en sitio" }];
+    nro_clientes_afectados: 120, no_clientes_reportaron: 15, unidad_resolutoria: "REPARACIONES", grupo_horario: "MAÑANA", region: "MIRANDA", avance_cmr: "Cuadrilla en sitio",
+    plazo_solucion_cmr_h: 52.4, plazo_solucion_cda_h: 50.1, plazo_cierre_cmr_h: 76.25, plazo_cierre_cda_h: 74, plazo_certificar_cmr_h: 23.85, plazo_certificar_cda_h: 23.9, semaforo_cierre_cmr: "NARANJA" }];
 }
 
 function rptDibujarVistaPrevia() {
@@ -3191,7 +3242,7 @@ function renderKpisGenerico(filas, prefix) {
 
   document.getElementById(`${prefix}_kpi_curso`).textContent = formatearMiles(curso);
   document.getElementById(`${prefix}_kpi_observacion`).textContent = formatearMiles(observacion);
-  document.getElementById(`${prefix}_kpi_ventana`).textContent = formatearMiles(ventana);
+  pintarKpiVentanas(prefix);
   document.getElementById(`${prefix}_kpi_resuelto`).textContent = formatearMiles(resuelto);
   document.getElementById(`${prefix}_kpi_cerrado`).textContent = formatearMiles(cerrado);
   document.getElementById(`${prefix}_kpi_activos`).textContent = formatearMiles(curso + observacion + ventana);
@@ -3513,7 +3564,21 @@ const CAMPO_EN_FILA = {
   "oficinas.id": "oficina_id", "oficinas.nombre": "oficina_nombre", "oficinas.estado": "region", "oficinas.localidad": "localidad",
   "calc.semaforo": "semaforo", "calc.grupo_horario": "grupo_horario", "calc.tiempo_cierre_horas": "tiempo_cierre_horas",
   "calc.clientes_falla": "clientes_falla", "calc.clientes_sin_luz": "clientes_sin_luz",
+  "calc.plazo_solucion_cmr": "plazo_solucion_cmr_h", "calc.plazo_solucion_cda": "plazo_solucion_cda_h",
+  "calc.plazo_cierre_cmr": "plazo_cierre_cmr_h", "calc.plazo_cierre_cda": "plazo_cierre_cda_h",
+  "calc.plazo_certificar_cmr": "plazo_certificar_cmr_h", "calc.plazo_certificar_cda": "plazo_certificar_cda_h",
 };
+// Columnas de plazo: se ven en "d h m" y, con el botón del encabezado, en horas acumuladas "[h]:mm".
+const CLAVES_PLAZO = new Set(["calc.plazo_solucion_cmr", "calc.plazo_solucion_cda", "calc.plazo_cierre_cmr", "calc.plazo_cierre_cda", "calc.plazo_certificar_cmr", "calc.plazo_certificar_cda"]);
+// 52.4 h -> "2 d 4 h 24 m" (modo "dhm") | "52:24" (modo "hm"). Vacío -> "-". Negativo (fechas al revés) conserva el signo.
+function formatearPlazo(h, modo) {
+  if (h === null || h === undefined || h === "" || isNaN(Number(h))) return "-";
+  const min = Math.round(Number(h) * 60), neg = min < 0, a = Math.abs(min);
+  if (modo === "hm") return (neg ? "-" : "") + Math.floor(a / 60) + ":" + String(a % 60).padStart(2, "0");
+  const d = Math.floor(a / 1440), hh = Math.floor((a % 1440) / 60), m = a % 60, p = [];
+  if (d) p.push(d + " d"); if (hh) p.push(hh + " h"); if (m || !p.length) p.push(m + " m");
+  return (neg ? "-" : "") + p.join(" ");
+}
 const NOWRAP_COLUMNAS = new Set(["calc.fila", "tickets.ticket_cmr"]);   // el N° de ticket y la fila nunca se parten en dos líneas
 const FABRICA_BASE = { "tickets.ticket_cmr": { fontSize: 14, negrita: true } };
 
@@ -3538,7 +3603,7 @@ const REPORTES_FABRICA = {
     ["calc.fila", "Fila"], ["tickets.ticket_cmr", "Title"], ["calc.tipo", "Tipo"], ["tickets.afectacion", "Afectación"],
     ["tickets.unidad_resolutoria", "Unidad Resolutoria"],
     ["tickets.fecha_apertura_cmr", "Apertura CMR"], ["tickets.fecha_solucion_cmr", "Cierre CMR"],
-    ["calc.grupo_horario", "Grupo Horario CMR"], ["calc.tiempo_abierto", "Tiempo Abierto CMR"],
+    ["calc.grupo_horario", "Grupo Horario CMR"], ["calc.plazo_solucion_cmr", "Plazo Solución (CMR)"],
     ["ticket_puertos.nro_clientes_afectados", "N° Cltes Afectados"], ["oficinas.estado", "Estado"], ["oficinas.nombre", "Oficina"],
     ["tickets.avance_cmr", "Avance CMR"],
   ],
@@ -3551,7 +3616,7 @@ const ID_V1_A_CLAVE = {
   clientes_reportaron: "ticket_puertos.no_clientes_reportaron", unidad_resolutoria: "tickets.unidad_resolutoria", tipo: "calc.tipo",
   grupo_horario: "calc.grupo_horario", region: "oficinas.estado", avance_cmr: "tickets.avance_cmr",
 };
-const CAMPOS_CALC_CLIENTE = new Set(["calc.fila", "calc.tiempo_abierto", "calc.semaforo", "calc.grupo_horario", "calc.tiempo_cierre_horas", "calc.tipo", "calc.clientes_falla", "calc.clientes_sin_luz"]);
+const CAMPOS_CALC_CLIENTE = new Set(["calc.fila", "calc.tiempo_abierto", "calc.semaforo", "calc.grupo_horario", "calc.tiempo_cierre_horas", "calc.tipo", "calc.clientes_falla", "calc.clientes_sin_luz", ...CLAVES_PLAZO]);
 
 function etiquetaDeClave(clave) {
   const col = String(clave).split(".")[1] || clave;
@@ -3565,7 +3630,13 @@ function columnaPorDefecto(clave, titulo) {
 }
 // Configuración efectiva de un informe: la guardada (si existe) o la de fábrica.
 function columnasEfectivas(prefix, guardada) {
-  const entrada = guardada && Array.isArray(guardada.columnas) ? guardada.columnas : null;
+  let entrada = guardada && Array.isArray(guardada.columnas) ? guardada.columnas : null;
+  // Ciclo 2026 ahora muestra el "Plazo Solución (CMR)" en lugar del "Tiempo Abierto CMR": también en configuraciones ya guardadas.
+  if (entrada && prefix === "cic" && !entrada.some((g) => CLAVES_PLAZO.has(g.db_column_name))) {
+    entrada = entrada.map((g) => g.db_column_name === "calc.tiempo_abierto"
+      ? { ...g, db_column_name: "calc.plazo_solucion_cmr", display_name: !g.display_name || g.display_name === "Tiempo Abierto CMR" ? "Plazo Solución (CMR)" : g.display_name }
+      : g);
+  }
   if (!entrada) return REPORTES_FABRICA[prefix].map(([clave, titulo]) => columnaPorDefecto(clave, titulo));
   const salida = [];
   const usados = new Set();
@@ -3597,6 +3668,10 @@ function celdaDeColumna(clave, f, ctx) {
   if (clave === "calc.fila") return [esc(ctx.fila ?? "")];
   if (clave === "calc.tipo") return ["-"];
   if (clave === "calc.tiempo_abierto") return [formatearTiempoAbierto(f.horas_abierta), estiloTiempoAbierto(f.semaforo)];
+  if (CLAVES_PLAZO.has(clave)) {
+    const modo = ((ctx && ctx.plazo) || {})[clave] || "dhm";
+    return [formatearPlazo(f[CAMPO_EN_FILA[clave]], modo), clave === "calc.plazo_solucion_cmr" ? estiloTiempoAbierto(f.semaforo_cierre_cmr) : ""];
+  }
   const campo = CAMPO_EN_FILA[clave] || clave;
   const v = f[campo];
   const vacio = v === null || v === undefined || v === "";
@@ -3620,13 +3695,18 @@ function estiloEncabezadoDeColumna(c) {
   return c.ancho ? `width:${c.ancho}px;min-width:${c.ancho}px;max-width:${c.ancho}px` : "";
 }
 // HTML del encabezado (con el display_name) y de las filas. Sin acceso al DOM (se prueba en Node).
-function htmlTablaDinamica(columnas, filas, contexto) {
+function htmlTablaDinamica(columnas, filas, contexto, formatosPlazo) {
   const vis = columnas.filter((c) => c.visible);
+  const boton = (c) => {
+    if (!CLAVES_PLAZO.has(c.db_column_name)) return "";
+    const hm = ((formatosPlazo || {})[c.db_column_name]) === "hm";
+    return ` <span class="plazo-toggle" data-plazo="${esc(c.db_column_name)}" title="${hm ? "Ver en días, horas y minutos" : "Ver en horas acumuladas y minutos [h]:mm"}">${hm ? "h:mm" : "d h m"} ⇄</span>`;
+  };
   const thead = `<tr>${vis.map((c) =>
-    `<th class="${NOWRAP_COLUMNAS.has(c.db_column_name) ? "col-nowrap" : ""}" data-col="${esc(c.db_column_name)}" style="${estiloEncabezadoDeColumna(c)}">${esc(c.display_name)}</th>`
+    `<th class="${NOWRAP_COLUMNAS.has(c.db_column_name) ? "col-nowrap" : ""}" data-col="${esc(c.db_column_name)}" style="${estiloEncabezadoDeColumna(c)}">${esc(c.display_name)}${boton(c)}</th>`
   ).join("")}</tr>`;
   const tbody = filas.map((f) => {
-    const ctx = contexto ? contexto(f) : {};
+    const ctx = { plazo: formatosPlazo || {}, ...(contexto ? contexto(f) : {}) };
     return `<tr data-ticket="${esc(f.ticket_cmr ?? "")}">${vis.map((c) => {
       const [contenido, extra] = celdaDeColumna(c.db_column_name, f, ctx);
       return `<td class="${NOWRAP_COLUMNAS.has(c.db_column_name) ? "col-nowrap" : ""}" data-col="${esc(c.db_column_name)}" style="${estiloCeldaDeColumna(c)}${extra ? ";" + extra : ""}">${contenido}</td>`;
@@ -3651,6 +3731,7 @@ function valorOrdenTabla(clave, f, filaPorTicket) {
   if (clave === "calc.fila") return filaPorTicket.get(f.ticket_cmr);
   if (clave === "calc.tipo") return null;
   if (clave === "calc.tiempo_abierto") return f.horas_abierta;
+  if (CLAVES_PLAZO.has(clave)) { const x = f[CAMPO_EN_FILA[clave]]; return x === null || x === undefined ? null : Number(x); }
   const v = f[CAMPO_EN_FILA[clave] || clave];
   if (v === null || v === undefined || v === "") return null;
   if (clave === "tickets.ticket_cmr") return Number(v);
@@ -3675,11 +3756,19 @@ function alternarOrdenTabla(prefix, clave) {
 }
 function datosTablaActual(prefix) { return ULTIMOS_FILTRADOS[prefix] || []; }
 const ULTIMOS_FILTRADOS = { piz: [], rep: [], cic: [] };
+const FORMATO_PLAZO = { piz: {}, rep: {}, cic: {} };   // por informe y columna: "dhm" (por defecto) o "hm"
 document.addEventListener("click", (e) => {
   const th = e.target.closest && e.target.closest("table.db-tabla-maestra thead th[data-col]");
   if (!th) return;
   const tabla = th.closest("table");
   const m = /^(piz|rep|cic)_table$/.exec(tabla.id || "");
+  const tg = e.target.closest(".plazo-toggle");
+  if (tg && m) {   // botón del encabezado de un plazo: alterna "d h m" <-> "[h]:mm" (no ordena)
+    const k = tg.dataset.plazo;
+    FORMATO_PLAZO[m[1]][k] = FORMATO_PLAZO[m[1]][k] === "hm" ? "dhm" : "hm";
+    renderTablaDinamica(m[1], datosTablaActual(m[1]));
+    return;
+  }
   if (m) alternarOrdenTabla(m[1], th.dataset.col);
 });
 function renderTablaDinamica(prefix, filas) {
@@ -3688,7 +3777,7 @@ function renderTablaDinamica(prefix, filas) {
   const { ordenadas: base, filaPorTicket } = asignarFilaYColor(filas);
   const ord = ORDEN_TABLA[prefix];
   const ordenadas = ord && columnas.some((c) => c.visible && c.db_column_name === ord.clave) ? ordenarFilasTabla(base, ord, filaPorTicket) : base;
-  const { thead, tbody } = htmlTablaDinamica(columnas, ordenadas, (f) => ({ fila: filaPorTicket.get(f.ticket_cmr) }));
+  const { thead, tbody } = htmlTablaDinamica(columnas, ordenadas, (f) => ({ fila: filaPorTicket.get(f.ticket_cmr) }), FORMATO_PLAZO[prefix]);
   const tabla = document.getElementById(`${prefix}_table`);
   tabla.tHead.innerHTML = thead;
   tabla.tBodies[0].innerHTML = tbody;
@@ -4021,7 +4110,8 @@ function filasDetalleReporteParaExcel(filas) {
     "Apertura CMR": f.fecha_apertura_cmr || "",
     "Grupo Horario CMR": f.grupo_horario || "",
     "N Cltes Afectados": f.nro_clientes_afectados,
-    "Tiempo Abierto CMR (h)": f.horas_abierta !== null ? Number(f.horas_abierta.toFixed(1)) : "",
+    "Plazo Solución (CMR)": formatearPlazo(f.plazo_solucion_cmr_h, "dhm"),
+    "Plazo Solución (CMR) [h]:mm": formatearPlazo(f.plazo_solucion_cmr_h, "hm"),
     "Estado": f.region || "",
     "Oficina": f.oficina_nombre || "",
     "Avance CMR": f.avance_cmr || "",
@@ -4688,6 +4778,215 @@ document.getElementById("repo_btn_importar").addEventListener("click", async () 
     </div>`;
   btn.disabled = false;
   btn.textContent = "2. Confirmar e Importar";
+});
+
+// ===============================================================
+// VENTANAS DE MANTENIMIENTO (se suben por Repositorio; ver migration_035)
+// ===============================================================
+// VENT-PURE-START
+// Serial de Excel (o fecha escrita) -> "AAAA-MM-DD" ; hora (fracción de día o texto) -> "HH:MM". Sin zona horaria.
+function fechaVentana(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10);
+  if (typeof v === "number" && isFinite(v)) {
+    if (v < 1) return null;
+    return new Date(Math.round((Math.floor(v) - 25569) * 86400000)).toISOString().slice(0, 10);
+  }
+  const t = String(v).trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+  if (m) { const a = m[3].length === 2 ? "20" + m[3] : m[3]; return `${a}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; }
+  return null;
+}
+function horaVentana(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(11, 16);
+  if (typeof v === "number" && isFinite(v)) {
+    const min = Math.round((v - Math.floor(v)) * 1440) % 1440;
+    return String(Math.floor(min / 60)).padStart(2, "0") + ":" + String(min % 60).padStart(2, "0");
+  }
+  const m = String(v).trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp])?\.?[Mm]?\.?$/);
+  if (!m) return null;
+  let h = Number(m[1]);
+  if (m[3]) { const pm = m[3].toLowerCase() === "p"; if (pm && h < 12) h += 12; if (!pm && h === 12) h = 0; }
+  return String(h).padStart(2, "0") + ":" + m[2];
+}
+const VENT_CAMPOS = [
+  ["DESCRIPCION", "descripcion"], ["RESUMEN", "resumen"], ["IMPACTO", "impacto"], ["AFECTACION DEL SERVICIO", "afecta_servicio"],
+  ["TIPO DE AFECTACION", "tipo_afectacion"], ["TIEMPO DE AFECTACION", "tiempo_afectacion"], ["SERVICIOS AFECTADOS", "servicios_afectados"],
+  ["LOCALIDAD", "localidad"], ["UNIDAD SOLICITANTE", "unidad_solicitante"], ["RESPONSABLE DE LA VENTANA", "responsable"],
+  ["APROBACION", "aprobacion"], ["OBSERVACIONES DEL COMITE", "observaciones"],
+];
+function normEncVentana(t) {
+  return String(t ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[*?¿:]/g, "").replace(/\s+/g, " ").trim().toUpperCase();
+}
+// aoa = hoja "Resumen" como arreglo de filas (sheet_to_json con header:1). Busca la fila de encabezados por "ID DEL CAMBIO".
+function construirVentanas(aoa) {
+  const out = { filas: [], titulo: null, ignoradas: 0, error: null };
+  const hi = aoa.findIndex((r) => Array.isArray(r) && r.some((c) => normEncVentana(c) === "ID DEL CAMBIO"));
+  if (hi < 0) { out.error = 'No encontré la columna "ID del Cambio" en la hoja Resumen.'; return out; }
+  for (let i = 0; i < hi; i++) { const t = (aoa[i] || []).find((c) => typeof c === "string" && c.trim()); if (t) { out.titulo = t.trim(); break; } }
+  const idx = {};
+  aoa[hi].forEach((c, k) => { const n = normEncVentana(c); if (n && idx[n] === undefined) idx[n] = k; });
+  const g = (r, n) => (idx[n] === undefined ? null : r[idx[n]]);
+  const limpio = (v) => (v === null || v === undefined || String(v).trim() === "" ? null : String(v).replace(/\s+/g, " ").trim());
+  for (let i = hi + 1; i < aoa.length; i++) {
+    const r = aoa[i] || [];
+    const ticket = String(g(r, "ID DEL CAMBIO") ?? "").replace(/\D/g, "");
+    if (!ticket) { if (r.some((c) => c !== null && c !== undefined && String(c).trim() !== "")) out.ignoradas += 1; continue; }
+    const f = { ticket };
+    const fi = fechaVentana(g(r, "FECHA DE INICIO")), hi_ = horaVentana(g(r, "HORA INICIO"));
+    const ff = fechaVentana(g(r, "FECHA DE FINALIZACION")), hf = horaVentana(g(r, "HORA FIN"));
+    f.fecha_inicio = fi ? (hi_ ? `${fi}T${hi_}` : fi) : null;
+    f.fecha_fin = ff ? (hf ? `${ff}T${hf}` : ff) : null;
+    VENT_CAMPOS.forEach(([enc, campo]) => { f[campo] = limpio(g(r, enc)); });
+    out.filas.push(f);
+  }
+  return out;
+}
+// Unidad solicitante del Excel -> nombre exacto del catálogo de Unidad Resolutoria (o null)
+function unidadDeVentana(txt, unidades) {
+  const n = normEncVentana(txt);
+  if (!n) return null;
+  const ALIAS = { "OPERACIONES LOGICAS DE LA RED": "OLR" };
+  const buscado = ALIAS[n] || n;
+  const hit = (unidades || []).find((u) => normEncVentana(u) === buscado);
+  return hit || null;
+}
+// VENT-PURE-END
+
+let VENTANAS = { total: 0, actualizado: null, filas: [] };
+const rolPuedeCrear = () => !!currentUser && ["especialista", "supervisor", "administrador"].includes(currentUser.rol);
+
+function pintarKpiVentanas(prefix) {
+  const v = document.getElementById(`${prefix}_kpi_ventana`);
+  if (!v) return;
+  v.textContent = VENTANAS.cargado ? formatearMiles(VENTANAS.total) : "-";
+  const act = document.getElementById(`${prefix}_vent_act`);
+  if (act) act.textContent = VENTANAS.cargado ? (VENTANAS.actualizado ? "Actualizado: " + formatearFechaHora(VENTANAS.actualizado) : "Sin actualizar") : "";
+  const card = v.closest(".db-ventana-card");
+  if (card) card.classList.toggle("vent-click", !MODO_PUBLICO && !!VENTANAS.actualizado);
+}
+async function cargarVentanas() {
+  try {
+    const r = await apiGet("/ventanas");
+    VENTANAS = { ...r, filas: r.filas || [], cargado: true };
+  } catch (e) { VENTANAS = { total: 0, actualizado: null, filas: [], cargado: false }; }
+  ["piz", "rep", "cic"].forEach(pintarKpiVentanas);
+  const vig = document.getElementById("vent_vigente");
+  if (vig) vig.textContent = VENTANAS.actualizado
+    ? `Archivo vigente: ${VENTANAS.nombre_archivo || "-"} · ${VENTANAS.total} ventana(s) (tickets únicos) · actualizado ${formatearFechaHora(VENTANAS.actualizado)}${VENTANAS.subido_por ? " por " + VENTANAS.subido_por : ""}.`
+    : "Todavía no se ha subido ningún archivo de ventanas.";
+}
+
+// --- Menú de la etiqueta ---
+document.querySelectorAll(".db-ventana-card").forEach((card) => {
+  const menu = card.querySelector(".vent-menu");
+  card.addEventListener("click", (e) => {
+    if (MODO_PUBLICO || !VENTANAS.actualizado) return;
+    if (e.target === menu) return;
+    menu.classList.toggle("hidden");
+  });
+  menu.addEventListener("click", () => { menu.classList.add("hidden"); abrirVentanas(); });
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".db-ventana-card")) document.querySelectorAll(".vent-menu").forEach((m) => m.classList.add("hidden"));
+});
+
+function abrirVentanas() {
+  const modal = document.getElementById("modal_ventanas");
+  document.getElementById("mv_titulo").textContent = "Ventanas de mantenimiento";
+  document.getElementById("mv_sub").innerHTML = `${escHtml(VENTANAS.titulo || "")} · ${VENTANAS.total} ventana(s) · actualizado ${formatearFechaHora(VENTANAS.actualizado)}`
+    + (VENTANAS.total_hojas > 1 ? ` · <strong>El archivo tiene ${VENTANAS.total_hojas} hojas: descárgalo para verlas todas.</strong>` : "");
+  const puedeCrear = rolPuedeCrear();
+  const kv = (k, v) => (v ? `<div><span>${k}:</span> ${escHtml(v)}</div>` : "");
+  document.getElementById("mv_lista").innerHTML = VENTANAS.filas.length ? VENTANAS.filas.map((f, i) => `
+    <div class="vent-item" data-i="${i}">
+      <div class="vent-cab"><span><span class="vent-id">Cambio ${escHtml(f.ticket)}</span> — ${escHtml(f.descripcion || "")}</span>
+        <span class="vent-cuando">${formatearFechaHora(f.fecha_inicio)} → ${formatearFechaHora(f.fecha_fin)}</span></div>
+      <div class="vent-det"><div class="kv">
+        ${kv("Resumen", f.resumen)}${kv("Impacto", f.impacto)}${kv("¿Afecta el servicio?", f.afecta_servicio)}${kv("Tipo de afectación", f.tipo_afectacion)}
+        ${kv("Tiempo de afectación", f.tiempo_afectacion)}${kv("Servicios afectados", f.servicios_afectados)}${kv("Localidad", f.localidad)}
+        ${kv("Unidad solicitante", f.unidad_solicitante)}${kv("Responsable", f.responsable)}${kv("Aprobación", f.aprobacion)}${kv("Observaciones del Comité", f.observaciones)}
+      </div>${puedeCrear ? '<button type="button" class="btn-primary vent-registrar">Registrar porque derivó en una Incidencia</button>' : ""}</div>
+    </div>`).join("") : '<p class="hint">No hay ventanas en el archivo.</p>';
+  modal.classList.remove("hidden");
+}
+document.getElementById("mv_cerrar").addEventListener("click", () => document.getElementById("modal_ventanas").classList.add("hidden"));
+document.getElementById("modal_ventanas").addEventListener("click", (e) => {
+  if (e.target.id === "modal_ventanas") { e.target.classList.add("hidden"); return; }
+  const item = e.target.closest(".vent-item");
+  if (!item) return;
+  if (e.target.closest(".vent-registrar")) {
+    document.getElementById("modal_ventanas").classList.add("hidden");
+    prellenarCrearDesdeVentana(VENTANAS.filas[Number(item.dataset.i)]);
+    return;
+  }
+  if (e.target.closest(".vent-cab")) item.classList.toggle("abierta");
+});
+
+// "Registrar porque derivó en una Incidencia": lleva la ventana al formulario de Crear Ticket con lo que se sabe.
+function prellenarCrearDesdeVentana(f) {
+  document.querySelector('.tab-btn[data-tab="crear"]').click();
+  limpiarFormularioCrear();
+  document.getElementById("c_tickets_vinculados").value = f.ticket;          // la ventana (cambio) es la causa de la incidencia
+  const unidad = unidadDeVentana(f.unidad_solicitante, (LOOKUPS.unidades_resolutorias || []).map((u) => u.nombre));
+  if (unidad) document.getElementById("c_unidad_resolutoria").value = unidad;
+  if (f.fecha_inicio && f.fecha_inicio.length >= 16) { fallaManual = true; document.getElementById("c_fecha_falla").value = f.fecha_inicio; }
+  const cuando = `${formatearFechaHora(f.fecha_inicio)} a ${formatearFechaHora(f.fecha_fin)}`;
+  const partes = [`Incidencia derivada de la ventana de mantenimiento (Cambio ${f.ticket}), programada ${cuando}.`];
+  if (f.descripcion) partes.push(f.descripcion);
+  if (f.localidad) partes.push(`Localidad: ${f.localidad}.`);
+  if (f.tipo_afectacion || f.tiempo_afectacion) partes.push(`Afectación prevista: ${[f.tipo_afectacion, f.tiempo_afectacion].filter(Boolean).join(", ")}.`);
+  if (f.servicios_afectados) partes.push(`Servicios afectados: ${f.servicios_afectados}`);
+  document.getElementById("c_descripcion").value = partes.join(" ");
+  showMsg(document.getElementById("crear_msg"),
+    `Formulario prellenado desde la ventana ${f.ticket}. Revisa y completa: Ticket CMR-COR, Apertura del CMR, categoría y ubicación.` + (unidad ? "" : " (La unidad resolutoria no se pudo deducir: elígela)."), true);
+  document.getElementById("c_ticket_cmr").focus();
+}
+
+// --- Subida desde el Repositorio ---
+let ventSubida = null;
+function bufferABase64(buf) {
+  const b = new Uint8Array(buf); let s = ""; const T = 0x8000;
+  for (let i = 0; i < b.length; i += T) s += String.fromCharCode.apply(null, b.subarray(i, i + T));
+  return btoa(s);
+}
+document.getElementById("vent_archivo").addEventListener("change", async () => {
+  const msg = document.getElementById("vent_msg"), prev = document.getElementById("vent_preview"), btn = document.getElementById("vent_btn_subir");
+  ventSubida = null; btn.disabled = true; prev.innerHTML = "";
+  const file = document.getElementById("vent_archivo").files[0];
+  if (!file) { msg.textContent = ""; return; }
+  try {
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: "array" });
+    const nombreHoja = wb.SheetNames.find((n) => normEncVentana(n) === "RESUMEN") || wb.SheetNames[0];
+    const aoa = XLSX.utils.sheet_to_json(wb.Sheets[nombreHoja], { header: 1, raw: true, defval: null });
+    const r = construirVentanas(aoa);
+    if (r.error) throw new Error(r.error);
+    if (r.filas.length === 0) throw new Error("La hoja no tiene ventanas de mantenimiento.");
+    ventSubida = { nombre_archivo: file.name, titulo: r.titulo, total_hojas: wb.SheetNames.length, archivo_b64: bufferABase64(buffer), filas: r.filas };
+    const unicos = new Set(r.filas.map((f) => f.ticket)).size;
+    prev.innerHTML = `<div class="vent-prev"><p class="hint">Hoja leída: <strong>${escHtml(nombreHoja)}</strong> · ${r.filas.length} fila(s), <strong>${unicos} ticket(s) único(s)</strong>${r.ignoradas ? ` · ${r.ignoradas} fila(s) sin ID del Cambio ignoradas` : ""}.</p>
+      <table><thead><tr><th>ID del Cambio</th><th>Descripción</th><th>Inicio</th><th>Fin</th><th>Localidad</th></tr></thead><tbody>${r.filas.map((f) =>
+        `<tr><td>${escHtml(f.ticket)}</td><td>${escHtml(f.descripcion || "")}</td><td>${formatearFechaHora(f.fecha_inicio)}</td><td>${formatearFechaHora(f.fecha_fin)}</td><td>${escHtml(f.localidad || "")}</td></tr>`).join("")}</tbody></table></div>`;
+    showMsg(msg, "Archivo leído. Revisa y pulsa \"Subir ventanas de mantenimiento\" (reemplaza al archivo anterior).", true);
+    btn.disabled = false;
+  } catch (err) { showMsg(msg, "No se pudo leer el archivo: " + err.message, false); }
+});
+document.getElementById("vent_btn_subir").addEventListener("click", async () => {
+  const msg = document.getElementById("vent_msg"), btn = document.getElementById("vent_btn_subir");
+  if (!ventSubida) return;
+  btn.disabled = true;
+  try {
+    const r = await apiSend("/ventanas", "POST", ventSubida);
+    showMsg(msg, `Listo: ${r.tickets} ventana(s) cargadas (${r.filas} fila(s)). Actualizado ${formatearFechaHora(r.actualizado)}.`, true);
+    ventSubida = null;
+    document.getElementById("vent_archivo").value = "";
+    document.getElementById("vent_preview").innerHTML = "";
+    await cargarVentanas();
+  } catch (err) { showMsg(msg, "No se pudo subir: " + err.message, false); btn.disabled = false; }
 });
 
 iniciarSesionApp();
