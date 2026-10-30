@@ -39,6 +39,9 @@ const CAMPOS_REGISTRO = {
   puerto: { tipo: "texto", max: 60 },
   sector: { tipo: "texto", max: 120 },
   edificio: { tipo: "texto", max: 120 },
+  ubicacion: { tipo: "txt", max: 200 },
+  causa_falla: { tipo: "txt", max: 2000 },
+  correctivo: { tipo: "txt", max: 2000 },
   no_clientes_reportaron: { tipo: "cant" },
   nro_clientes_afectados: { tipo: "cant" },
   fecha_cierre_cda: { tipo: "fecha" },
@@ -107,7 +110,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
   const registros = new Map();
   for (const lote of enLotes(ids, 80)) {
     const { results } = await db.prepare(
-      `SELECT p.id, p.ticket_id, p.oficina_id, p.olt, p.tarjeta, p.puerto, p.sector, p.edificio, p.no_clientes_reportaron, p.nro_clientes_afectados,
+      `SELECT p.id, p.ticket_id, p.oficina_id, p.olt, p.tarjeta, p.puerto, p.sector, p.edificio, p.ubicacion, p.causa_falla, p.correctivo, p.no_clientes_reportaron, p.nro_clientes_afectados,
               p.fecha_cierre_cda, p.fecha_cierre_cmr, o.nombre AS oficina_nombre
          FROM ticket_puertos p LEFT JOIN oficinas o ON o.id = p.oficina_id WHERE p.id IN (${lote.map(() => "?").join(",")})`
     ).bind(...lote).all();

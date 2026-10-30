@@ -61,7 +61,8 @@ export async function onRequestGet({ request, env }) {
       p.id AS puerto_id, p.oficina_id, o.nombre AS oficina_nombre, o.estado AS region, o.localidad,
       p.olt, p.sector, p.edificio, p.ubicacion, p.tarjeta, p.puerto,
       p.no_clientes_reportaron, p.nro_clientes_afectados, p.estado_puerto,
-      p.fecha_cierre_cda, p.fecha_cierre_cmr,
+      p.fecha_cierre_cda, p.fecha_cierre_cmr, p.causa_falla, p.correctivo,
+      datetime(t.creado_en, '-4 hours') AS creado_en, datetime(p.actualizado_en, '-4 hours') AS actualizado_en,
       t.creado_por, COALESCE(NULLIF(u.nombre, ''), t.creado_por) AS creado_por_nombre,
       tot.n AS total_registros_ticket${extrasSql}
     FROM ticket_puertos p
@@ -180,7 +181,7 @@ export async function onRequestGet({ request, env }) {
 
   if (publico) {
     // Público: se quitan datos internos (quién lo creó, descripción libre, avance).
-    const QUITAR = ["creado_por", "creado_por_nombre", "descripcion", "avance_cmr"];
+    const QUITAR = ["creado_por", "creado_por_nombre", "descripcion", "avance_cmr", "causa_falla", "correctivo"];
     filas.forEach((f) => QUITAR.forEach((k) => { delete f[k]; }));
   }
   return json({ filas, fechas });

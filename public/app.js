@@ -1257,6 +1257,11 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
       ? `Ticket ${res.ticket_cmr} ya existía: se agregaron ${payload.puertos.length} registro(s) (#${res.id}).`
       : `Ticket ${res.ticket_cmr} creado correctamente (#${res.id}) con ${payload.puertos.length} puerto(s).`, true);
     limpiarFormularioCrear();
+    if (payload.onus && payload.onus.length) {
+      const r = await cruzarTicketGrafana(res.ticket_cmr);
+      const t = textoCruce(r);
+      if (t) showMsg(msg, msg.textContent + t, true);
+    }
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -1436,7 +1441,8 @@ document.getElementById("mcs_btn").addEventListener("click", async () => {
     });
     await mcRefrescarTicket();
     document.getElementById("mcs_archivos").value = "";
-    showMsg(msg, `Listo: ${res.agregados} puerto(s) agregado(s), ${res.actualizados} con clientes afectados actualizados, ${res.onus_guardadas > 0 ? res.onus_guardadas : 0} ONU(s) registradas. El detalle quedó en la descripción.` +
+    const cr = res.onus_guardadas > 0 ? textoCruce(await cruzarTicketGrafana(mcTicket.ticket_cmr)) : "";
+    showMsg(msg, `Listo: ${res.agregados} puerto(s) agregado(s), ${res.actualizados} con clientes afectados actualizados, ${res.onus_guardadas > 0 ? res.onus_guardadas : 0} ONU(s) registradas. El detalle quedó en la descripción.` + cr +
       (malos.length ? " " + malos.join(" · ") : ""), true);
   } catch (err) { showMsg(msg, err.message, false); }
   finally { btn.disabled = false; }
@@ -2289,6 +2295,7 @@ const CL_COLS = [
   { f: "tickets_vinculados", t: "Incidencia previa", tipo: "ticket", ed: true, w: 120 },
   { f: "estado_ticket", t: "Estado del ticket", tipo: "lista", ed: true, w: 175, lista: () => (LOOKUPS.estados_ticket || []).map((x) => x.nombre) },
   { f: "unidad_resolutoria", t: "Unidad resolutoria", tipo: "lista", ed: true, w: 160, vacio: true, lista: () => (LOOKUPS.unidades_resolutorias || []).map((x) => x.nombre) },
+  { f: "estado_puerto", t: "Estado del puerto", tipo: "dato", w: 150 },
   { f: "region", t: "Estado", tipo: "dato", w: 140 },
   { f: "oficina_nombre", t: "Oficina", tipo: "lista", ed: true, campo: "oficina", w: 200, lista: () => oficinasReales().map((x) => x.nombre) },
   { f: "olt", t: "OLT", tipo: "texto", ed: true, w: 190 },
@@ -2296,6 +2303,7 @@ const CL_COLS = [
   { f: "puerto", t: "Puerto", tipo: "texto", ed: true, w: 90 },
   { f: "sector", t: "Sector", tipo: "texto", ed: true, w: 170 },
   { f: "edificio", t: "Edificio", tipo: "texto", ed: true, w: 150 },
+  { f: "ubicacion", t: "Ubicación", tipo: "texto", ed: true, vacio: true, w: 170 },
   { f: "no_clientes_reportaron", t: "Nro. reportes", tipo: "cant", ed: true, w: 110 },
   { f: "nro_clientes_afectados", t: "Nro. afectados", tipo: "cant", ed: true, w: 115 },
   { f: "clientes_falla", t: "Clientes afectados (falla)", tipo: "cantcalc", w: 140 },
@@ -2305,6 +2313,8 @@ const CL_COLS = [
   { f: "descripcion", t: "Descripción", tipo: "texto", ed: true, vacio: true, w: 260 },
   { f: "comentario", t: "Comentario", tipo: "texto", ed: true, vacio: true, w: 220 },
   { f: "avance_cmr", t: "Avance CMR", tipo: "texto", ed: true, vacio: true, w: 260 },
+  { f: "causa_falla", t: "Causa de la falla", tipo: "texto", ed: true, vacio: true, w: 260 },
+  { f: "correctivo", t: "Correctivo de la falla", tipo: "texto", ed: true, vacio: true, w: 260 },
   { f: "fecha_apertura_cda", t: "Registro CDA", tipo: "fecha", ed: false, w: 140 },
   { f: "fecha_apertura_cmr", t: "Apertura CMR", tipo: "fecha", ed: true, w: 140 },
   { f: "fecha_falla", t: "Fecha de la falla", tipo: "fecha", ed: true, w: 140 },
@@ -2323,6 +2333,8 @@ const CL_COLS = [
   { f: "semaforo_curso_cmr", t: "Semáforo tiempo en curso CMR", tipo: "sem", w: 130 },
   { f: "semaforo_cierre_cmr", t: "Semáforo tiempo de cierre CMR", tipo: "sem", w: 130 },
   { f: "creado_por_nombre", t: "Creado por", tipo: "dato", w: 150 },
+  { f: "creado_en", t: "Creado el", tipo: "fecha", w: 140 },
+  { f: "actualizado_en", t: "Última modificación", tipo: "fecha", w: 140 },
 ];
 // Campos que pertenecen al TICKET (se repiten en cada fila del ticket y se guardan una sola vez).
 const CL_CAMPOS_TICKET = ["ticket_cmr", "tickets_vinculados", "estado_ticket", "unidad_resolutoria", "categoria_afectacion", "afectacion",
@@ -3941,7 +3953,7 @@ const CAMPO_EN_FILA = {
   "ticket_puertos.id": "puerto_id", "ticket_puertos.oficina_id": "oficina_id", "ticket_puertos.olt": "olt", "ticket_puertos.sector": "sector",
   "ticket_puertos.edificio": "edificio", "ticket_puertos.ubicacion": "ubicacion", "ticket_puertos.tarjeta": "tarjeta", "ticket_puertos.puerto": "puerto",
   "ticket_puertos.no_clientes_reportaron": "no_clientes_reportaron", "ticket_puertos.nro_clientes_afectados": "nro_clientes_afectados",
-  "ticket_puertos.estado_puerto": "estado_puerto",
+  "ticket_puertos.estado_puerto": "estado_puerto", "ticket_puertos.causa_falla": "causa_falla", "ticket_puertos.correctivo": "correctivo",
   "oficinas.id": "oficina_id", "oficinas.nombre": "oficina_nombre", "oficinas.estado": "region", "oficinas.localidad": "localidad",
   "calc.semaforo": "semaforo", "calc.grupo_horario": "grupo_horario", "calc.tiempo_cierre_horas": "tiempo_cierre_horas",
   "calc.clientes_falla": "clientes_falla", "calc.clientes_sin_luz": "clientes_sin_luz",
@@ -4704,14 +4716,42 @@ function htmlClientesTicket(d, filtro) {
   return htmlResumenClientes(d.resumen, d.puertos.length) + barra + `<p class="hint">${numCli(lista.length)} registro(s) mostrados.</p>` + tabla;
 }
 // ONUs guardadas con el ticket al crearlo con los archivos de SmartOLT (serial, cuenta, cédula si la traían, nombre).
+// Cruza las ONUs de un ticket con la base de clientes de Grafana (por tandas). Devuelve el último resultado o null si no se pudo (nunca lanza error).
+async function cruzarTicketGrafana(cmr, alAvanzar) {
+  try {
+    let desde = 0, ultimo = null, total = { cruzadas: 0, fuera_ventana: 0 };
+    for (let i = 0; i < 100; i++) {
+      ultimo = await apiSend(`/tickets/${encodeURIComponent(cmr)}/cruzar`, "POST", { desde_id: desde });
+      total.cruzadas += ultimo.cruzadas || 0; total.fuera_ventana += ultimo.fuera_ventana || 0;
+      if (alAvanzar) alAvanzar(total);
+      if (ultimo.siguiente === null || ultimo.siguiente === undefined) break;
+      desde = ultimo.siguiente;
+    }
+    return { ...ultimo, ...total };
+  } catch (e) { return null; }
+}
+window.cruzarTicketGrafana = cruzarTicketGrafana;
+function textoCruce(r) {
+  if (!r) return "";
+  if (r.omitido) return "";
+  if (!r.total) return "";
+  return ` Cruce con Grafana: ${numCli(r.con_cliente)} de ${numCli(r.total)} ONU(s) con datos del cliente` +
+    (r.fuera_ventana ? ` (${numCli(r.fuera_ventana)} no se cruzaron por estar fuera de la ventana de días respecto al archivo de Grafana)` : "") + ".";
+}
 function htmlOnusAlCrear(d) {
   const onus = (d && d.onus) || [];
-  if (!onus.length) return `<p class="ml-vacio">Este ticket no se creó con archivos de SmartOLT, así que no tiene ONUs registradas al crearlo.</p>`;
-  const conCed = onus.filter((o) => o.cedula).length;
-  const filas = onus.map((o) => `<tr><td>${escHtml(o.olt ?? "")}</td><td>${escHtml(o.tarjeta ?? "")}</td><td>${escHtml(o.puerto ?? "")}</td><td>${escHtml(o.serial ?? "")}</td>` +
-    `<td>${escHtml(o.cuenta ?? "")}</td><td>${escHtml(o.cedula ?? "")}</td><td>${escHtml(o.nombre ?? "")}</td><td>${escHtml(o.estado ?? "")}</td><td>${escHtml(o.direccion ?? "")}</td></tr>`).join("");
-  return `<p class="hint">${numCli(onus.length)} ONU(s) registradas al crear el ticket · ${numCli(conCed)} con cédula · ${numCli(onus.filter((o) => o.cuenta).length)} con número de cuenta.</p>` +
-    `<div class="ml-scroll"><table class="rows-table"><thead><tr>${["OLT", "Tarjeta", "Puerto", "Serial ONU", "Cuenta", "Cédula", "Nombre", "Estado SmartOLT", "Dirección"].map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${filas}</tbody></table></div>`;
+  if (!onus.length) return `<p class="ml-vacio">Este ticket no tiene ONUs registradas con archivos de SmartOLT.</p>`;
+  const conCli = onus.filter((o) => o.cli_cuenta).length;
+  const tel = (o) => [o.cli_tel_casa, o.cli_tel_oficina].filter(Boolean).join(" / ");
+  const METODO = { serial: "Serial", cuenta_en_name: "Cuenta", cedula_en_name: "Cédula", nombre: "Nombre" };
+  const filas = onus.map((o) => `<tr><td>${escHtml(o.olt ?? "")}</td><td>${escHtml(o.tarjeta ?? "")}</td><td>${escHtml(o.puerto ?? "")}</td><td>${escHtml(o.serial ?? "")}</td><td>${escHtml(o.estado ?? "")}</td>` +
+    `<td>${escHtml(o.cli_cuenta ?? o.cuenta ?? "")}</td><td>${escHtml(o.cli_nombre ?? o.nombre ?? "")}</td><td>${escHtml(o.cli_cedula ?? o.cedula ?? "")}</td>` +
+    `<td>${escHtml(tel(o))}</td><td>${escHtml(o.cli_correo ?? "")}</td><td>${escHtml(o.cli_correo_iptv ?? "")}</td><td>${escHtml(o.cli_direccion ?? o.direccion ?? "")}</td>` +
+    `<td>${escHtml(o.cli_municipio ?? "")}</td><td>${escHtml(o.cli_parroquia ?? "")}</td><td>${escHtml(o.cli_sector ?? "")}</td>` +
+    `<td>${escHtml([o.cli_estado_contrato, o.cli_fecha_contrato].filter(Boolean).join(" · "))}</td><td>${o.cli_cuenta ? escHtml(METODO[o.cruce_metodo] || o.cruce_metodo || "") : "Sin cruzar"}</td></tr>`).join("");
+  return `<p class="hint">${numCli(onus.length)} ONU(s) del ticket · ${numCli(conCli)} cruzadas con la base de Grafana · ${numCli(onus.length - conCli)} sin cruzar (las sin cruzar muestran los datos de SmartOLT).</p>` +
+    `<div class="search-row"><button type="button" class="btn-secondary" id="ml_cruzar">Cruzar con Grafana ahora</button> <span id="ml_cruce_msg" class="hint"></span></div>` +
+    `<div class="ml-scroll"><table class="rows-table"><thead><tr>${["OLT", "Tarjeta", "Puerto", "Serial ONU", "Estado SmartOLT", "Cuenta", "Nombre", "Cédula", "Teléfonos", "Correo", "Correo IPTV", "Dirección", "Municipio", "Parroquia", "Sector", "Contrato", "Cruzada por"].map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${filas}</tbody></table></div>`;
 }
 async function abrirModalLog(cmr) {
   cerrarModalLog();
@@ -4723,7 +4763,7 @@ async function abrirModalLog(cmr) {
     `<button type="button" class="btn-secondary" id="ml_cerrar">Cerrar</button></div>` +
     (conClientes ? `<div class="ml-tabs" role="tablist"><button type="button" class="ml-tab activo" data-ml="log">Log</button>` +
       `<button type="button" class="ml-tab" data-ml="puertos">Clientes por puerto</button><button type="button" class="ml-tab" data-ml="ticket">Clientes del ticket</button>` +
-      `<button type="button" class="ml-tab" data-ml="alcrear">ONUs al crear (SmartOLT)</button></div>` : "") +
+      `<button type="button" class="ml-tab" data-ml="alcrear">ONUs y clientes del ticket</button></div>` : "") +
     `<div id="ml_cuerpo">Cargando...</div><div id="ml_clientes" class="hidden"></div></div>`;
   document.body.appendChild(ov);
   ov.addEventListener("click", (e) => { if (e.target === ov) cerrarModalLog(); });
@@ -4736,6 +4776,15 @@ async function abrirModalLog(cmr) {
       cuerpoLog.classList.add("hidden"); caja.classList.remove("hidden");
       caja.innerHTML = vista === "alcrear" ? htmlOnusAlCrear(datosCrear) : vista === "puertos" ? htmlClientesPorPuerto(datos) : htmlClientesTicket(datos, filtro);
       caja.querySelectorAll(".ml-filtro").forEach((b) => b.addEventListener("click", () => { filtro = b.dataset.filtro; pintar(); }));
+      const bc = caja.querySelector("#ml_cruzar");
+      if (bc) bc.addEventListener("click", async () => {
+        const m = caja.querySelector("#ml_cruce_msg"); bc.disabled = true; m.textContent = "Cruzando...";
+        const r = await cruzarTicketGrafana(cmr, (t) => { m.textContent = `Cruzando... ${t.cruzadas} cruzadas`; });
+        if (!r) { m.textContent = "No se pudo cruzar con Grafana."; bc.disabled = false; return; }
+        try { datosCrear = await apiGet(`/tickets/${encodeURIComponent(cmr)}/onus`); } catch (e) { /* se queda con lo anterior */ }
+        pintar();
+        const m2 = caja.querySelector("#ml_cruce_msg"); if (m2) m2.textContent = r.omitido ? r.omitido : (r.cruzadas ? `Listo: ${r.cruzadas} ONU(s) cruzadas ahora.` : "No hay ONUs nuevas que cruzar (o están fuera de la ventana de días respecto a la base de Grafana).");
+      });
     };
     ov.querySelectorAll(".ml-tab").forEach((b) => b.addEventListener("click", async () => {
       ov.querySelectorAll(".ml-tab").forEach((x) => x.classList.toggle("activo", x === b));
