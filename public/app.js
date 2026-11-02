@@ -2632,8 +2632,8 @@ function clPonerDatos() {
 }
 
 // Vista general (las mismas columnas de la tabla, con los filtros activos). No incluye el detalle del ticket.
-function filasExportConsulta() {
-  return clDatosActuales.map((f) => {
+function filasExportConsulta(filas = clDatosActuales) {
+  return filas.map((f) => {
     const o = {};
     CL_COLS.forEach((c) => {
       let v = f[c.f];
@@ -4581,7 +4581,7 @@ document.getElementById("cic_btn_csv").addEventListener("click", () => {
 // Interacción de los informes
 //   · Doble clic en una fila del Top 5, una barra de "Unidades resolutorias" / "Oficinas" o una sección del
 //     "Desglose" = usa ese valor como filtro (otro doble clic sobre el mismo valor lo quita).
-//   · Clic en una fila de la tabla = menú con "1. Ver log" (toda la información del ticket en la base de datos).
+//   · Clic en una fila de la tabla = menú: 1. Copiar ID · 2. Ver log · 3. Descargar toda la data · 4. Editar ticket (especialista, supervisor y administrador; el resto solo ve el log).
 // ---------------------------------------------------------------
 const SELECT_DE_GRAFICA = { unidad: "unidad", oficina: "oficina", desglose: "estado_ticket" };
 function aplicarFiltroDoble(prefix, selectId, valor) {
@@ -4635,12 +4635,73 @@ function abrirMenuFila(ev, ticket) {
   const menu = document.createElement("div");
   menu.id = "menu_fila";
   menu.className = "menu-fila";
-  menu.innerHTML = `<div class="menu-fila-titulo">Ticket ${escHtml(formatearTicket(ticket))}</div><button type="button" data-accion="log">1. Ver log</button>`;
+  const avanzado = !!currentUser && ROLES_ATAJOS_TICKET.includes(currentUser.rol);
+  menu.innerHTML = `<div class="menu-fila-titulo">Ticket ${escHtml(formatearTicket(ticket))}</div>` +
+    (avanzado ? `<button type="button" data-accion="copiar">1. Copiar ID del ticket</button>` : "") +
+    `<button type="button" data-accion="log">${avanzado ? "2" : "1"}. Ver log</button>` +
+    (avanzado ? `<button type="button" data-accion="descargar">3. Descargar toda la data (xlsx)</button><button type="button" data-accion="editar">4. Editar ticket</button>` : "");
   document.body.appendChild(menu);
   const w = menu.offsetWidth, h = menu.offsetHeight;
   menu.style.left = Math.max(4, Math.min(ev.clientX, window.innerWidth - w - 8)) + "px";
   menu.style.top = Math.max(4, Math.min(ev.clientY, window.innerHeight - h - 8)) + "px";
   menu.querySelector('[data-accion="log"]').addEventListener("click", () => { cerrarMenuFila(); abrirModalLog(ticket); });
+  if (avanzado) {
+    menu.querySelector('[data-accion="copiar"]').addEventListener("click", () => { cerrarMenuFila(); copiarIdTicket(ticket); });
+    menu.querySelector('[data-accion="descargar"]').addEventListener("click", () => { cerrarMenuFila(); descargarDataTicket(ticket); });
+    menu.querySelector('[data-accion="editar"]').addEventListener("click", () => { cerrarMenuFila(); irAEditarTicket(ticket); });
+  }
+}
+const ROLES_ATAJOS_TICKET = ["especialista", "supervisor", "administrador"];
+// Atajo: copia el número del ticket sin espacios (en los informes se ve "123 456 789"; se copia "123456789").
+async function copiarIdTicket(ticket) {
+  const id = String(ticket).replace(/\s+/g, "");
+  let ok = false;
+  try { await navigator.clipboard.writeText(id); ok = true; }
+  catch (e) {
+    try { const ta = document.createElement("textarea"); ta.value = id; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select(); ok = document.execCommand("copy"); ta.remove(); } catch (e2) { ok = false; }
+  }
+  const aviso = document.createElement("div");
+  aviso.className = "toast-copiado";
+  aviso.textContent = ok ? `Ticket ${id} copiado` : "No se pudo copiar. Selecciona el número y usa Ctrl+C.";
+  document.body.appendChild(aviso);
+  setTimeout(() => aviso.remove(), 2200);
+}
+// Atajo: abre la pestaña Editar Ticket con "Cambio de campo" elegido y el ticket ya buscado (después se puede cambiar a Solución / Cierre).
+function irAEditarTicket(ticket) {
+  const tab = document.querySelector('.tab-btn[data-tab="modificar"]');
+  if (!tab || tab.classList.contains("hidden")) return;
+  tab.click();
+  const acc = document.getElementById("mc_accion");
+  acc.value = "CAMPO";
+  acc.dispatchEvent(new Event("change", { bubbles: true }));
+  document.getElementById("mc_ticket").value = String(ticket).replace(/\s+/g, "");
+  mcBuscarTicket();
+  window.scrollTo(0, 0);
+}
+// Atajo: descarga en un solo Excel todo lo que muestran el log y la consulta del ticket (una hoja por tema).
+async function descargarDataTicket(ticket) {
+  if (typeof XLSX === "undefined") { alert("No se pudo cargar el generador de Excel. Recarga la página (Ctrl+F5) e inténtalo de nuevo."); return; }
+  const enc = encodeURIComponent(ticket);
+  try {
+    const [det, logd, cons] = await Promise.all([apiGet(`/tickets/${enc}`), apiGet(`/tickets/${enc}/log`), apiGet(`/consulta?ticket_cmr=${enc}`)]);
+    let onus = null;
+    if (ROLES_PANEL_CLIENTES.includes(currentUser.rol)) { try { onus = (await apiGet(`/tickets/${enc}/onus`)).onus; } catch (e) { onus = null; } }
+    const etq = (k) => { const t = String(k).replace(/_/g, " "); return t.charAt(0).toUpperCase() + t.slice(1); };
+    const esFecha = (k) => /^(fecha_|creado_en|actualizado_en)/.test(k);
+    const valor = (k, v) => (v === null || v === undefined ? "" : esFecha(k) && v ? formatearFechaHora(v) : v);
+    const wb = XLSX.utils.book_new();
+    const hoja = (nombre, filas) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas.length ? filas : [{ "(sin datos)": "" }]), nombre);
+    hoja("Ticket", Object.entries(det.ticket).map(([k, v]) => ({ Campo: etq(k), Valor: valor(k, v) })));
+    hoja("Registros", det.puertos.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [etq(k), valor(k, v)]))));
+    hoja("Consulta", filasExportConsulta(cons.filas.filter((f) => String(f.ticket_cmr) === String(det.ticket.ticket_cmr))));
+    hoja("Log de cambios", (logd.log || []).map((l) => ({ Fecha: l.fecha, Tipo: l.tipo_cambio, Campo: l.campo, "Valor anterior": l.valor_anterior ?? "", "Valor nuevo": l.valor_nuevo ?? "",
+      Usuario: l.usuario_email, OLT: l.olt ?? "", Tarjeta: l.tarjeta ?? "", Puerto: l.puerto ?? "" })));
+    if (onus) hoja("ONUs y clientes", onus.map((o) => ({ OLT: o.olt, Tarjeta: o.tarjeta, Puerto: o.puerto, "Serial ONU": o.serial, "Estado SmartOLT": o.estado,
+      Cuenta: o.cli_cuenta ?? o.cuenta ?? "", Nombre: o.cli_nombre ?? o.nombre ?? "", Cédula: o.cli_cedula ?? o.cedula ?? "", "Teléfono de casa": o.cli_tel_casa ?? "", "Teléfono de oficina": o.cli_tel_oficina ?? "",
+      Correo: o.cli_correo ?? "", "Correo IPTV": o.cli_correo_iptv ?? "", Dirección: o.cli_direccion ?? o.direccion ?? "", Municipio: o.cli_municipio ?? "", Parroquia: o.cli_parroquia ?? "", Sector: o.cli_sector ?? "",
+      "Estado del contrato": o.cli_estado_contrato ?? "", "Fecha del contrato": o.cli_fecha_contrato ?? "", Sucursal: o.cli_sucursal ?? "", "Cruzada por": o.cli_cuenta ? (o.cruce_metodo ?? "") : "Sin cruzar" })));
+    XLSX.writeFile(wb, `ticket_${String(det.ticket.ticket_cmr)}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  } catch (err) { alert("No se pudo descargar la data del ticket: " + err.message); }
 }
 ["piz_table", "rep_table", "cic_table"].forEach((id) => {
   document.getElementById(id).addEventListener("click", (e) => {
