@@ -4581,7 +4581,7 @@ document.getElementById("cic_btn_csv").addEventListener("click", () => {
 // Interacción de los informes
 //   · Doble clic en una fila del Top 5, una barra de "Unidades resolutorias" / "Oficinas" o una sección del
 //     "Desglose" = usa ese valor como filtro (otro doble clic sobre el mismo valor lo quita).
-//   · Clic en una fila de la tabla = menú: 1. Copiar ID · 2. Ver log · 3. Descargar toda la data · 4. Editar ticket (especialista, supervisor y administrador; el resto solo ve el log).
+//   · Clic DERECHO en una fila de la tabla = menú: 1. Copiar ID · 2. Ver log · 3. Descargar toda la data · 4. Editar ticket (especialista, supervisor y administrador; el resto solo ve el log).
 // ---------------------------------------------------------------
 const SELECT_DE_GRAFICA = { unidad: "unidad", oficina: "oficina", desglose: "estado_ticket" };
 function aplicarFiltroDoble(prefix, selectId, valor) {
@@ -4704,15 +4704,16 @@ async function descargarDataTicket(ticket) {
   } catch (err) { alert("No se pudo descargar la data del ticket: " + err.message); }
 }
 ["piz_table", "rep_table", "cic_table"].forEach((id) => {
-  document.getElementById(id).addEventListener("click", (e) => {
+  // Clic derecho (o pulsación larga en el celular). El clic izquierdo queda libre para seleccionar y copiar texto.
+  document.getElementById(id).addEventListener("contextmenu", (e) => {
     const tr = e.target.closest("tbody tr[data-ticket]");
     if (!tr || !tr.dataset.ticket) return;
-    if (window.getSelection && String(window.getSelection()).trim()) return;   // se está seleccionando texto
+    e.preventDefault();
     abrirMenuFila(e, tr.dataset.ticket);
   });
 });
 document.addEventListener("click", (e) => {
-  if (e.target.closest("#menu_fila") || e.target.closest("tr[data-ticket]")) return;
+  if (e.target.closest("#menu_fila")) return;
   cerrarMenuFila();
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") { cerrarMenuFila(); cerrarModalLog(); } });
