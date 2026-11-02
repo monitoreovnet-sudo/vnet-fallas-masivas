@@ -51,6 +51,23 @@ function soloDigitos(input) {
 }
 ["c_ticket_cmr", "c_tickets_vinculados"].forEach((id) => soloDigitos(document.getElementById(id)));
 
+// En los informes el Nº de ticket se ve con un espacio cada 3 dígitos (123 456). Al PEGAR un número así en cualquier campo de ticket
+// (Creación, Edición, Consulta/Log y sus filtros, incluidas las celdas de la tabla) se pega sin espacios.
+document.addEventListener("paste", (e) => {
+  const t = e.target;
+  if (!(t instanceof HTMLInputElement) || !e.clipboardData) return;
+  const celda = t.closest && t.closest(".tabulator-cell");
+  const esTicket = /ticket/i.test(t.id || "") || (celda && ["ticket_cmr", "tickets_vinculados"].includes(celda.getAttribute("tabulator-field")));
+  if (!esTicket) return;
+  const texto = e.clipboardData.getData("text");
+  if (!/^[\s\u00a0\u202f]*\d[\d\s\u00a0\u202f]*$/.test(texto)) return;   // solo números con espacios; cualquier otra cosa se pega normal
+  e.preventDefault();
+  let limpio = texto.replace(/[\s\u00a0\u202f]/g, "");
+  if (t.maxLength > 0) limpio = limpio.slice(0, Math.max(0, t.maxLength - (t.value.length - (t.selectionEnd - t.selectionStart))));
+  t.setRangeText(limpio, t.selectionStart, t.selectionEnd, "end");
+  t.dispatchEvent(new Event("input", { bubbles: true }));
+}, true);
+
 // ---------------------------------------------------------------
 // Campos de fecha y hora: la fecha usa el selector del navegador y la hora se escribe con el teclado, en formato libre.
 //   · 13–23 → PM (14 = 2:00 PM) · 1–11 → AM · 12 → 12 PM (mediodía) · 0 / 00 → 12 AM (medianoche)
