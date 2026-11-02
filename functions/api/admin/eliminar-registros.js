@@ -63,8 +63,8 @@ export async function onRequestPost({ request, env, waitUntil }) {
       ).bind(f.ticket_cmr, f.id, f.oficina, f.olt, f.tarjeta, f.puerto, f.sector, f.edificio,
              f.nro_clientes_afectados, f.no_clientes_reportaron, f.estado_puerto, admin.email, ahora));
       pasos.push(db.prepare(
-        `INSERT INTO ticket_log (ticket_id, ticket_puerto_id, tipo_cambio, campo, valor_anterior, valor_nuevo, usuario_email)
-         VALUES (?, NULL, 'eliminacion', 'registro', ?, NULL, ?)`
+        `INSERT INTO ticket_log (ticket_id, ticket_puerto_id, tipo_cambio, campo, valor_anterior, valor_nuevo, usuario_email, fecha)
+         VALUES (?, NULL, 'eliminacion', 'registro', ?, NULL, ?, datetime('now','-4 hours'))`
       ).bind(f.ticket_id, `${f.oficina || "-"} | ${etiqueta}`, admin.email));
       ticketsAfectados.add(f.ticket_id);
     }

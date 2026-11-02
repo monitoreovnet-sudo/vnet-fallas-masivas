@@ -53,8 +53,8 @@ export async function onRequestPost({ request, env, params, waitUntil }) {
     if (ya.has(k)) { omitidos++; continue; }
     ya.add(k);
     const ins = await db.prepare(
-      `INSERT INTO ticket_puertos (ticket_id, oficina_id, olt, tarjeta, puerto, sector, edificio, ubicacion, no_clientes_reportaron, nro_clientes_afectados, estado_puerto)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`)
+      `INSERT INTO ticket_puertos (ticket_id, oficina_id, olt, tarjeta, puerto, sector, edificio, ubicacion, no_clientes_reportaron, nro_clientes_afectados, estado_puerto, creado_en, actualizado_en)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, datetime('now','-4 hours'), datetime('now','-4 hours'))`)
       .bind(ticket.id, Number(p.oficina_id), t(p.olt, 80), t(p.tarjeta, 40), t(p.puerto, 40), t(p.sector, 120) || "DESCONOCIDO", t(p.edificio, 120) || "DESCONOCIDO",
         t(p.ubicacion, 200), cant(p.nro_clientes_afectados), estadoPuerto).run();
     agregados++;

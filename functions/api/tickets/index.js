@@ -123,8 +123,8 @@ export async function onRequestPost({ request, env, waitUntil }) {
     .prepare(
       `INSERT INTO tickets
         (ticket_cmr, tickets_vinculados, fecha_apertura_cda, fecha_apertura_cmr, fecha_falla, estado_ticket, fecha_solucion_cmr, fecha_solucion_cda,
-         unidad_resolutoria, categoria_afectacion, afectacion, comentario, descripcion, oficina_id, creado_por)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         unidad_resolutoria, categoria_afectacion, afectacion, comentario, descripcion, oficina_id, creado_por, creado_en, actualizado_en)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','-4 hours'), datetime('now','-4 hours'))`
     )
     .bind(
       String(ticket_cmr),
@@ -165,8 +165,8 @@ export async function onRequestPost({ request, env, waitUntil }) {
       .prepare(
         `INSERT INTO ticket_puertos
           (ticket_id, oficina_id, olt, tarjeta, puerto, sector, edificio, ubicacion, no_clientes_reportaron, nro_clientes_afectados, estado_puerto,
-           fecha_solucion_cmr, fecha_solucion_cda, fecha_cierre_cmr, fecha_cierre_cda)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           fecha_solucion_cmr, fecha_solucion_cda, fecha_cierre_cmr, fecha_cierre_cda, creado_en, actualizado_en)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','-4 hours'), datetime('now','-4 hours'))`
       )
       .bind(
         ticketId,

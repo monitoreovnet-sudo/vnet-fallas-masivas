@@ -188,8 +188,8 @@ export async function onRequestPost({ request, env, waitUntil }) {
   const ahora = nowIso();
   const stmts = [];
   const log = (ticket_id, ticket_puerto_id, campo, antes, despues) => stmts.push(
-    db.prepare(`INSERT INTO ticket_log (ticket_id, ticket_puerto_id, tipo_cambio, campo, valor_anterior, valor_nuevo, usuario_email)
-                VALUES (?, ?, 'excel', ?, ?, ?, ?)`).bind(ticket_id, ticket_puerto_id, campo, antes === null || antes === undefined ? null : String(antes), despues === null || despues === undefined ? null : String(despues), usuario.email));
+    db.prepare(`INSERT INTO ticket_log (ticket_id, ticket_puerto_id, tipo_cambio, campo, valor_anterior, valor_nuevo, usuario_email, fecha)
+                VALUES (?, ?, 'excel', ?, ?, ?, ?, datetime('now','-4 hours'))`).bind(ticket_id, ticket_puerto_id, campo, antes === null || antes === undefined ? null : String(antes), despues === null || despues === undefined ? null : String(despues), usuario.email));
   let nTickets = 0, nRegistros = 0, nCeldas = 0;
   for (const [tid, campos] of nuevosTicket) {
     const actual = tickets.get(tid);

@@ -64,7 +64,7 @@ export async function onRequestPost({ request, env, params, waitUntil }) {
   const log = (tipo, campo, anterior, nuevo, registroId = null) => {
     if (String(anterior ?? "") === String(nuevo ?? "")) return;
     stmts.push(
-      db.prepare(`INSERT INTO ticket_log (ticket_id, ticket_puerto_id, tipo_cambio, campo, valor_anterior, valor_nuevo, usuario_email) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      db.prepare(`INSERT INTO ticket_log (ticket_id, ticket_puerto_id, tipo_cambio, campo, valor_anterior, valor_nuevo, usuario_email, fecha) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','-4 hours'))`)
         .bind(ticket.id, registroId, tipo, campo, anterior ?? null, nuevo, usuario)
     );
   };

@@ -86,8 +86,8 @@ export async function logCambio(db, {
   await db
     .prepare(
       `INSERT INTO ticket_log
-        (ticket_id, ticket_puerto_id, tipo_cambio, campo, valor_anterior, valor_nuevo, usuario_email)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+        (ticket_id, ticket_puerto_id, tipo_cambio, campo, valor_anterior, valor_nuevo, usuario_email, fecha)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','-4 hours'))`
     )
     .bind(
       ticket_id,
