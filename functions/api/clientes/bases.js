@@ -6,10 +6,10 @@ export async function onRequestGet({ request, env }) {
   const no = await requireRole(env.DB, request, ROLES_CLIENTES);
   if (no) return no;
   const vigentes = await env.DB.prepare(
-    `SELECT id, sucursal, archivo, fecha_base, filas_leidas, filas_descartadas, activos, usuario, fecha
+    `SELECT id, sucursal, archivo, fecha_base, filas_leidas, filas_descartadas, activos, usuario, fecha, nuevas, cambiadas, existentes, bajas, total_acum
        FROM cargas_base WHERE estado = 'vigente' ORDER BY sucursal`).all();
   const historial = await env.DB.prepare(
-    `SELECT id, sucursal, archivo, fecha_base, filas_leidas, filas_descartadas, activos, usuario, fecha, estado
+    `SELECT id, sucursal, archivo, fecha_base, filas_leidas, filas_descartadas, activos, usuario, fecha, estado, nuevas, cambiadas, existentes, bajas, total_acum
        FROM cargas_base ORDER BY id DESC LIMIT 30`).all();
   return json({ vigentes: vigentes.results, historial: historial.results });
 }

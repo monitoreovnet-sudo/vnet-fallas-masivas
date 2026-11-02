@@ -44,48 +44,79 @@ export function claves(onu) {
 
 const chunks = (arr, n) => { const r = []; for (let i = 0; i < arr.length; i += n) r.push(arr.slice(i, i + n)); return r; };
 const COLS = `c.carga_id, c.cuenta, c.sucursal, c.nombre, c.telefono_casa, c.telefono_oficina, c.cedula, c.cedula_norm, c.sector,
-              c.estado_contrato, c.serial_norm, c.nombre_norm, g.fecha_base`;
-const FROM = `FROM clientes_base c JOIN cargas_base g ON g.id = c.carga_id AND g.estado = 'vigente'`;
+              c.estado_contrato, c.fecha_creacion, c.serial_norm, c.nombre_norm,
+              c.direccion, c.correo, c.correo_iptv, c.municipio, c.parroquia`;
+const FROM = `FROM clientes_base c`;
 
-// Busca en D1 (todas las bases vigentes) todo lo necesario para un lote de ONUs. D1 admite 90 parámetros por consulta.
+// Busca en D1 todo lo necesario para un lote de ONUs. D1 admite 90 parámetros por consulta.
+// Fase 1: por serial (la llave de la tabla: rápido). Fase 2: SOLO para las ONUs que no cruzaron por serial, una búsqueda
+// por cuenta / cédula / nombre (la tabla no tiene índices para ellas: cada consulta lee la tabla, por eso se hace una sola por tanda).
 export async function buscarClientes(db, lista) {
-  const campos = { serial_norm: new Set(), cuenta: new Set(), cedula_norm: new Set(), nombre_norm: new Set() };
-  for (const k of lista) {
-    if (k.snNorm) campos.serial_norm.add(k.snNorm);
-    [...k.contactC, ...k.cuentaName].forEach((c) => campos.cuenta.add(c));
-    k.cedulas.forEach((c) => campos.cedula_norm.add(c));
-    if (k.nombreC) campos.nombre_norm.add(k.nombreC);
-  }
-  const stmts = [], tags = [];
-  for (const [col, set] of Object.entries(campos)) {
-    for (const parte of chunks([...set], 90)) {
-      stmts.push(db.prepare(`SELECT ${COLS} ${FROM} WHERE c.${col} IN (${parte.map(() => "?").join(",")})`).bind(...parte));
-      tags.push(col);
-    }
-  }
   const mapas = { serial_norm: new Map(), cuenta: new Map(), cedula_norm: new Map(), nombre_norm: new Map() };
+  const buscados = { cuenta: new Set(), cedula_norm: new Set(), nombre_norm: new Set() };
+  // Solo se anota lo que de verdad se buscó (así "único" sigue significando único en toda la base)
+  const meter = (col, rows) => { for (const f of rows) { const key = f[col]; if (key === null || key === undefined) continue; if (buscados[col] && !buscados[col].has(key)) continue; if (!mapas[col].has(key)) mapas[col].set(key, []); mapas[col].get(key).push(f); } };
+
+  const seriales = [...new Set(lista.map((k) => k.snNorm).filter(Boolean))];
+  if (seriales.length) {
+    const res = await db.batch(chunks(seriales, 90).map((parte) => db.prepare(`SELECT ${COLS} ${FROM} WHERE c.clave IN (${parte.map(() => "?").join(",")})`).bind(...parte)));
+    res.forEach((r) => meter("serial_norm", r.results));
+  }
+
+  const sinSerial = lista.filter((k) => !(k.snNorm && unico(mapas.serial_norm.get(k.snNorm), true)));
+  const claves = [];
+  const vistos = new Set();
+  const add = (col, v) => { const id = col + "|" + v; if (v && !vistos.has(id)) { vistos.add(id); claves.push([col, v]); buscados[col].add(v); } };
+  for (const k of sinSerial) {
+    [...k.contactC, ...k.cuentaName].forEach((c) => add("cuenta", c));
+    k.cedulas.forEach((c) => add("cedula_norm", c));
+    if (k.nombreC) add("nombre_norm", k.nombreC);
+  }
+  const stmts = [];
+  for (const parte of chunks(claves, 85)) {
+    const por = { cuenta: [], cedula_norm: [], nombre_norm: [] };
+    parte.forEach(([col, v]) => por[col].push(v));
+    const cond = Object.entries(por).filter(([, v]) => v.length).map(([col, v]) => `c.${col} IN (${v.map(() => "?").join(",")})`);
+    stmts.push(db.prepare(`SELECT ${COLS} ${FROM} WHERE ${cond.join(" OR ")}`).bind(...Object.values(por).flat()));
+  }
   if (stmts.length) {
     const res = await db.batch(stmts);
-    res.forEach((r, i) => {
-      const col = tags[i];
-      for (const f of r.results) { const key = f[col]; if (!mapas[col].has(key)) mapas[col].set(key, []); mapas[col].get(key).push(f); }
-    });
+    res.forEach((r) => { meter("cuenta", r.results); meter("cedula_norm", r.results); meter("nombre_norm", r.results); });
   }
   return mapas;
 }
 
+// "2026-10-04 09:30", "2026-10-04T09:30:00" o "04/10/2026 9:30" -> número comparable (o null)
+function fechaNum(v) {
+  const t = String(v || "").trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+  if (!m) { const d = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/); if (d) m = [d[0], d[3], d[2].padStart(2, "0"), d[1].padStart(2, "0"), d[4], d[5]]; }
+  if (!m) return null;
+  return Number(`${m[1]}${m[2]}${m[3]}`) * 10000 + Number(m[4] || 0) * 100 + Number(m[5] || 0);
+}
 // Si hay varios candidatos: se queda con el único contrato Activo; si sigue ambiguo, no hay coincidencia.
-function unico(cands) {
+// Con recientes=true (cruce por serial de ONU: el mismo equipo pudo pasar de un cliente a otro con los años)
+// entre varios Activos gana el de fecha de creación más reciente, siempre que no haya empate.
+function unico(cands, recientes = false) {
   if (!cands || !cands.length) return null;
   const distintos = [...new Map(cands.map((f) => [f.carga_id + "|" + f.cuenta, f])).values()];
   if (distintos.length === 1) return distintos[0];
   const act = distintos.filter((f) => String(f.estado_contrato).toLowerCase() === "activo");
-  return act.length === 1 ? act[0] : null;
+  if (act.length === 1) return act[0];
+  if (recientes && act.length > 1) {
+    const con = act.map((f) => ({ f, n: fechaNum(f.fecha_creacion) }));
+    if (con.every((x) => x.n !== null)) {
+      const max = Math.max(...con.map((x) => x.n));
+      const tope = con.filter((x) => x.n === max);
+      if (tope.length === 1) return tope[0].f;
+    }
+  }
+  return null;
 }
 
 // Cascada para UNA ONU. Devuelve { cliente, metodo } o { cliente: null, metodo: null }.
 export function cruzarUna(k, mapas) {
-  let f = k.snNorm ? unico(mapas.serial_norm.get(k.snNorm)) : null;
+  let f = k.snNorm ? unico(mapas.serial_norm.get(k.snNorm), true) : null;
   if (f) return { cliente: f, metodo: "serial" };
   for (const c of k.contactC) { f = unico(mapas.cuenta.get(c)); if (f) return { cliente: f, metodo: "contact" }; }
   for (const c of k.cuentaName) { f = unico(mapas.cuenta.get(c)); if (f) return { cliente: f, metodo: "cuenta_en_name" }; }
@@ -113,13 +144,10 @@ export async function leerParametro(db, clave, porDefecto) {
   } catch (e) { return porDefecto; }
 }
 
-// Qué bases vigentes están fuera de tolerancia frente a la hora de la auditoría
-export async function basesDesactualizadas(db, aud) {
-  const tol = await leerParametro(db, "tolerancia_base_horas", 12);
-  const bases = (await db.prepare("SELECT id, fecha_base FROM cargas_base WHERE estado = 'vigente'").all()).results;
-  const m = new Map();
-  for (const g of bases) m.set(g.id, horasEntre(aud.fecha_auditoria_local, g.fecha_base) > tol);
-  return { mapa: new Map([...m].filter(([, v]) => v)), alguna: [...m.values()].some(Boolean) };
+// Con la base acumulativa (se le agregan clientes cada mes) ya no tiene sentido comparar la hora de la base con la de la auditoría.
+// Se deja la función (y el parámetro tolerancia_base_horas) para no romper el resto; siempre responde "ninguna desactualizada".
+export async function basesDesactualizadas() {
+  return { mapa: new Map(), alguna: false };
 }
 
 export async function resumenAuditoria(db, id) {

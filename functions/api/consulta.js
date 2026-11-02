@@ -62,7 +62,7 @@ export async function onRequestGet({ request, env }) {
       p.olt, p.sector, p.edificio, p.ubicacion, p.tarjeta, p.puerto,
       p.no_clientes_reportaron, p.nro_clientes_afectados, p.estado_puerto,
       p.fecha_cierre_cda, p.fecha_cierre_cmr, p.causa_falla, p.correctivo,
-      datetime(t.creado_en, '-4 hours') AS creado_en, datetime(p.actualizado_en, '-4 hours') AS actualizado_en,
+      t.creado_en AS creado_en, p.actualizado_en AS actualizado_en,
       t.creado_por, COALESCE(NULLIF(u.nombre, ''), t.creado_por) AS creado_por_nombre,
       tot.n AS total_registros_ticket${extrasSql}
     FROM ticket_puertos p

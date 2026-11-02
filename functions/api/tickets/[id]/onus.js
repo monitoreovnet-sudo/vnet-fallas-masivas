@@ -12,8 +12,12 @@ export async function onRequestGet({ params, request, env }) {
   let onus = [];
   try {
     onus = (await db.prepare(
-      `SELECT olt, tarjeta, puerto, serial, cuenta, cedula, nombre, estado, direccion, creado_en
+      `SELECT olt, tarjeta, puerto, serial, cuenta, cedula, nombre, estado, direccion, creado_en,
+            cli_cuenta, cli_nombre, cli_cedula, cli_correo, cli_correo_iptv, cli_tel_casa, cli_tel_oficina, cli_direccion, cli_municipio, cli_parroquia,
+            cli_sector, cli_estado_contrato, cli_fecha_contrato, cli_sucursal, cruce_metodo, cruce_base_fecha
          FROM ticket_onus WHERE ticket_id = ? ORDER BY olt, CAST(substr(tarjeta, 9) AS INTEGER), CAST(substr(puerto, 8) AS INTEGER), nombre`).bind(ticket.id).all()).results;
-  } catch (e) { /* migración 038 sin aplicar */ }
+  } catch (e) {   // migración 040 sin aplicar: se muestran solo los datos de SmartOLT
+    try { onus = (await db.prepare(`SELECT olt, tarjeta, puerto, serial, cuenta, cedula, nombre, estado, direccion, creado_en FROM ticket_onus WHERE ticket_id = ? ORDER BY id`).bind(ticket.id).all()).results; } catch (e2) { /* migración 038 sin aplicar */ }
+  }
   return json({ ticket_cmr: ticket.ticket_cmr, onus });
 }

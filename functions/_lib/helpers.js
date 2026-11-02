@@ -101,8 +101,9 @@ export async function logCambio(db, {
     .run();
 }
 
+// Hora actual de Caracas (UTC-4, sin horario de verano) como "AAAA-MM-DD HH:MM:SS". Así se guarda en la base.
 export function nowIso() {
-  return new Date().toISOString();
+  return new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 19).replace("T", " ");
 }
 
 // Verifica que el usuario actual tenga rol 'administrador'.

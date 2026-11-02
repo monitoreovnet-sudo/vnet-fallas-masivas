@@ -2115,7 +2115,7 @@ function renderDetalle(editable, log) {
     const detalleCampo = l.ticket_puerto_id ? `[${l.olt} | ${l.tarjeta} | ${l.puerto}] ` : "";
     div.innerHTML = `
       <div>${detalleCampo}<strong>${l.campo}</strong>: ${l.valor_anterior ?? "-"} → ${l.valor_nuevo ?? "-"}</div>
-      <div class="meta">${l.tipo_cambio} · ${l.usuario_email} · ${l.fecha}</div>
+      <div class="meta">${l.tipo_cambio} · ${l.usuario_email} · ${fechaLogCaracas(l.fecha)}</div>
     `;
     cont.appendChild(div);
   });
@@ -3691,6 +3691,14 @@ function hexARgba(hex, alpha) {
 }
 const SEMAFORO_HEX = { VERDE: "#1E9E64", AMARILLO: "#EAB308", NARANJA: "#D97706", ROJO: "#DC2626" };
 // "2026-10-04T09:30:00" -> "04/10/2026 09:30" (sin conversión de zona horaria; si no se reconoce, se muestra tal cual)
+// Fecha del log de cambios (la base ya la guarda en hora de Caracas) -> "02/11/2026 10:34:44".
+function fechaLogCaracas(v) {
+  if (!v) return "";
+  const s = String(v).trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/.exec(s);
+  if (!m) return s;
+  return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}:${m[6] || "00"}`;
+}
 function formatearFechaHora(v) {
   if (!v) return "-";
   const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
@@ -4694,7 +4702,7 @@ async function descargarDataTicket(ticket) {
     hoja("Ticket", Object.entries(det.ticket).map(([k, v]) => ({ Campo: etq(k), Valor: valor(k, v) })));
     hoja("Registros", det.puertos.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [etq(k), valor(k, v)]))));
     hoja("Consulta", filasExportConsulta(cons.filas.filter((f) => String(f.ticket_cmr) === String(det.ticket.ticket_cmr))));
-    hoja("Log de cambios", (logd.log || []).map((l) => ({ Fecha: l.fecha, Tipo: l.tipo_cambio, Campo: l.campo, "Valor anterior": l.valor_anterior ?? "", "Valor nuevo": l.valor_nuevo ?? "",
+    hoja("Log de cambios", (logd.log || []).map((l) => ({ Fecha: fechaLogCaracas(l.fecha), Tipo: l.tipo_cambio, Campo: l.campo, "Valor anterior": l.valor_anterior ?? "", "Valor nuevo": l.valor_nuevo ?? "",
       Usuario: l.usuario_email, OLT: l.olt ?? "", Tarjeta: l.tarjeta ?? "", Puerto: l.puerto ?? "" })));
     if (onus) hoja("ONUs y clientes", onus.map((o) => ({ OLT: o.olt, Tarjeta: o.tarjeta, Puerto: o.puerto, "Serial ONU": o.serial, "Estado SmartOLT": o.estado,
       Cuenta: o.cli_cuenta ?? o.cuenta ?? "", Nombre: o.cli_nombre ?? o.nombre ?? "", Cédula: o.cli_cedula ?? o.cedula ?? "", "Teléfono de casa": o.cli_tel_casa ?? "", "Teléfono de oficina": o.cli_tel_oficina ?? "",
@@ -4741,7 +4749,7 @@ function htmlDetalleLog(ticket, puertos, log) {
     ? log.map((l) => {
         const det = l.ticket_puerto_id ? `[${escHtml(l.olt ?? "")} | ${escHtml(l.tarjeta ?? "")} | ${escHtml(l.puerto ?? "")}] ` : "";
         return `<div class="log-entry"><div>${det}<strong>${escHtml(l.campo)}</strong>: ${escHtml(l.valor_anterior ?? "-")} → ${escHtml(l.valor_nuevo ?? "-")}</div>` +
-          `<div class="meta">${escHtml(l.tipo_cambio)} · ${escHtml(l.usuario_email)} · ${escHtml(l.fecha)}</div></div>`;
+          `<div class="meta">${escHtml(l.tipo_cambio)} · ${escHtml(l.usuario_email)} · ${escHtml(fechaLogCaracas(l.fecha))}</div></div>`;
       }).join("")
     : `<p class="ml-vacio">Sin cambios registrados.</p>`;
   return `<h4>Datos del ticket</h4><div class="ml-grid">${kv}</div><h4>Registros (${puertos.length})</h4>${tabla}<h4>Log de cambios</h4>${entradas}`;

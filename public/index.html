@@ -870,13 +870,21 @@
 
     <h3>1. Base de clientes (Grafana: Detalle de Cuentas)</h3>
     <p class="hint">
-      Sube el CSV "Descargar para Excel" de Grafana con <strong>todas las sucursales juntas</strong>. Reglas del archivo: solo clientes con Estado del contrato
-      <strong>"Activo"</strong> y <strong>ninguna ONU (Serial) repetida</strong>; si no se cumple, no se carga hasta que lo corrijas en Grafana.
-      La base es <strong>acumulativa</strong>: cada carga <strong>agrega los clientes nuevos</strong> (lo que ya estaba se salta, nada se borra; si una ONU pasó a otro cliente, se actualiza).
-      Para el mes a mes basta subir solo los clientes nuevos. La primera carga (unas 220.000 cuentas) se reparte en varios días por el límite del plan gratuito
-      (máximo 80.000 nuevos por día): al llegar al tope la app avisa y al día siguiente subes el MISMO archivo y continúa.
-      La fecha de la base sale del nombre del archivo (viene en UTC y se muestra en hora de Caracas).
+      Sube el CSV "Descargar para Excel" de Grafana (<strong>Detalle de Cuentas</strong>) de una o varias sucursales: <strong>cada archivo reemplaza la base de su sucursal</strong>.
+      Solo entran los clientes con Estado del contrato <strong>"Activo"</strong> (los demás se ignoran). Si una ONU aparece en más de una cuenta activa se conserva la de
+      <strong>contrato más reciente</strong> y se te avisa para que puedas descargar el detalle y reportarlo a tu jefe.
+      Para cuidar el límite del plan gratuito solo se escribe lo que cambió (clientes nuevos, modificados y dados de baja); el máximo es de 80.000 cambios por día:
+      si se llega al tope, al día siguiente subes el MISMO archivo y continúa. La fecha de la base sale del nombre del archivo (viene en UTC y se muestra en hora de Caracas).
     </p>
+    <h4>Sucursales con fallas activas</h4>
+    <p class="hint">Cuándo se actualizó por última vez la base de cada sucursal que tiene tickets abiertos:
+      <span class="cli-sem sem-VERDE">1 día o menos</span> <span class="cli-sem sem-AMARILLO">2 días</span> <span class="cli-sem sem-NARANJA">3 días</span> <span class="cli-sem sem-ROJO">4 o más / sin base</span></p>
+    <div id="cli_frescura"></div>
+    <div class="search-row">
+      <button id="cli_btn_cruzar_tickets" class="btn-secondary" type="button">Cruzar tickets abiertos con la base ahora</button>
+      <span class="hint">Se hace solo al terminar una carga. Cruza las ONUs de los tickets abiertos (cargadas hasta 2 días antes o después de la fecha del archivo de Grafana) y guarda en el ticket los datos del cliente.</span>
+    </div>
+    <div id="cli_msg_cruce" class="msg"></div>
     <div class="field">
       <label>Archivo (.csv)</label>
       <input type="file" id="cli_archivo" accept=".csv,.txt" />
@@ -889,7 +897,7 @@
         <div><span>Filas leídas:</span> <strong id="cli_prev_leidas">0</strong></div>
         <div><span>Cuentas válidas:</span> <strong id="cli_prev_validas">0</strong></div>
         <div><span>Filas descartadas:</span> <strong id="cli_prev_desc">0</strong> <small id="cli_prev_det_desc"></small></div>
-        <div><span>Clientes activos:</span> <strong id="cli_prev_activos">0</strong> <small id="cli_prev_estados"></small></div>
+        <div><span>Clientes activos que entran:</span> <strong id="cli_prev_activos">0</strong> <small id="cli_prev_estados"></small></div>
         <div><span>Con serial de ONU:</span> <strong id="cli_prev_serial">—</strong></div>
         <div><span>Fecha de la base:</span> <strong id="cli_fecha_base"></strong></div>
       </div>
@@ -902,6 +910,7 @@
       <button id="cli_btn_cargar" class="btn-primary" type="button">2. Confirmar y cargar (reemplaza cada sucursal del archivo)</button>
     </div>
     <div id="cli_msg_carga" class="msg"></div>
+    <div id="cli_duplicadas"></div>
     <div id="cli_resultado"></div>
 
     <h3>Bases cargadas</h3>

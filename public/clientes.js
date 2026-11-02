@@ -50,13 +50,24 @@ function cliPartirLinea(linea, delim) {
   return campos;
 }
 
-// Nombre del archivo de Grafana -> fecha y hora de la base (hora de Caracas). Ej: "Detalle de Cuentas-data-2026-10-20 19_08_27"
+// Nombre del archivo de Grafana -> fecha y hora de la base EN HORA DE CARACAS. Ej: "Detalle de Cuentas-data-2026-10-28 20_05_28"
+// La hora del nombre viene en UTC (igual que SmartOLT): se le restan 4 horas (Caracas, sin horario de verano).
 function cliFechaDeNombre(nombre) {
   const m = /(\d{4})-(\d{2})-(\d{2})[ T_](\d{2})[_:.](\d{2})[_:.](\d{2})/.exec(String(nombre || ""));
-  return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}` : null;
+  if (!m) return null;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) - 4 * 3600 * 1000);
+  return d.toISOString().slice(0, 19);
 }
 
-// Texto completo -> { filas, leidas, malformadas:[{linea,texto}], sinCuenta, repetidas, conteos, conSerial, sucursales, faltantes }
+// Serial normalizado (mismo criterio del servidor) y llave de la base: serial, o SIN-SN-<cuenta> si no tiene
+function cliNormSerial(v) { return String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+function cliClave(f) { const c = String(f.cuenta ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").trim().slice(0, 40); return c ? (cliNormSerial(f.serial_onu) || "SIN-SN-" + c) : null; }
+// "15-03-2023" o "2023-03-15" -> "2023-03-15" (para comparar fechas de contrato como texto)
+function cliFechaContrato(v) { const s = String(v ?? "").trim(); const m = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/.exec(s); if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; const n = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return n ? n[0] : ""; }
+
+// Texto completo -> { filas, leidas, malformadas:[{linea,texto}], sinCuenta, repetidas, conteos, conSerial, sucursales, faltantes, noActivas, duplicadas }
+// Solo entran los clientes con Estado del contrato "Activo". Si una misma ONU (serial) aparece en dos o más cuentas ACTIVAS se conserva la de
+// fecha de contrato más reciente (si empatan, la de número de cuenta mayor) y las demás se anotan en "duplicadas" para avisar.
 function cliParsearBase(texto) {
   const lineas = texto.replace(/^﻿/, "").split(/\r\n|\n|\r/);
   while (lineas.length && !lineas[0].trim()) lineas.shift();
@@ -70,8 +81,8 @@ function cliParsearBase(texto) {
   const faltantes = CLI_OBLIGATORIAS.filter((k) => idx[k] === undefined).map((k) => CLI_COLUMNAS[k]);
   if (faltantes.length) throw new Error("Faltan columnas en el archivo: " + faltantes.join(", ") + ". ¿Es el \"Detalle de Cuentas\" de Grafana?");
 
-  const res = { filas: [], leidas: 0, malformadas: [], sinCuenta: 0, repetidas: 0, conSerial: 0,
-    conteos: { activo: 0, suspendido: 0, prospecto: 0, otros: 0 }, sucursales: {} };
+  const res = { filas: [], leidas: 0, malformadas: [], sinCuenta: 0, repetidas: 0, conSerial: 0, noActivas: 0, duplicadas: [],
+    conteos: { activo: 0, suspendido: 0, prospecto: 0, otros: 0 }, estados: {}, sucursales: {}, serialesRepetidos: [] };
   const vistas = new Set();
   for (let i = 1; i < lineas.length; i++) {
     const ln = lineas[i];
@@ -84,13 +95,33 @@ function cliParsearBase(texto) {
     if (!fila.cuenta) { res.sinCuenta++; continue; }
     if (vistas.has(fila.cuenta)) { res.repetidas++; continue; }
     vistas.add(fila.cuenta);
-    res.filas.push(fila);
     const e = fila.estado_contrato.toLowerCase();
-    if (e === "activo") res.conteos.activo++; else if (e === "suspendido") res.conteos.suspendido++; else if (e === "prospecto") res.conteos.prospecto++; else res.conteos.otros++;
-    if (fila.serial_onu) res.conSerial++;
+    const eNom = fila.estado_contrato || "(vacío)"; res.estados[eNom] = (res.estados[eNom] || 0) + 1;
+    if (e === "suspendido") res.conteos.suspendido++; else if (e === "prospecto") res.conteos.prospecto++; else if (e !== "activo") res.conteos.otros++;
+    if (e !== "activo") { res.noActivas++; continue; }
     const s = fila.sucursal || "(vacía)";
     res.sucursales[s] = (res.sucursales[s] || 0) + 1;
+    res.filas.push(fila);
   }
+  // ONU repetida entre cuentas activas: gana la de contrato más reciente
+  const porSerial = new Map();
+  for (const f of res.filas) { const sn = cliNormSerial(f.serial_onu); if (sn) { if (!porSerial.has(sn)) porSerial.set(sn, []); porSerial.get(sn).push(f); } }
+  const pierde = new Set();
+  for (const [sn, lista] of porSerial) {
+    if (lista.length < 2) continue;
+    const orden = lista.slice().sort((a, b) => {
+      const fa = cliFechaContrato(a.fecha_creacion), fb = cliFechaContrato(b.fecha_creacion);
+      if (fa !== fb) return fa < fb ? 1 : -1;
+      return (Number(b.cuenta) || 0) - (Number(a.cuenta) || 0);
+    });
+    orden.slice(1).forEach((f) => pierde.add(f));
+    res.duplicadas.push({ serial: sn, conservada: orden[0], descartadas: orden.slice(1) });
+  }
+  if (pierde.size) res.filas = res.filas.filter((f) => !pierde.has(f));
+  // conteos finales sobre lo que realmente entra
+  res.sucursales = {};
+  for (const f of res.filas) { const s = f.sucursal || "(vacía)"; res.sucursales[s] = (res.sucursales[s] || 0) + 1; if (cliNormSerial(f.serial_onu)) res.conSerial++; }
+  res.conteos.activo = res.filas.length;
   return res;
 }
 
@@ -138,11 +169,11 @@ function cliParsearAuditoria(texto) {
   return res;
 }
 // CLI-PURE-END
-if (typeof module !== "undefined") module.exports = { cliDecodificar, cliPartirLinea, cliParsearBase, cliFechaDeNombre, cliParsearNombreSmartolt, cliParsearAuditoria };
+if (typeof module !== "undefined") module.exports = { cliNormSerial, cliClave, cliFechaContrato, cliDecodificar, cliPartirLinea, cliParsearBase, cliFechaDeNombre, cliParsearNombreSmartolt, cliParsearAuditoria };
 
 // ---------------- Interfaz (solo navegador) ----------------
 if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
-  const CLI_LOTE = 250;                          // filas por envío al servidor
+  const CLI_LOTE = 250, CLI_PARALELO = 4, CLI_TOPE_DIA = 80000;   // tope diario de clientes nuevos (plan gratuito de D1: 100.000 escrituras/día; el resto lo usa la app)                          // filas por envío al servidor
   let cliAnalisis = null, cliNombreArchivo = "", cliFechaBase = "";
   const el = (id) => document.getElementById(id);
   const fmtFecha = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || ""); return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : (iso || ""); };
@@ -155,12 +186,83 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
     try {
       const d = await apiGet("/clientes/bases");
       cont.innerHTML = d.vigentes.length
-        ? `<table class="rows-table"><thead><tr><th>Sucursal</th><th>Base actualizada al</th><th>Cuentas</th><th>Activos</th><th>Descartadas</th><th>Archivo</th><th>Subida por</th></tr></thead><tbody>${
-            d.vigentes.map((b) => `<tr><td>${esc(b.sucursal)}</td><td>${fmtFecha(b.fecha_base)}</td><td>${b.filas_leidas - b.filas_descartadas}</td><td>${b.activos}</td><td>${b.filas_descartadas}</td><td>${esc(b.archivo)}</td><td>${esc(b.usuario)}</td></tr>`).join("")}</tbody></table>`
+        ? `<table class="rows-table"><thead><tr><th>Sucursal</th><th>Clientes activos en la base</th><th>Última carga</th><th>Cambios en esa carga</th><th>Archivo</th><th>Subida por</th></tr></thead><tbody>${
+            d.vigentes.map((b) => `<tr><td>${esc(b.sucursal)}</td><td>${formatearMiles(b.total_acum || 0)}</td><td>${fmtFecha(b.fecha_base)}</td><td>+${formatearMiles(b.nuevas || 0)}${b.cambiadas ? ` · ${formatearMiles(b.cambiadas)} actualizadas` : ""}${b.bajas ? ` · ${formatearMiles(b.bajas)} bajas` : ""}</td><td>${esc(b.archivo)}</td><td>${esc(b.usuario)}</td></tr>`).join("")}</tbody><tfoot><tr><td><strong>Total</strong></td><td><strong>${formatearMiles(d.vigentes.reduce((t, b) => t + (b.total_acum || 0), 0))}</strong></td><td colspan="4"></td></tr></tfoot></table>`
         : '<p class="hint">Todavía no hay ninguna base cargada.</p>';
     } catch (err) { cont.innerHTML = `<p class="msg error">${esc(err.message)}</p>`; }
   }
   window.cliCargarBases = cliCargarBases;
+
+  const NOMBRE_SEM = { verde: "VERDE", amarillo: "AMARILLO", naranja: "NARANJA", rojo: "ROJO", sin_base: "ROJO" };
+  async function cliCargarFrescura() {
+    const cont = el("cli_frescura");
+    if (!cont) return;
+    try {
+      const d = await apiGet("/clientes/frescura");
+      cont.innerHTML = d.filas.length
+        ? `<table class="rows-table"><thead><tr><th>Sucursal</th><th>Oficinas con falla activa</th><th>Tickets activos</th><th>Base actualizada</th><th>Sin actualizar</th></tr></thead><tbody>${
+            d.filas.map((f) => `<tr class="sem-${NOMBRE_SEM[f.semaforo]}"><td>${esc(f.sucursal)}</td><td>${esc(f.oficinas.join(", "))}</td><td>${f.tickets_activos}</td><td>${f.fecha_base ? fmtFecha(f.fecha_base) : "—"}</td><td>${f.dias === null ? "<strong>Sin base cargada</strong>" : f.dias === 0 ? "hoy" : f.dias === 1 ? "1 día" : f.dias + " días"}</td></tr>`).join("")}</tbody></table>`
+        : '<p class="hint">No hay tickets activos con oficina asignada.</p>';
+    } catch (err) { cont.innerHTML = `<p class="msg error">${esc(err.message)}</p>`; }
+  }
+  window.cliCargarFrescura = cliCargarFrescura;
+
+  // Cruce de las ONUs de los tickets abiertos con la base (automático al terminar una carga, o con el botón)
+  let cliCruzando = false;
+  async function cliCruzarTickets() {
+    const msg = el("cli_msg_cruce");
+    if (cliCruzando || !window.cruzarTicketGrafana) return;
+    cliCruzando = true;
+    try {
+      showMsg(msg, "Buscando tickets abiertos con ONUs por cruzar…", true);
+      const d = await apiGet("/clientes/cruce-tickets");
+      if (!d.tickets.length) { showMsg(msg, "No hay tickets abiertos con ONUs pendientes de cruzar.", true); return; }
+      let cruzadas = 0, fuera = 0, hechos = 0;
+      const detalle = [];
+      for (const t of d.tickets) {
+        showMsg(msg, `Cruzando ticket ${t.ticket_cmr} (${++hechos} de ${d.tickets.length})…`, true);
+        const r = await window.cruzarTicketGrafana(t.ticket_cmr);
+        if (!r) { detalle.push(`${t.ticket_cmr}: no se pudo cruzar`); continue; }
+        cruzadas += r.cruzadas || 0; fuera += r.fuera_ventana || 0;
+        detalle.push(`${t.ticket_cmr}: ${r.con_cliente ?? 0} de ${r.total ?? 0}`);
+      }
+      showMsg(msg, `Cruce terminado: ${formatearMiles(cruzadas)} ONU(s) cruzadas ahora en ${d.tickets.length} ticket(s)` +
+        (fuera ? `; ${formatearMiles(fuera)} fuera de la ventana de días respecto al archivo de Grafana` : "") + `. Con cliente / total por ticket: ${detalle.join(" · ")}.`, true);
+    } catch (err) { showMsg(msg, err.message, false); }
+    finally { cliCruzando = false; }
+  }
+  window.cliCruzarTickets = cliCruzarTickets;
+  el("cli_btn_cruzar_tickets").addEventListener("click", cliCruzarTickets);
+
+  // Aviso de ONU repetidas entre cuentas activas (se conserva la de contrato más reciente) + descarga del detalle
+  let cliAvisoDup = [];
+  function cliFilasDuplicadas(lista) {
+    const out = [];
+    for (const d of lista) {
+      const fila = (x, resultado) => ({ "Serial ONU": d.serial, "Resultado": resultado, "Cuenta": x.cuenta, "Nombre": x.nombre || "", "Cédula": x.cedula || "", "Sucursal": x.sucursal || "",
+        "Fecha de contrato": x.fecha_creacion || "", "Teléfono": x.telefono_casa || "", "Dirección": x.direccion || "" });
+      out.push(fila(d.conservada, "SE CONSERVA (contrato más reciente)"));
+      d.descartadas.forEach((x) => out.push(fila(x, "DESCARTADA")));
+    }
+    return out;
+  }
+  function cliMostrarDuplicadas(lista, origen) {
+    cliAvisoDup = lista;
+    const cont = el("cli_duplicadas");
+    if (!lista.length) { cont.innerHTML = ""; return; }
+    const ej = lista.slice(0, 5).map((d) => `<li>${esc(d.serial)}: se conserva la cuenta ${esc(d.conservada.cuenta)} (${esc(d.conservada.fecha_creacion || "sin fecha")}); descartada${d.descartadas.length > 1 ? "s" : ""}: ${d.descartadas.map((x) => esc(x.cuenta) + " (" + esc(x.fecha_creacion || "sin fecha") + ")").join(", ")}</li>`).join("");
+    cont.innerHTML = `<div class="cli-aviso"><h4>⚠ ${formatearMiles(lista.length)} ONU repetida(s) en cuentas activas ${esc(origen)}</h4>
+      <p>Una misma ONU no debería estar en dos cuentas activas. Se conservó la de <strong>fecha de contrato más reciente</strong>. Descarga el detalle y repórtalo a tu jefe para que se corrija en el sistema comercial.</p>
+      <ul>${ej}${lista.length > 5 ? `<li>… y ${lista.length - 5} más (están en la descarga)</li>` : ""}</ul>
+      <button id="cli_dup_xlsx" class="btn-secondary" type="button">Descargar detalle (Excel)</button></div>`;
+    el("cli_dup_xlsx").onclick = () => {
+      const filas = cliFilasDuplicadas(cliAvisoDup);
+      const nombre = `onu_repetidas_${new Date(Date.now() - 4 * 3600 * 1000).toISOString().slice(0, 10)}`;
+      if (typeof XLSX !== "undefined") { const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), "ONU repetidas"); XLSX.writeFile(wb, nombre + ".xlsx"); }
+      else { const cab = Object.keys(filas[0]); const csv = [cab, ...filas.map((f) => cab.map((k) => f[k]))].map((r) => r.map((v) => '"' + String(v ?? "").replace(/"/g, '""') + '"').join(";")).join("\n");
+        const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv" })); a.download = nombre + ".csv"; a.click(); }
+    };
+  }
 
   el("cli_btn_analizar").addEventListener("click", async () => {
     const msg = el("cli_msg_analisis");
@@ -177,21 +279,30 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
       const deNombre = cliFechaDeNombre(f.name);
       cliFechaBase = deNombre || ahoraCaracas();
       const sucs = Object.entries(a.sucursales).sort((x, y) => y[1] - x[1]);
-      el("cli_sucursal").value = sucs.length ? sucs[0][0] : "";
-      el("cli_aviso_sucursal").textContent = sucs.length > 1 ? `Ojo: el archivo trae ${sucs.length} sucursales distintas (${sucs.map(([s, n]) => s + ": " + n).join(", ")}). Cada carga reemplaza UNA sola sucursal.` : "";
-      el("cli_fecha_base").textContent = fmtFecha(cliFechaBase) + (deNombre ? " (del nombre del archivo)" : " (el nombre del archivo no la trae: se usa la hora de subida)");
+      el("cli_sucursal").value = sucs.map(([n, c]) => `${n} (${formatearMiles(c)})`).join(" · ");
+      el("cli_aviso_sucursal").textContent = "Cada sucursal del archivo reemplaza a la suya; las demás no se tocan.";
+      cliMostrarDuplicadas(a.duplicadas, "de este archivo");
+      el("cli_fecha_base").textContent = fmtFecha(cliFechaBase) + (deNombre ? " (del nombre del archivo, convertida a hora de Caracas)" : " (el nombre del archivo no la trae: se usa la hora de subida)");
       el("cli_prev_leidas").textContent = a.leidas;
       el("cli_prev_validas").textContent = a.filas.length;
       el("cli_prev_desc").textContent = a.malformadas.length + a.sinCuenta + a.repetidas;
       el("cli_prev_det_desc").textContent = `${a.malformadas.length} mal formadas · ${a.sinCuenta} sin número de cuenta · ${a.repetidas} cuentas repetidas`;
       el("cli_prev_activos").textContent = a.conteos.activo;
-      el("cli_prev_estados").textContent = `Suspendidos ${a.conteos.suspendido} · Prospectos ${a.conteos.prospecto} · Otros ${a.conteos.otros}`;
+      el("cli_prev_estados").textContent = `(se ignoran ${formatearMiles(a.noActivas)} no activas: Suspendidos ${a.conteos.suspendido} · Prospectos ${a.conteos.prospecto} · Otros ${a.conteos.otros}; y ${a.duplicadas.reduce((t, d) => t + d.descartadas.length, 0)} ONU repetida(s) descartadas)`;
       el("cli_prev_serial").textContent = a.filas.length ? Math.round(100 * a.conSerial / a.filas.length) + " %" : "—";
       el("cli_prev_malas").innerHTML = a.malformadas.length
         ? "<p class=\"hint\">Filas descartadas por estar mal formadas (se pueden corregir en Grafana y volver a cargar):</p><ul>" + a.malformadas.slice(0, 20).map((m) => `<li>Línea ${m.linea}: ${esc(m.texto)}…</li>`).join("") + (a.malformadas.length > 20 ? `<li>… y ${a.malformadas.length - 20} más</li>` : "") + "</ul>"
         : "";
       el("cli_preview").classList.remove("hidden");
-      showMsg(msg, "Archivo analizado. Revisa el resumen y confirma la carga.", true);
+      const sinSuc = a.sucursales["(vacía)"] || 0;
+      el("cli_btn_cargar").disabled = false;
+      if (sinSuc) {
+        el("cli_btn_cargar").disabled = true;
+        showMsg(msg, `No se puede cargar este archivo: trae ${formatearMiles(sinSuc)} cuentas activas sin sucursal.`, false);
+      } else if (!a.filas.length) {
+        el("cli_btn_cargar").disabled = true;
+        showMsg(msg, "El archivo no trae ningún cliente Activo.", false);
+      } else showMsg(msg, "Archivo analizado. Revisa el resumen y confirma la carga.", true);
     } catch (err) { showMsg(msg, err.message, false); }
   });
 
@@ -201,34 +312,67 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
 
   el("cli_btn_cargar").addEventListener("click", async () => {
     const msg = el("cli_msg_carga"), btn = el("cli_btn_cargar");
-    const sucursal = el("cli_sucursal").value.trim();
     if (!cliAnalisis) return showMsg(msg, "Analiza primero el archivo.", false);
-    if (!sucursal) return showMsg(msg, "Indica la sucursal.", false);
     const a = cliAnalisis;
-    if (!confirm(`Se REEMPLAZARÁ por completo la base de la sucursal "${sucursal.toUpperCase()}" con ${a.filas.length} cuentas. ¿Continuar?`)) return;
+    if (!a.filas.length || a.filas.some((f) => !f.sucursal)) return showMsg(msg, "El archivo no tiene clientes activos con sucursal: no se puede cargar.", false);
+    const grupos = new Map();
+    a.filas.forEach((f) => { if (!grupos.has(f.sucursal)) grupos.set(f.sucursal, []); grupos.get(f.sucursal).push(f); });
+    const lista = [...grupos.entries()];
+    if (!confirm(`La base de ${lista.length} sucursal(es) se REEMPLAZARÁ con este archivo (${formatearMiles(a.filas.length)} clientes activos): ${lista.map(([n]) => n.toUpperCase()).join(", ")}.\n\nSolo se escribe lo que cambió (nuevos, modificados y dados de baja). Máximo ${formatearMiles(CLI_TOPE_DIA)} cambios por día (límite del plan gratuito). ¿Continuar?`)) return;
     btn.disabled = true;
-    let cargaId = null;
+    const hechas = [], conflictos = [];
+    let cargaId = null, cambiosHoy = 0, tope = false;
     try {
-      const ini = await apiSend("/clientes/carga/iniciar", "POST", {
-        sucursal, archivo: cliNombreArchivo, fecha_base: cliFechaBase,
-        filas_leidas: a.leidas, filas_descartadas: a.malformadas.length + a.sinCuenta + a.repetidas,
-      });
-      cargaId = ini.carga_id;
-      for (let i = 0; i < a.filas.length; i += CLI_LOTE) {
-        await apiSend("/clientes/carga/lote", "POST", { carga_id: cargaId, filas: a.filas.slice(i, i + CLI_LOTE) });
-        showMsg(msg, `Cargando… ${Math.min(i + CLI_LOTE, a.filas.length)} de ${a.filas.length}`, true);
+      for (let g = 0; g < lista.length && !tope; g++) {
+        const [sucursal, filas] = lista[g];
+        const etiqueta = `Sucursal ${g + 1} de ${lista.length} (${sucursal})`;
+        const ini = await apiSend("/clientes/carga/iniciar", "POST", {
+          sucursal, archivo: cliNombreArchivo, fecha_base: cliFechaBase, filas_leidas: filas.length, filas_descartadas: 0,
+        });
+        cargaId = ini.carga_id;
+        const lotes = []; for (let i = 0; i < filas.length; i += CLI_LOTE) lotes.push(filas.slice(i, i + CLI_LOTE));
+        let siguiente = 0, revisadas = 0;
+        const t = { nuevas: 0, cambiadas: 0, existentes: 0 };
+        const trabajador = async () => {
+          while (siguiente < lotes.length && !tope) {
+            const mio = lotes[siguiente++];
+            const r = await apiSend("/clientes/carga/lote", "POST", { carga_id: cargaId, filas: mio });
+            t.nuevas += r.nuevas; t.cambiadas += r.cambiadas; t.existentes += r.existentes;
+            (r.conflictos || []).forEach((x) => conflictos.push(x));
+            cambiosHoy += r.nuevas + r.cambiadas; revisadas += mio.length;
+            if (cambiosHoy >= CLI_TOPE_DIA) tope = true;
+            showMsg(msg, `${etiqueta}: revisadas ${formatearMiles(revisadas)} de ${formatearMiles(filas.length)} · cambios hoy: ${formatearMiles(cambiosHoy)}`, true);
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(CLI_PARALELO, lotes.length) }, trabajador));
+        const completa = !tope && revisadas >= filas.length;
+        const cuerpo = { carga_id: cargaId, ...t, completa, claves: completa ? filas.map(cliClave) : undefined };
+        let fin = await apiSend("/clientes/carga/finalizar", "POST", cuerpo);
+        if (fin.requiere_confirmacion) {
+          if (!confirm(`${sucursal.toUpperCase()}: este archivo deja fuera a ${formatearMiles(fin.bajas)} de los ${formatearMiles(fin.total)} clientes que hay hoy en la base (más del 30 %). ¿Es el archivo correcto y completo de la sucursal? Si aceptas, esos clientes se darán de baja.`)) {
+            await apiSend("/clientes/carga/abortar", "POST", { carga_id: cargaId }); cargaId = null;
+            hechas.push(`${sucursal}: cancelada, no se dieron de baja clientes`); continue;
+          }
+          fin = await apiSend("/clientes/carga/finalizar", "POST", { ...cuerpo, confirmar_bajas: true });
+        }
+        cargaId = null;
+        hechas.push(`${fin.sucursal}: +${formatearMiles(t.nuevas)} nuevos${t.cambiadas ? `, ${formatearMiles(t.cambiadas)} actualizados` : ""}${fin.bajas ? `, ${formatearMiles(fin.bajas)} bajas` : ""} (total ${formatearMiles(fin.filas)})`);
       }
-      showMsg(msg, "Verificando y reemplazando la base anterior…", true);
-      const fin = await apiSend("/clientes/carga/finalizar", "POST", { carga_id: cargaId });
-      cargaId = null;
-      showMsg(msg, "Limpiando la base anterior…", true);
-      await cliPurgar();
-      showMsg(msg, `Base ${fin.sucursal} actualizada al ${fmtFecha(fin.fecha_base)}: ${fin.filas} cuentas (${fin.activos} activas).`, true);
-      el("cli_preview").classList.add("hidden"); el("cli_archivo").value = ""; cliAnalisis = null;
-      cliCargarBases();
+      el("cli_archivo").value = ""; el("cli_preview").classList.add("hidden");
+      const dups = [...a.duplicadas, ...conflictos.map((c) => ({ serial: c.serial, conservada: c.conservada, descartadas: [c.descartada] }))];
+      cliMostrarDuplicadas(dups, conflictos.length ? "(del archivo y contra otras sucursales ya cargadas)" : "del archivo");
+      if (tope) {
+        showMsg(msg, `Se llegó al tope de hoy (${formatearMiles(cambiosHoy)} cambios). ${hechas.join(" · ")}. MAÑANA vuelve a subir el MISMO archivo: continúa donde quedó (lo ya cargado se salta y las bajas se aplican al terminar).`, true);
+      } else {
+        showMsg(msg, `Base actualizada al ${fmtFecha(cliFechaBase)}. ${hechas.join(" · ")}.`, true);
+        cliAnalisis = null;
+      }
+      cliCargarBases(); cliCargarFrescura();
+      cliCruzarTickets();
     } catch (err) {
-      if (cargaId) { try { await apiSend("/clientes/carga/abortar", "POST", { carga_id: cargaId }); await cliPurgar(); } catch (e) { /* nada */ } }
-      showMsg(msg, "La carga falló y la base anterior quedó intacta: " + err.message, false);
+      if (cargaId) { try { await apiSend("/clientes/carga/abortar", "POST", { carga_id: cargaId }); } catch (e) { /* nada */ } }
+      showMsg(msg, `La carga se detuvo: ${err.message}. Lo ya cargado quedó guardado (no se pierde). ` + (hechas.length ? `Ya terminadas: ${hechas.join(" · ")}. ` : "") + "Si es el límite diario de Cloudflare, vuelve a subir el MISMO archivo mañana: continúa donde quedó.", false);
+      cliCargarBases(); cliCargarFrescura();
     } finally { btn.disabled = false; }
   });
 }
