@@ -264,7 +264,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
     };
   }
 
-  el("cli_btn_analizar").addEventListener("click", async () => {
+  const cliAnalizarGrafana = async () => {
     const msg = el("cli_msg_analisis");
     el("cli_preview").classList.add("hidden"); el("cli_resultado").innerHTML = "";
     const f = el("cli_archivo").files[0];
@@ -304,13 +304,14 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
         showMsg(msg, "El archivo no trae ningún cliente Activo.", false);
       } else showMsg(msg, "Archivo analizado. Revisa el resumen y confirma la carga.", true);
     } catch (err) { showMsg(msg, err.message, false); }
-  });
+  };
+  el("cli_btn_analizar").addEventListener("click", cliAnalizarGrafana); window.cliAnalizarGrafana = cliAnalizarGrafana;
 
   async function cliPurgar() {
     for (let i = 0; i < 100; i++) { const r = await apiSend("/clientes/carga/purgar", "POST", {}); if (!r.pendientes) break; }
   }
 
-  el("cli_btn_cargar").addEventListener("click", async () => {
+  const cliCargarGrafana = async () => {
     const msg = el("cli_msg_carga"), btn = el("cli_btn_cargar");
     if (!cliAnalisis) return showMsg(msg, "Analiza primero el archivo.", false);
     const a = cliAnalisis;
@@ -369,12 +370,14 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
       }
       cliCargarBases(); cliCargarFrescura();
       cliCruzarTickets();
+      return !tope;
     } catch (err) {
       if (cargaId) { try { await apiSend("/clientes/carga/abortar", "POST", { carga_id: cargaId }); } catch (e) { /* nada */ } }
       showMsg(msg, `La carga se detuvo: ${err.message}. Lo ya cargado quedó guardado (no se pierde). ` + (hechas.length ? `Ya terminadas: ${hechas.join(" · ")}. ` : "") + "Si es el límite diario de Cloudflare, vuelve a subir el MISMO archivo mañana: continúa donde quedó.", false);
       cliCargarBases(); cliCargarFrescura();
     } finally { btn.disabled = false; }
-  });
+  };
+  el("cli_btn_cargar").addEventListener("click", cliCargarGrafana); window.cliCargarGrafana = cliCargarGrafana;
 }
 
 // ---------------- Auditoría SmartOLT (UI) ----------------
@@ -469,7 +472,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
     } catch (err) { showMsg(msg, err.message, false); } finally { btn.disabled = false; }
   }
 
-  el("cli_aud_btn_analizar").addEventListener("click", async () => {
+  const audAnalizar = async () => {
     const msg = el("cli_aud_msg_analisis");
     el("cli_aud_preview").classList.add("hidden"); el("cli_aud_resultado").innerHTML = "";
     const f = el("cli_aud_archivo").files[0];
@@ -491,9 +494,10 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
       el("cli_aud_preview").classList.remove("hidden");
       showMsg(msg, "Archivo analizado. Confirma la hora de la auditoría (hora de Caracas) y carga.", true);
     } catch (err) { showMsg(msg, err.message, false); }
-  });
+  };
+  el("cli_aud_btn_analizar").addEventListener("click", audAnalizar); window.cliAnalizarAuditoria = audAnalizar;
 
-  el("cli_aud_btn_cargar").addEventListener("click", async () => {
+  const audCargar = async () => {
     const msg = el("cli_aud_msg_carga"), btn = el("cli_aud_btn_cargar");
     if (!audAnalisis) return showMsg(msg, "Analiza primero el archivo.", false);
     const hora = el("cli_aud_fecha").value;
@@ -520,10 +524,53 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
       cargarAlertas();
       el("cli_aud_preview").classList.add("hidden"); el("cli_aud_archivo").value = ""; audAnalisis = null;
       cargarAuditorias();
+      return true;
     } catch (err) {
       if (audId) { try { await apiSend("/clientes/auditoria/abortar", "POST", { auditoria_id: audId }); } catch (e) { /* nada */ } }
       showMsg(msg, "La carga falló y no se guardó nada: " + err.message, false);
     } finally { btn.disabled = false; }
+  };
+  el("cli_aud_btn_cargar").addEventListener("click", audCargar); window.cliCargarAuditoria = audCargar;
+
+  // ---- Carga conjunta: un solo botón para analizar y otro para cargar (Grafana primero, luego SmartOLT) ----
+  let listo = { g: false, s: false };
+  const oculto = (id) => el(id).classList.contains("hidden");
+  el("cli_u_analizar").addEventListener("click", async () => {
+    const msg = el("cli_u_msg"), btn = el("cli_u_cargar");
+    btn.disabled = true; listo = { g: false, s: false };
+    const g = el("cli_archivo").files[0], s = el("cli_aud_archivo").files[0];
+    if (!g && !s) return showMsg(msg, "Elige al menos un archivo: el de Grafana, el de SmartOLT o los dos.", false);
+    el("cli_msg_analisis").textContent = ""; el("cli_aud_msg_analisis").textContent = "";
+    if (g) await window.cliAnalizarGrafana(); else { el("cli_preview").classList.add("hidden"); }
+    if (s) await window.cliAnalizarAuditoria(); else { el("cli_aud_preview").classList.add("hidden"); }
+    listo.g = !!g && !oculto("cli_preview") && !el("cli_btn_cargar").disabled;
+    listo.s = !!s && !oculto("cli_aud_preview");
+    const partes = [];
+    if (g) partes.push("Grafana: " + (listo.g ? "listo" : "con problemas (ver detalle abajo)"));
+    if (s) partes.push("SmartOLT: " + (listo.s ? "listo" : "con problemas (ver detalle abajo)"));
+    btn.disabled = !(listo.g || listo.s);
+    showMsg(msg, partes.join(" · ") + (btn.disabled ? "." : ". Revisa los resúmenes y confirma la carga."), !btn.disabled);
+  });
+  el("cli_u_cargar").addEventListener("click", async () => {
+    const msg = el("cli_u_msg"), btn = el("cli_u_cargar");
+    const hecho = [];
+    btn.disabled = true;
+    try {
+      if (listo.g) {
+        showMsg(msg, "Cargando la base de Grafana…", true);
+        const ok = await window.cliCargarGrafana();
+        if (!ok) { showMsg(msg, "La carga de Grafana no terminó (mira el mensaje de abajo)." + (listo.s ? " El archivo de SmartOLT NO se cargó: se cruzaría con una base incompleta. Súbelo de nuevo cuando termine Grafana." : ""), false); btn.disabled = false; return; }
+        hecho.push("Grafana");
+      }
+      if (listo.s) {
+        showMsg(msg, "Cargando y cruzando SmartOLT con la base…", true);
+        const ok = await window.cliCargarAuditoria();
+        if (!ok) { showMsg(msg, (hecho.length ? "Grafana quedó cargada. " : "") + "La carga de SmartOLT falló (mira el mensaje de abajo).", false); return; }
+        hecho.push("SmartOLT");
+      }
+      listo = { g: false, s: false };
+      showMsg(msg, "Carga terminada: " + hecho.join(" y ") + ".", true);
+    } catch (err) { showMsg(msg, err.message, false); }
   });
   cargarAuditorias();
   cargarAlertas();

@@ -868,13 +868,11 @@
     <h2>Clientes Afectados</h2>
     <p class="hint">Contiene datos personales (cédulas, teléfonos). Solo administrador y supervisor.</p>
 
-    <h3>1. Base de clientes (Grafana: Detalle de Cuentas)</h3>
+    <h3>1. Carga de archivos: Grafana y SmartOLT</h3>
     <p class="hint">
-      Sube el CSV "Descargar para Excel" de Grafana (<strong>Detalle de Cuentas</strong>) de una o varias sucursales: <strong>cada archivo reemplaza la base de su sucursal</strong>.
-      Solo entran los clientes con Estado del contrato <strong>"Activo"</strong> (los demás se ignoran). Si una ONU aparece en más de una cuenta activa se conserva la de
-      <strong>contrato más reciente</strong> y se te avisa para que puedas descargar el detalle y reportarlo a tu jefe.
-      Para cuidar el límite del plan gratuito solo se escribe lo que cambió (clientes nuevos, modificados y dados de baja); el máximo es de 80.000 cambios por día:
-      si se llega al tope, al día siguiente subes el MISMO archivo y continúa. La fecha de la base sale del nombre del archivo (viene en UTC y se muestra en hora de Caracas).
+      Sube en esta misma pantalla el archivo de <strong>Grafana</strong> (Detalle de Cuentas) y/o el de <strong>SmartOLT</strong> (ONUs list). Puedes subir solo uno o los dos.
+      Si subes los dos, primero se actualiza la base de clientes y después las ONUs de SmartOLT se cruzan con esa base ya actualizada.
+      Al terminar, las ONUs de los tickets abiertos que no estén cubiertas por una auditoría se cruzan con la base.
     </p>
     <h4>Sucursales con fallas activas</h4>
     <p class="hint">Cuándo se actualizó por última vez la base de cada sucursal que tiene tickets abiertos:
@@ -885,14 +883,28 @@
       <span class="hint">Se hace solo al terminar una carga. Cruza las ONUs de los tickets abiertos (cargadas hasta 2 días antes o después de la fecha del archivo de Grafana) y guarda en el ticket los datos del cliente.</span>
     </div>
     <div id="cli_msg_cruce" class="msg"></div>
-    <div class="field">
-      <label>Archivo (.csv)</label>
-      <input type="file" id="cli_archivo" accept=".csv,.txt" />
+
+    <div class="cli-dos-archivos">
+      <div class="field">
+        <label>Archivo de Grafana (.csv) — reemplaza la base de cada sucursal que trae</label>
+        <input type="file" id="cli_archivo" accept=".csv,.txt" />
+        <small>Solo entran los clientes con Estado del contrato "Activo". Si una ONU está en más de una cuenta activa se conserva la de contrato más reciente y se te avisa. Solo se escribe lo que cambió (máximo 80.000 cambios por día: si se llega al tope, al día siguiente subes el MISMO archivo y continúa). La fecha sale del nombre del archivo (UTC, se muestra en hora de Caracas).</small>
+      </div>
+      <div class="field">
+        <label>Archivo de SmartOLT (.csv, "ONUs list")</label>
+        <input type="file" id="cli_aud_archivo" accept=".csv,.txt" />
+        <small>Separado por <code>;</code>. La hora del nombre del archivo viene en UTC y se muestra convertida a hora de Caracas para que la confirmes. Cada ONU se cruza con la base de todas las sucursales cargadas.</small>
+      </div>
     </div>
-    <button id="cli_btn_analizar" class="btn-secondary" type="button">1. Analizar archivo</button>
+    <button id="cli_u_analizar" class="btn-secondary" type="button">1. Analizar archivos</button>
+    <div id="cli_u_msg" class="msg"></div>
     <div id="cli_msg_analisis" class="msg"></div>
+    <div id="cli_aud_msg_analisis" class="msg"></div>
+    <button id="cli_btn_analizar" class="hidden" type="button" tabindex="-1" aria-hidden="true"></button>
+    <button id="cli_aud_btn_analizar" class="hidden" type="button" tabindex="-1" aria-hidden="true"></button>
 
     <div id="cli_preview" class="hidden">
+      <h4>Grafana</h4>
       <div class="kv" style="margin: 12px 0;">
         <div><span>Filas leídas:</span> <strong id="cli_prev_leidas">0</strong></div>
         <div><span>Cuentas válidas:</span> <strong id="cli_prev_validas">0</strong></div>
@@ -907,27 +919,10 @@
         <input id="cli_sucursal" readonly />
         <small id="cli_aviso_sucursal"></small>
       </div>
-      <button id="cli_btn_cargar" class="btn-primary" type="button">2. Confirmar y cargar (reemplaza cada sucursal del archivo)</button>
+      <button id="cli_btn_cargar" class="hidden" type="button" tabindex="-1" aria-hidden="true"></button>
     </div>
-    <div id="cli_msg_carga" class="msg"></div>
-    <div id="cli_duplicadas"></div>
-    <div id="cli_resultado"></div>
-
-    <h3>Bases cargadas</h3>
-    <div id="cli_bases"></div>
-
-    <h3>2. Auditoría de ONUs (SmartOLT)</h3>
-    <p class="hint">
-      Sube el CSV "ONUs list" de SmartOLT (separado por <code>;</code>). La hora del nombre del archivo viene en <strong>UTC</strong>: aquí se muestra convertida
-      a hora de Caracas para que la confirmes. Cada ONU se cruza con la base de clientes de <strong>todas</strong> las sucursales cargadas.
-    </p>
-    <div class="field">
-      <label>Archivo (.csv)</label>
-      <input type="file" id="cli_aud_archivo" accept=".csv,.txt" />
-    </div>
-    <button id="cli_aud_btn_analizar" class="btn-secondary" type="button">1. Analizar archivo</button>
-    <div id="cli_aud_msg_analisis" class="msg"></div>
     <div id="cli_aud_preview" class="hidden">
+      <h4>SmartOLT</h4>
       <div class="kv" style="margin: 12px 0;">
         <div><span>OLT:</span> <strong id="cli_aud_olt"></strong> <small id="cli_aud_aviso_olt"></small></div>
         <div><span>Alcance del exporte:</span> <strong id="cli_aud_filtro"></strong></div>
@@ -939,10 +934,17 @@
         <label>Fecha y hora de la auditoría (hora de Caracas) — confírmala</label>
         <input id="cli_aud_fecha" type="datetime-local" />
       </div>
-      <button id="cli_aud_btn_cargar" class="btn-primary" type="button">2. Confirmar, cargar y cruzar</button>
+      <button id="cli_aud_btn_cargar" class="hidden" type="button" tabindex="-1" aria-hidden="true"></button>
     </div>
+    <button id="cli_u_cargar" class="btn-primary" type="button" disabled>2. Confirmar y cargar</button>
+    <div id="cli_msg_carga" class="msg"></div>
     <div id="cli_aud_msg_carga" class="msg"></div>
+    <div id="cli_duplicadas"></div>
+    <div id="cli_resultado"></div>
     <div id="cli_aud_resultado"></div>
+
+    <h3>Bases cargadas</h3>
+    <div id="cli_bases"></div>
 
     <h3>Alertas: posible falla no reportada</h3>
     <label>Estado <select id="cli_alertas_estado"><option value="abierta">Abiertas</option><option value="cubierta">Cubiertas por un ticket</option><option value="descartada">Descartadas</option><option value="todas">Todas</option></select></label>
