@@ -3,10 +3,15 @@ const API = "/api";
 // ---------------------------------------------------------------
 // Utilidades
 // ---------------------------------------------------------------
+// Si el servidor falló por dentro ("Error interno") se muestra también el detalle técnico para poder diagnosticarlo.
+function textoErrorApi(data) {
+  const base = (data && data.error) || "Error de solicitud";
+  return data && data.detalle && /^Error interno/.test(base) ? `${base}: ${data.detalle}` : base;
+}
 async function apiGet(path) {
   const r = await fetch(API + path);
   const data = await r.json();
-  if (!r.ok) throw new Error(data.error || "Error de solicitud");
+  if (!r.ok) throw new Error(textoErrorApi(data));
   return data;
 }
 async function apiSend(path, method, body) {
@@ -16,7 +21,7 @@ async function apiSend(path, method, body) {
     body: JSON.stringify(body),
   });
   const data = await r.json();
-  if (!r.ok) { const err = new Error(data.error || "Error de solicitud"); if (data.reautenticar) err.reautenticar = true; throw err; }
+  if (!r.ok) { const err = new Error(textoErrorApi(data)); if (data.reautenticar) err.reautenticar = true; throw err; }
   return data;
 }
 function fillSelect(select, items, { valueKey = "nombre", labelKey = "nombre", placeholder = "Seleccione:" } = {}) {
@@ -2349,6 +2354,18 @@ const CL_COLS = [
   { f: "tiempo_cerrar_cmr_h", t: "Tiempo en cerrar CMR (h)", tipo: "horas", w: 120 },
   { f: "semaforo_curso_cmr", t: "Semáforo tiempo en curso CMR", tipo: "sem", w: 130 },
   { f: "semaforo_cierre_cmr", t: "Semáforo tiempo de cierre CMR", tipo: "sem", w: 130 },
+  { f: "horas_abierta", t: "Tiempo abierto CMR (h)", tipo: "horas", w: 120 },
+  { f: "semaforo", t: "Semáforo tiempo abierto CMR", tipo: "sem", w: 130 },
+  { f: "tiempo_cierre_horas", t: "Tiempo hasta el cierre CMR (h)", tipo: "horas", w: 130 },
+  { f: "plazo_solucion_cmr_h", t: "Plazo Solución CMR (h)", tipo: "horas", w: 125 },
+  { f: "plazo_solucion_cda_h", t: "Plazo Solución CDA (h)", tipo: "horas", w: 125 },
+  { f: "plazo_cierre_cmr_h", t: "Plazo Cierre CMR (h)", tipo: "horas", w: 120 },
+  { f: "plazo_cierre_cda_h", t: "Plazo Cierre CDA (h)", tipo: "horas", w: 120 },
+  { f: "plazo_certificar_cmr_h", t: "Plazo Certificar CMR (h)", tipo: "horas", w: 130 },
+  { f: "plazo_certificar_cda_h", t: "Plazo Certificar CDA (h)", tipo: "horas", w: 130 },
+  { f: "dia_cierre", t: "Día cierre CMR", tipo: "dato", w: 90 },
+  { f: "mes_cierre", t: "Mes cierre CMR", tipo: "dato", w: 90 },
+  { f: "anio_cierre", t: "Año cierre CMR", tipo: "dato", w: 90 },
   { f: "creado_por_nombre", t: "Creado por", tipo: "dato", w: 150 },
   { f: "creado_en", t: "Creado el", tipo: "fecha", w: 140 },
   { f: "actualizado_en", t: "Última modificación", tipo: "fecha", w: 140 },
@@ -5151,6 +5168,7 @@ function construirRegistrosRepo(filasCrudas, ctx) {
     const rawFechas = {
       fecha_apertura_cda: col("FECHA DE CREACION DEL CDA"),
       fecha_apertura_cmr: col("FECHA DE CREACION DEL CMR", "FECHA DE CREACION DEL CRM"),
+      fecha_falla: col("FECHA DE LA FALLA"),
       fecha_solucion_cmr: col("FECHA DE SOLUCION DEL CMR", "FECHA DE SOLUCION DEL CRM"),
       fecha_solucion_cda: col("FECHA DE SOLUCION DEL CDA"),
     };
