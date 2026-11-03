@@ -144,10 +144,13 @@ export async function leerParametro(db, clave, porDefecto) {
   } catch (e) { return porDefecto; }
 }
 
-// Con la base acumulativa (se le agregan clientes cada mes) ya no tiene sentido comparar la hora de la base con la de la auditoría.
-// Se deja la función (y el parámetro tolerancia_base_horas) para no romper el resto; siempre responde "ninguna desactualizada".
-export async function basesDesactualizadas() {
-  return { mapa: new Map(), alguna: false };
+// Qué bases vigentes están fuera de tolerancia (parámetro tolerancia_base_horas, 12 h por defecto) frente a la hora de la auditoría de SmartOLT.
+export async function basesDesactualizadas(db, aud) {
+  const tol = await leerParametro(db, "tolerancia_base_horas", 12);
+  const bases = (await db.prepare("SELECT id, fecha_base FROM cargas_base WHERE estado = 'vigente'").all()).results;
+  const m = new Map();
+  for (const g of bases) m.set(g.id, horasEntre(aud.fecha_auditoria_local, g.fecha_base) > tol);
+  return { mapa: new Map([...m].filter(([, v]) => v)), alguna: [...m.values()].some(Boolean) };
 }
 
 export async function resumenAuditoria(db, id) {

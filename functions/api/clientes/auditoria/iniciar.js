@@ -21,12 +21,12 @@ export async function onRequestPost({ request, env }) {
     env.DB.prepare("DELETE FROM auditoria_onus WHERE auditoria_id IN (SELECT id FROM auditorias WHERE total_onus = 0 AND fecha_subida < datetime('now','-1 day'))"),
     env.DB.prepare("DELETE FROM auditorias WHERE total_onus = 0 AND fecha_subida < datetime('now','-1 day')"),
   ]);
-  const bases = (await env.DB.prepare("SELECT id, sucursal, fecha_base FROM cargas_base WHERE estado = 'vigente' ORDER BY sucursal").all()).results;
+  const bases = (await env.DB.prepare("SELECT id, sucursal, fecha_base, archivo FROM cargas_base WHERE estado = 'vigente' ORDER BY sucursal").all()).results;
   if (!bases.length) return badRequest("Todavía no hay ninguna base de clientes cargada (Paso 2). Sube primero la base de Grafana.");
   const tol = await leerParametro(env.DB, "tolerancia_base_horas", 12);
   const estadoBases = bases.map((g) => {
     const h = horasEntre(b.fecha_auditoria_local, g.fecha_base);
-    return { carga_id: g.id, sucursal: g.sucursal, fecha_base: g.fecha_base, horas: Math.round(h * 10) / 10, desactualizada: h > tol };
+    return { carga_id: g.id, sucursal: g.sucursal, fecha_base: g.fecha_base, archivo: g.archivo, horas: Math.round(h * 10) / 10, desactualizada: h > tol };
   });
 
   const r = await env.DB.prepare(

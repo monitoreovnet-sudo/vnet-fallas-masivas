@@ -26,7 +26,7 @@ export async function onRequestPost({ request, env }) {
 
   // ---------- Tickets ----------
   const COLS_TICKETS = [
-    "ticket_cmr", "tickets_vinculados", "fecha_apertura_cda", "fecha_apertura_cmr",
+    "ticket_cmr", "tickets_vinculados", "fecha_apertura_cda", "fecha_apertura_cmr", "fecha_falla",
     "estado_ticket", "unidad_resolutoria", "categoria_afectacion", "afectacion",
     "comentario", "descripcion", "avance_cmr", "fecha_solucion_cmr", "fecha_solucion_cda",
   ];
@@ -40,7 +40,7 @@ export async function onRequestPost({ request, env }) {
   for (let i = 0; i < tickets.length; i += CHUNK) {
     const lote = tickets.slice(i, i + CHUNK).map((t) =>
       db.prepare(
-        `INSERT OR IGNORE INTO tickets (${COLS_TICKETS.join(", ")}) VALUES (${COLS_TICKETS.map(() => "?").join(", ")})`
+        `INSERT OR IGNORE INTO tickets (${COLS_TICKETS.join(", ")}, creado_en, actualizado_en) VALUES (${COLS_TICKETS.map(() => "?").join(", ")}, datetime('now','-4 hours'), datetime('now','-4 hours'))`
       ).bind(...COLS_TICKETS.map((c) => (t[c] === undefined || t[c] === "" ? null : t[c])))
     );
     const resultados = await db.batch(lote);
@@ -78,7 +78,7 @@ export async function onRequestPost({ request, env }) {
     if (oficinaId === null) puertosSinOficina += 1;   // oficina no reconocida (queda sin oficina)
 
     const stmt = db.prepare(
-      `INSERT INTO ticket_puertos (${COLS_PUERTOS.join(", ")}) VALUES (${COLS_PUERTOS.map(() => "?").join(", ")})`
+      `INSERT INTO ticket_puertos (${COLS_PUERTOS.join(", ")}, creado_en, actualizado_en) VALUES (${COLS_PUERTOS.map(() => "?").join(", ")}, datetime('now','-4 hours'), datetime('now','-4 hours'))`
     ).bind(
       ticketId, oficinaId, p.olt || "DESCONOCIDO", p.tarjeta || "DESCONOCIDO", p.puerto || "DESCONOCIDO",
       p.sector || "DESCONOCIDO", p.edificio || "DESCONOCIDO",
