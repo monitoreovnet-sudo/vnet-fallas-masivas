@@ -13,9 +13,26 @@ const limpio = (v, max = 300) => {
 export function normSucursal(v) {
   return sinTildes(v).toUpperCase().replace(/\s+/g, " ").trim();
 }
-// Serial: mayúsculas, sin espacios ni signos
+// Serial: si viene como número (texto con comillas, ".0" final o notación científica de Excel, p. ej. 4.8575443E+15)
+// se convierte a su número completo SIN perder dígitos y sin rellenar de más; luego se normaliza (mayúsculas, sin signos).
+// Un serial alfanumérico (ZTEGC…, 485754…) nunca se toca: la notación científica exige punto decimal o signo "+" en el exponente.
+// Los serial solo de dígitos se comparan sin ceros a la izquierda (Excel los quita).
+
+function serialDesdeCientifico(v) {
+  let s = String(v ?? "").trim().replace(/^=?\s*"?'?/, "").replace(/"$/, "").trim();
+  const m = /^([+-]?)(\d+)(?:[.,](\d+))?[eE]([+-]?)(\d+)$/.exec(s);
+  if (m && (m[3] !== undefined || m[4] === "+")) {
+    const frac = m[3] || "", exp = m[4] === "-" ? -Number(m[5]) : Number(m[5]);
+    if (exp >= frac.length) return { texto: m[2] + frac + "0".repeat(exp - frac.length), cientifico: true };
+  }
+  const d = /^(\d+)[.,]0+$/.exec(s);
+  if (d) s = d[1];
+  return { texto: s, cientifico: false };
+}
+export function serialEsCientifico(v) { return serialDesdeCientifico(v).cientifico; }
 export function normSerial(v) {
-  return sinTildes(v).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const n = sinTildes(serialDesdeCientifico(v).texto).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return /^\d+$/.test(n) ? n.replace(/^0+(?=\d)/, "") : n;
 }
 // Cédula: letra + 9 dígitos (V025213642). Sin letra: solo dígitos rellenados a 9.
 export function normCedula(v) {

@@ -60,7 +60,22 @@ function cliFechaDeNombre(nombre) {
 }
 
 // Serial normalizado (mismo criterio del servidor) y llave de la base: serial, o SIN-SN-<cuenta> si no tiene
-function cliNormSerial(v) { return String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, ""); }
+function cliSerialDesdeCientifico(v) {
+  let s = String(v ?? "").trim().replace(/^=?\s*"?'?/, "").replace(/"$/, "").trim();
+  const m = /^([+-]?)(\d+)(?:[.,](\d+))?[eE]([+-]?)(\d+)$/.exec(s);
+  if (m && (m[3] !== undefined || m[4] === "+")) {
+    const frac = m[3] || "", exp = m[4] === "-" ? -Number(m[5]) : Number(m[5]);
+    if (exp >= frac.length) return { texto: m[2] + frac + "0".repeat(exp - frac.length), cientifico: true };
+  }
+  const d = /^(\d+)[.,]0+$/.exec(s);
+  if (d) s = d[1];
+  return { texto: s, cientifico: false };
+}
+function cliSerialEsCientifico(v) { return cliSerialDesdeCientifico(v).cientifico; }
+function cliNormSerial(v) {
+  const n = String(cliSerialDesdeCientifico(v).texto).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return /^\d+$/.test(n) ? n.replace(/^0+(?=\d)/, "") : n;
+}
 function cliClave(f) { const c = String(f.cuenta ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").trim().slice(0, 40); return c ? (cliNormSerial(f.serial_onu) || "SIN-SN-" + c) : null; }
 // "15-03-2023" o "2023-03-15" -> "2023-03-15" (para comparar fechas de contrato como texto)
 function cliFechaContrato(v) { const s = String(v ?? "").trim(); const m = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/.exec(s); if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; const n = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return n ? n[0] : ""; }
@@ -169,7 +184,7 @@ function cliParsearAuditoria(texto) {
   return res;
 }
 // CLI-PURE-END
-if (typeof module !== "undefined") module.exports = { cliNormSerial, cliClave, cliFechaContrato, cliDecodificar, cliPartirLinea, cliParsearBase, cliFechaDeNombre, cliParsearNombreSmartolt, cliParsearAuditoria };
+if (typeof module !== "undefined") module.exports = { cliNormSerial, cliSerialEsCientifico, cliClave, cliFechaContrato, cliDecodificar, cliPartirLinea, cliParsearBase, cliFechaDeNombre, cliParsearNombreSmartolt, cliParsearAuditoria };
 
 // ---------------- Interfaz (solo navegador) ----------------
 if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
@@ -280,7 +295,8 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
       cliFechaBase = deNombre || ahoraCaracas();
       const sucs = Object.entries(a.sucursales).sort((x, y) => y[1] - x[1]);
       el("cli_sucursal").value = sucs.map(([n, c]) => `${n} (${formatearMiles(c)})`).join(" · ");
-      el("cli_aviso_sucursal").textContent = "Cada sucursal del archivo reemplaza a la suya; las demás no se tocan.";
+      const nCient = a.filas.filter((f) => cliSerialEsCientifico(f.serial_onu)).length;
+      el("cli_aviso_sucursal").textContent = "Cada sucursal del archivo reemplaza a la suya; las demás no se tocan." + (nCient ? ` Ojo: ${nCient} serial(es) venían en notación científica (p. ej. 4.85E+15); se convirtieron a número completo, pero si Excel los redondeó al guardar el CSV pueden estar incompletos.` : "");
       cliMostrarDuplicadas(a.duplicadas, "de este archivo");
       el("cli_fecha_base").textContent = fmtFecha(cliFechaBase) + (deNombre ? " (del nombre del archivo, convertida a hora de Caracas)" : " (el nombre del archivo no la trae: se usa la hora de subida)");
       el("cli_prev_leidas").textContent = a.leidas;
@@ -485,7 +501,8 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
       audAnalisis = a; audNombre = f.name; audMeta = meta;
       const olts = Object.entries(a.olts).sort((x, y) => y[1] - x[1]);
       el("cli_aud_olt").textContent = olts.map(([o, n]) => `${o} (${n})`).join(", ");
-      el("cli_aud_aviso_olt").textContent = olts.length > 1 ? "Ojo: el archivo trae más de una OLT." : "";
+      const nCientS = a.onus.filter((x) => cliSerialEsCientifico(x.sn)).length;
+      el("cli_aud_aviso_olt").textContent = (olts.length > 1 ? "Ojo: el archivo trae más de una OLT. " : "") + (nCientS ? `Ojo: ${nCientS} serial(es) venían en notación científica; se convirtieron a número completo, pero si Excel los redondeó pueden estar incompletos.` : "");
       el("cli_aud_filtro").textContent = `${meta.tarjeta ? "tarjeta " + meta.tarjeta : "toda la OLT"}${meta.puerto ? ", puerto " + meta.puerto : ""}${meta.estado ? ", estado " + meta.estado : ""}`;
       el("cli_aud_onus").textContent = `${a.onus.length}${a.malformadas.length ? " (+" + a.malformadas.length + " filas mal formadas descartadas)" : ""}`;
       el("cli_aud_estados").textContent = Object.entries(a.estados).map(([k, v]) => `${k}: ${v}`).join(" · ");
