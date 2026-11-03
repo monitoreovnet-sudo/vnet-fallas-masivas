@@ -860,8 +860,8 @@ input, select, textarea, .multi-cat summary, .multi-cat .multi-lista { font-fami
 .cca-sep { flex-basis: 1px; height: 18px; background: #E5DAEA; }
 .cca-botones { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 #cca_resumen .ml-tiles { margin-top: 10px; }
-#cca_tabla { overflow: auto; max-height: 60vh; max-width: 100%; }
-#cca_tabla th { white-space: nowrap; position: sticky; top: 0; background: #f7f3fa; }
+#cca_tabla { max-width: 100%; }
+#cca_grid { font-size: 13px; }
 
 /* ---- Ventanas de mantenimiento ---- */
 .db-ventana-card { position: relative; }

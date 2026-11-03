@@ -711,7 +711,7 @@ function ccaHojaSectores(filas) {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fmtF = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || ""); return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : (iso || ""); };
   const num = (n) => Number(n || 0).toLocaleString("es-VE");
-  let ultimo = null, ultimaQuery = null;   // lo que se ve en pantalla y con qué filtros se buscó
+  let ultimo = null, ultimaQuery = null, grid = null;   // lo que se ve en pantalla y con qué filtros se buscó
 
   function queryActual() {
     const p = new URLSearchParams();
@@ -738,19 +738,27 @@ function ccaHojaSectores(filas) {
     se.value = ae;
     el("cca_olts").innerHTML = (L.olts || []).map((o) => `<option value="${esc(o.codigo)}"></option>`).join("");
   }
-  window.ccaCargarOpciones = cargarOpciones;
+  window.ccaCargarOpciones = () => { cargarOpciones(); if (grid) setTimeout(() => { const g = el("cca_grid"); if (g) { g.style.height = Math.max(360, window.innerHeight - g.getBoundingClientRect().top - 14) + "px"; grid.setHeight(g.style.height); grid.redraw(true); } }, 50); };
   function pintar(d) {
     const r = d.resumen, filas = d.filas;
     const tile = (n, t) => `<div class="ml-tile"><b>${num(n)}</b><span>${t}</span></div>`;
     el("cca_resumen").innerHTML = `<div class="ml-tiles">${tile(r.clientes, "Clientes")}${tile(r.onus, "ONUs en la lista")}${tile(r.tickets, "Tickets")}` +
       `${tile(r.sin_cruzar_excluidas, "ONUs sin cruzar no incluidas")}${tile(r.no_activos_excluidos, "Clientes no activos no incluidos")}</div>` +
       (r.truncado ? '<div class="ml-badge b-aviso">La lista es muy grande: se muestran solo los primeros 60.000 registros. Acota los filtros.</div>' : "");
+    if (grid) { try { grid.destroy(); } catch (e) { /* ya destruida */ } grid = null; }
     if (!filas.length) { el("cca_tabla").innerHTML = '<p class="hint">No hay clientes con esos filtros. Prueba quitando algún filtro o revisando que el ticket tenga una auditoría asociada.</p>'; return; }
-    const VISTA = CCA_COLUMNAS.filter(([c]) => ["nombre", "telefono_casa", "telefono_oficina", "cuenta", "sector", "estado_contrato", "ticket_cmr", "estado_ticket", "fecha_falla", "apertura_cmr", "solucion_cmr", "cierre_cmr", "oficina", "olt", "tarjeta", "puerto", "fecha_auditoria", "clasificacion", "observacion"].includes(c));
-    const MAX = 300;
-    el("cca_tabla").innerHTML = `<p class="hint">Vista previa de los primeros ${num(Math.min(MAX, filas.length))} de ${num(filas.length)} registros. El Excel trae todos y más columnas.</p>` +
-      `<table class="rows-table"><thead><tr>${VISTA.map(([, t]) => `<th>${esc(t)}</th>`).join("")}</tr></thead><tbody>${
-        filas.slice(0, MAX).map((f) => `<tr>${VISTA.map(([c]) => `<td>${esc(ccaValorCelda(c, f[c], fmtF))}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+    el("cca_tabla").innerHTML = '<p class="hint" id="cca_conteo">Cargando tabla…</p><div id="cca_grid"></div>';
+    const cols = CCA_COLUMNAS.map(([c, t]) => ({
+      title: t, field: c, headerFilter: "input", headerSort: true, minWidth: 90,
+      formatter: (cell) => esc(ccaValorCelda(c, cell.getValue(), fmtF)),
+      headerFilterFunc: (hv, rv) => ccaValorCelda(c, rv, fmtF).toLowerCase().includes(String(hv).toLowerCase()),
+      ...(c === "nombre" ? { frozen: true } : {}),
+    }));
+    const alto = () => Math.max(360, window.innerHeight - el("cca_grid").getBoundingClientRect().top - 14);
+    el("cca_grid").style.height = alto() + "px";
+    grid = new Tabulator("#cca_grid", { data: filas, columns: cols, layout: "fitDataFill", height: alto(), placeholder: "Sin resultados con esos filtros de columna" });
+    const conteo = () => { if (!grid) return; const n = grid.getDataCount("active"); el("cca_conteo").textContent = `${num(n)} de ${num(filas.length)} registros. Cada columna tiene su filtro y se puede ordenar con un clic en el encabezado. El Excel y el CSV bajan lo que se ve en la tabla.`; };
+    grid.on("tableBuilt", conteo); grid.on("dataFiltered", () => setTimeout(conteo, 0)); grid.on("renderComplete", conteo);
   }
   async function buscar() {
     const msg = el("cca_msg");
@@ -770,15 +778,17 @@ function ccaHojaSectores(filas) {
     return true;
   }
   const hoy = () => new Date().toISOString().slice(0, 10);
+  const filasVisibles = () => (grid ? grid.getData("active") : ultimo.filas);
   el("cca_xlsx").addEventListener("click", () => {
     if (!sinCambios()) return;
+    const visibles = filasVisibles();
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ccaFilasExcel(ultimo.filas, fmtF)), CCA_HOJA_CLIENTES);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ccaResumenTickets(ultimo.filas, fmtF)), CCA_HOJA_TICKETS);
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ccaHojaSectores(ultimo.filas)), CCA_HOJA_SECTORES);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ccaFilasExcel(visibles, fmtF)), CCA_HOJA_CLIENTES);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ccaResumenTickets(visibles, fmtF)), CCA_HOJA_TICKETS);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ccaHojaSectores(visibles)), CCA_HOJA_SECTORES);
     XLSX.writeFile(wb, `clientes_afectados_${hoy()}.xlsx`);
   });
-  el("cca_csv").addEventListener("click", () => { if (sinCambios()) exportarCSVGenerico(ccaFilasExcel(ultimo.filas, fmtF), `clientes_afectados_${hoy()}.csv`); });
+  el("cca_csv").addEventListener("click", () => { if (sinCambios()) exportarCSVGenerico(ccaFilasExcel(filasVisibles(), fmtF), `clientes_afectados_${hoy()}.csv`); });
   el("cca_buscar").addEventListener("click", buscar);
   ["cca_ticket", "cca_olt"].forEach((id) => el(id).addEventListener("keydown", (e) => { if (e.key === "Enter") buscar(); }));
   const previo = window.cliCargarAuditorias;
