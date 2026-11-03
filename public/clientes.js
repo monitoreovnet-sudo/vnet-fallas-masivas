@@ -148,11 +148,13 @@ const SM_OBLIGATORIAS = ["sn", "olt", "board", "port", "status"];
 // SmartOLT_oltid_58_board_6_port_11_status_los_onus_list_2026-10-19_22_01_26.470019.csv
 // La hora del nombre viene en UTC: se convierte a hora de Caracas (UTC-4, sin horario de verano).
 function cliParsearNombreSmartolt(nombre) {
-  const m = /SmartOLT_oltid_(\d+)(?:_board_(\d+))?(?:_port_(\d+))?(?:_status_([A-Za-z_ ]+?))?_onus_list_(\d{4})-(\d{2})-(\d{2})[_ T](\d{2})[_:](\d{2})[_:](\d{2})/i.exec(String(nombre || ""));
+  const m = /SmartOLT_oltid_(\d+)(?:_board_([\d,]+))?(?:_port_([\d,]+))?(?:_status_([A-Za-z_ ]+?))?_onus_list_(\d{4})-(\d{2})-(\d{2})[_ T](\d{2})[_:](\d{2})[_:](\d{2})/i.exec(String(nombre || ""));
   if (!m) return null;
   const utc = Date.UTC(+m[5], +m[6] - 1, +m[7], +m[8], +m[9], +m[10]);
   const f = (ms) => new Date(ms).toISOString().slice(0, 19);
-  return { oltid: m[1], tarjeta: m[2] ? +m[2] : null, puerto: m[3] ? +m[3] : null, estado: m[4] ? m[4].replace(/_/g, " ").toLowerCase() : null,
+  // Con varias tarjetas o puertos (board_3,13_port_6,7,8) no hay un único número: se guarda vacío y el texto completo para mostrarlo
+  const uno = (t) => (t && /^\d+$/.test(t) ? +t : null);
+  return { oltid: m[1], tarjeta: uno(m[2]), puerto: uno(m[3]), tarjetaTxt: m[2] || null, puertoTxt: m[3] || null, estado: m[4] ? m[4].replace(/_/g, " ").toLowerCase() : null,
     utc: f(utc), local: f(utc - 4 * 3600 * 1000) };
 }
 
@@ -437,7 +439,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
     const m = r.metodos || {};
     const porMetodo = Object.keys(NOMBRE_METODO).filter((k) => m[k]).map((k) => `${NOMBRE_METODO[k]}: ${m[k]}`).join(" · ") || "—";
     el("cli_aud_resultado").innerHTML = `
-      <h4>Resultado: ${esc(info.olt)}${info.tarjeta ? " · tarjeta " + info.tarjeta : ""}${info.puerto ? " · puerto " + info.puerto : ""} · auditoría del ${fmt(info.fecha_local)}</h4>
+      <h4>Resultado: ${esc(info.olt)}${info.tarjeta ? (String(info.tarjeta).includes(",") ? " · tarjetas " : " · tarjeta ") + String(info.tarjeta).replace(/,/g, ", ") : ""}${info.puerto ? (String(info.puerto).includes(",") ? " · puertos " : " · puerto ") + String(info.puerto).replace(/,/g, ", ") : ""} · auditoría del ${fmt(info.fecha_local)}</h4>
       ${(avisos || []).map((a) => `<p class="msg error">${esc(a)}</p>`).join("")}
       <div class="kv">
         <div><span>ONUs en el archivo:</span> <strong>${r.total}</strong></div>
@@ -518,7 +520,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
       el("cli_aud_olt").textContent = olts.map(([o, n]) => `${o} (${n})`).join(", ");
       const nCientS = a.onus.filter((x) => cliSerialEsCientifico(x.sn)).length;
       el("cli_aud_aviso_olt").textContent = (olts.length > 1 ? "Ojo: el archivo trae más de una OLT. " : "") + (nCientS ? `Ojo: ${nCientS} serial(es) venían en notación científica; se convirtieron a número completo, pero si Excel los redondeó pueden estar incompletos.` : "");
-      el("cli_aud_filtro").textContent = `${meta.tarjeta ? "tarjeta " + meta.tarjeta : "toda la OLT"}${meta.puerto ? ", puerto " + meta.puerto : ""}${meta.estado ? ", estado " + meta.estado : ""}`;
+      el("cli_aud_filtro").textContent = `${meta.tarjetaTxt ? (meta.tarjetaTxt.includes(",") ? "tarjetas " : "tarjeta ") + meta.tarjetaTxt.replace(/,/g, ", ") : "toda la OLT"}${meta.puertoTxt ? (meta.puertoTxt.includes(",") ? ", puertos " : ", puerto ") + meta.puertoTxt.replace(/,/g, ", ") : ""}${meta.estado ? ", estado " + meta.estado : ""}`;
       el("cli_aud_onus").textContent = `${a.onus.length}${a.malformadas.length ? " (+" + a.malformadas.length + " filas mal formadas descartadas)" : ""}`;
       el("cli_aud_estados").textContent = Object.entries(a.estados).map(([k, v]) => `${k}: ${v}`).join(" · ");
       el("cli_aud_utc").textContent = fmt(meta.utc) + " (UTC)";
@@ -596,7 +598,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
       const fin = await apiSend("/clientes/auditoria/finalizar", "POST", { auditoria_id: audId, esperadas: a.onus.length });
       audId = null;
       showMsg(msg, `Auditoría cargada: ${fin.resumen.cruzadas} de ${fin.resumen.total} ONUs cruzadas.`, true);
-      pintarResumen(fin.resumen, { olt, tarjeta: audMeta.tarjeta, puerto: audMeta.puerto, fecha_local: fin.auditoria.fecha_local }, avisos, fin.asociacion);
+      pintarResumen(fin.resumen, { olt, tarjeta: audMeta.tarjetaTxt, puerto: audMeta.puertoTxt, fecha_local: fin.auditoria.fecha_local }, avisos, fin.asociacion);
       cargarAlertas();
       el("cli_aud_preview").classList.add("hidden"); el("cli_aud_archivo").value = ""; audAnalisis = null;
       cargarAuditorias();
@@ -753,7 +755,21 @@ function ccaHojaSectores(filas) {
     se.value = ae;
     el("cca_olts").innerHTML = (L.olts || []).map((o) => `<option value="${esc(o.codigo)}"></option>`).join("");
   }
-  window.ccaCargarOpciones = () => { cargarOpciones(); if (grid) setTimeout(() => { const g = el("cca_grid"); if (g) { g.style.height = Math.max(360, window.innerHeight - g.getBoundingClientRect().top - 14) + "px"; grid.setHeight(g.style.height); grid.redraw(true); } }, 50); };
+  async function cargarDomino() {
+    const caja = el("cca_domino"); if (!caja) return;
+    try {
+      const d = await apiGet("/clientes/tickets-activos");
+      if (!d.tickets.length) { caja.innerHTML = '<div class="dom-wrap"><h4>Tickets activos</h4><p class="hint">No hay tickets con falla activa.</p></div>'; return; }
+      const fichas = d.tickets.map((t) => `<button type="button" class="dom-ficha ${t.cruzado ? "dom-ok" : "dom-no"}" data-ticket="${esc(t.ticket_cmr)}" title="${esc(t.oficinas || "Sin oficina")} · ${esc(t.estado_ticket || "")}${t.cruzado ? "" : " · sin clientes cruzados"}">` +
+        `<span class="dom-num">${esc(t.ticket_cmr)}</span><span class="dom-med">${t.total ? num(t.cruzadas) + " de " + num(t.total) : "sin ONUs"}</span></button>`).join("");
+      caja.innerHTML = `<div class="dom-wrap"><h4>Tickets activos (${num(d.tickets.length)})</h4><div class="dom-tablero">${fichas}</div>` +
+        `<div class="dom-leyenda"><span><i class="dom-ok"></i>Cruzado: se consiguió el cliente de Grafana de al menos una ONU del ticket (${num(d.cruzados)})</span>` +
+        `<span><i class="dom-no"></i>Sin cruzar: falla activa sin ningún cliente cruzado (${num(d.sin_cruzar)})</span></div>` +
+        `<p class="hint">Cada ficha muestra el número del ticket y, abajo, cuántas ONUs se cruzaron de las que tiene. Pulsa una ficha para ver sus clientes en la tabla.</p></div>`;
+      caja.querySelectorAll(".dom-ficha").forEach((b) => b.addEventListener("click", () => { el("cca_ticket").value = b.dataset.ticket; buscar(); }));
+    } catch (err) { caja.innerHTML = ""; }
+  }
+  window.ccaCargarOpciones = () => { cargarOpciones(); cargarDomino(); if (grid) setTimeout(() => { const g = el("cca_grid"); if (g) { g.style.height = Math.max(360, window.innerHeight - g.getBoundingClientRect().top - 14) + "px"; grid.setHeight(g.style.height); grid.redraw(true); } }, 50); };
   function pintar(d) {
     const r = d.resumen, filas = d.filas;
     const tile = (n, t) => `<div class="ml-tile"><b>${num(n)}</b><span>${t}</span></div>`;
