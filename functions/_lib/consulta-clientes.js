@@ -6,14 +6,15 @@ export const TIPOS_AFECTACION = ["falla", "powerfail", "caida_previa"];
 const MAX_FILAS = 60000;
 const FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
-// filtros: { ticket, oficina_id, olt, desde, hasta, tipos: [..], activos: bool, sin_cruzar: bool }
+// filtros: { estado_ticket, historico (todas las auditorías asociadas, no solo la más reciente de cada puerto), ticket, oficina_id, olt, desde, hasta, tipos: [..], activos: bool, sin_cruzar: bool }
 export async function consultarClientes(db, f) {
   const eq = await mapaEquivalencias(db);
   const tipos = (f.tipos || []).filter((t) => TIPOS_AFECTACION.includes(t));
   if (!tipos.length) tipos.push("falla", "powerfail");
-  const where = ["ta.vigente = 1", `o.clasificacion IN (${tipos.map(() => "?").join(",")})`];
+  const where = [...(f.historico ? [] : ["ta.vigente = 1"]), `o.clasificacion IN (${tipos.map(() => "?").join(",")})`];
   const binds = [...tipos];
   if (f.ticket) { where.push("t.ticket_cmr LIKE ?"); binds.push(`%${String(f.ticket).replace(/[^\dA-Za-z-]/g, "")}%`); }
+  if (f.estado_ticket) { where.push("t.estado_ticket = ?"); binds.push(String(f.estado_ticket)); }
   if (f.olt) {
     const co = canon(f.olt, eq), vs = co ? variantes(co, eq) : [String(f.olt).trim().toUpperCase()];
     where.push(`ta.olt IN (${vs.map(() => "?").join(",")})`); binds.push(...vs);
@@ -22,7 +23,7 @@ export async function consultarClientes(db, f) {
   if (FECHA.test(f.hasta || "")) { where.push("a.fecha_auditoria_local <= ?"); binds.push(f.hasta + "T23:59:59"); }
 
   const filas = (await db.prepare(
-    `SELECT ta.ticket_id, t.ticket_cmr, t.fecha_apertura_cda, t.fecha_apertura_cmr, t.fecha_solucion_cda AS t_sol_cda, t.fecha_solucion_cmr AS t_sol_cmr,
+    `SELECT ta.ticket_id, t.ticket_cmr, t.estado_ticket, t.fecha_falla, t.fecha_apertura_cda, t.fecha_apertura_cmr, t.fecha_solucion_cda AS t_sol_cda, t.fecha_solucion_cmr AS t_sol_cmr,
             ta.olt, ta.tarjeta, ta.puerto, a.fecha_auditoria_local, ta.revisar_duplicado AS duplicado,
             o.clasificacion, o.status, o.last_status_change, o.cuenta, o.cli_nombre, o.cli_tel_casa, o.cli_tel_oficina, o.cli_telefono,
             o.cli_ident_externo, o.cli_cedula, o.cli_sector, o.cli_estado_contrato, o.name_smartolt, o.base_desactualizada
@@ -62,7 +63,7 @@ export async function consultarClientes(db, f) {
     if (!r.cuenta) { if (!f.sin_cruzar) { sinCruzarExcl++; continue; } }
     else if (f.activos && !activo) { noActivosExcl++; continue; }
     salida.push({
-      ticket_cmr: r.ticket_cmr, oficina: g ? g.oficina_nombre : null, olt: r.olt, tarjeta: r.tarjeta, puerto: r.puerto,
+      ticket_cmr: r.ticket_cmr, estado_ticket: r.estado_ticket, fecha_falla: r.fecha_falla, oficina: g ? g.oficina_nombre : null, olt: r.olt, tarjeta: r.tarjeta, puerto: r.puerto,
       fecha_auditoria: r.fecha_auditoria_local, clasificacion: r.clasificacion, estado_onu: r.status, ultimo_cambio: r.last_status_change,
       cuenta: r.cuenta, nombre: r.cli_nombre, telefono_casa: r.cli_tel_casa || r.cli_telefono || null, telefono_oficina: r.cli_tel_oficina || null,
       sector: r.cli_sector, identificacion_externo: r.cli_ident_externo || r.cli_cedula || null, estado_contrato: r.cli_estado_contrato,

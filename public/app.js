@@ -4771,6 +4771,35 @@ function htmlDetalleLog(ticket, puertos, log) {
     : `<p class="ml-vacio">Sin cambios registrados.</p>`;
   return `<h4>Datos del ticket</h4><div class="ml-grid">${kv}</div><h4>Registros (${puertos.length})</h4>${tabla}<h4>Log de cambios</h4>${entradas}`;
 }
+// ---- Descarga a Excel de las tablas de clientes del ticket (ver log) ----
+const BTN_XLSX = (tipo) => `<button type="button" class="btn-secondary ml-xlsx" data-xlsx="${tipo}">Descargar Excel</button>`;
+function filaExcelOnu(o) {
+  const sin = !o.cuenta;
+  return {
+    "OLT": o.olt ?? "", "Tarjeta": o.tarjeta ?? "", "Puerto": o.puerto ?? "", "ONU": o.onu_num ?? "", "Serial ONU": o.sn ?? "", "Estado SmartOLT": o.status ?? "",
+    "Clasificación": ETQ_CLASIF[o.clasificacion] || o.clasificacion || "", "Último cambio": o.last_status_change ? formatearFechaHora(o.last_status_change) : "",
+    "Cuenta": o.cuenta ?? "", "Cliente": sin ? "" : (o.cli_nombre ?? ""), "Teléfono": sin ? "" : (o.cli_telefono ?? ""), "Cédula": sin ? "" : (o.cli_cedula ?? ""),
+    "Sector": sin ? "" : (o.cli_sector ?? ""), "Estado del contrato": sin ? "" : (o.cli_estado_contrato ?? ""),
+    "Observación": sin ? "Sin cruzar" + (o.name_smartolt ? " · " + o.name_smartolt : "") : "",
+  };
+}
+function filaExcelOnuTicket(o) {
+  const tel = [o.cli_tel_casa, o.cli_tel_oficina].filter(Boolean).join(" / ");
+  const METODO = { serial: "Serial", cuenta_en_name: "Cuenta", cedula_en_name: "Cédula", nombre: "Nombre" };
+  return {
+    "OLT": o.olt ?? "", "Tarjeta": o.tarjeta ?? "", "Puerto": o.puerto ?? "", "Serial ONU": o.serial ?? "", "Estado SmartOLT": o.estado ?? "",
+    "Cuenta": o.cli_cuenta ?? o.cuenta ?? "", "Nombre": o.cli_nombre ?? o.nombre ?? "", "Cédula": o.cli_cedula ?? o.cedula ?? "", "Teléfonos": tel,
+    "Correo": o.cli_correo ?? "", "Correo IPTV": o.cli_correo_iptv ?? "", "Dirección": o.cli_direccion ?? o.direccion ?? "", "Municipio": o.cli_municipio ?? "",
+    "Parroquia": o.cli_parroquia ?? "", "Sector": o.cli_sector ?? "",
+    "Contrato": [o.cli_estado_contrato, o.cli_fecha_contrato].filter(Boolean).join(" · "), "Cruzada por": o.cli_cuenta ? (METODO[o.cruce_metodo] || o.cruce_metodo || "") : "Sin cruzar",
+  };
+}
+function descargarExcelFilas(hojas, nombre) {
+  if (typeof XLSX === "undefined") { window.alert("No se pudo generar el Excel (falta la librería XLSX). Recarga la página con Ctrl+F5."); return; }
+  const wb = XLSX.utils.book_new();
+  hojas.forEach(([titulo, filas]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas.length ? filas : [{ "Sin datos": "" }]), titulo.slice(0, 31)));
+  XLSX.writeFile(wb, nombre);
+}
 // ---- Paso 5: pestañas "Clientes por puerto" y "Clientes del ticket" (solo administrador y supervisor) ----
 const ROLES_PANEL_CLIENTES = ["administrador", "supervisor"];
 const ETQ_CLASIF = { falla: "Afectado (falla)", powerfail: "Sin electricidad", caida_previa: "Caída previa" };
@@ -4806,7 +4835,7 @@ function htmlClientesPorPuerto(d) {
       `Falla <b>${numCli(p.falla)}</b> · Sin electricidad <b>${numCli(p.sin_luz)}</b> · Caída previa <b>${numCli(p.caida_previa)}</b> · Sin cruzar <b>${numCli(p.sin_cruzar)}</b>` +
       `${p.duplicado ? ' · <em class="b-aviso-txt">posible ticket duplicado</em>' : ""}</span></summary>${tabla}</details>`;
   }).join("");
-  return htmlResumenClientes(d.resumen, d.puertos.length) + cuerpo;
+  return htmlResumenClientes(d.resumen, d.puertos.length) + `<div class="search-row">${BTN_XLSX("puertos")}</div>` + cuerpo;
 }
 const FILTROS_CLIENTES = [["todos", "Todos"], ["falla", "Afectados (falla)"], ["powerfail", "Sin electricidad"], ["caida_previa", "Caída previa"], ["sin_cruzar", "Sin cruzar"]];
 function htmlClientesTicket(d, filtro) {
@@ -4817,7 +4846,7 @@ function htmlClientesTicket(d, filtro) {
   const tabla = lista.length
     ? `<div class="ml-scroll"><table class="rows-table" id="ml_tabla_clientes"><thead><tr>${["OLT", "Tarjeta", "Puerto", ...ENC_ONU].map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${lista.map((o) => `<tr>${celdasOnu(o, true)}</tr>`).join("")}</tbody></table></div>`
     : `<p class="ml-vacio">No hay clientes en esta categoría.</p>`;
-  return htmlResumenClientes(d.resumen, d.puertos.length) + barra + `<p class="hint">${numCli(lista.length)} registro(s) mostrados.</p>` + tabla;
+  return htmlResumenClientes(d.resumen, d.puertos.length) + barra + `<div class="search-row">${BTN_XLSX("ticket")}</div><p class="hint">${numCli(lista.length)} registro(s) mostrados.</p>` + tabla;
 }
 // ONUs guardadas con el ticket al crearlo con los archivos de SmartOLT (serial, cuenta, cédula si la traían, nombre).
 // Cruza las ONUs de un ticket con la base de clientes de Grafana (por tandas). Devuelve el último resultado o null si no se pudo (nunca lanza error).
@@ -4854,7 +4883,7 @@ function htmlOnusAlCrear(d) {
     `<td>${escHtml(o.cli_municipio ?? "")}</td><td>${escHtml(o.cli_parroquia ?? "")}</td><td>${escHtml(o.cli_sector ?? "")}</td>` +
     `<td>${escHtml([o.cli_estado_contrato, o.cli_fecha_contrato].filter(Boolean).join(" · "))}</td><td>${o.cli_cuenta ? escHtml(METODO[o.cruce_metodo] || o.cruce_metodo || "") : "Sin cruzar"}</td></tr>`).join("");
   return `<p class="hint">${numCli(onus.length)} ONU(s) del ticket · ${numCli(conCli)} cruzadas con la base de Grafana · ${numCli(onus.length - conCli)} sin cruzar (las sin cruzar muestran los datos de SmartOLT).</p>` +
-    `<div class="search-row"><button type="button" class="btn-secondary" id="ml_cruzar">Cruzar con Grafana ahora</button> <span id="ml_cruce_msg" class="hint"></span></div>` +
+    `<div class="search-row"><button type="button" class="btn-secondary" id="ml_cruzar">Cruzar con Grafana ahora</button> ${BTN_XLSX("alcrear")} <span id="ml_cruce_msg" class="hint"></span></div>` +
     `<div class="ml-scroll"><table class="rows-table"><thead><tr>${["OLT", "Tarjeta", "Puerto", "Serial ONU", "Estado SmartOLT", "Cuenta", "Nombre", "Cédula", "Teléfonos", "Correo", "Correo IPTV", "Dirección", "Municipio", "Parroquia", "Sector", "Contrato", "Cruzada por"].map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${filas}</tbody></table></div>`;
 }
 async function abrirModalLog(cmr) {
@@ -4880,6 +4909,18 @@ async function abrirModalLog(cmr) {
       cuerpoLog.classList.add("hidden"); caja.classList.remove("hidden");
       caja.innerHTML = vista === "alcrear" ? htmlOnusAlCrear(datosCrear) : vista === "puertos" ? htmlClientesPorPuerto(datos) : htmlClientesTicket(datos, filtro);
       caja.querySelectorAll(".ml-filtro").forEach((b) => b.addEventListener("click", () => { filtro = b.dataset.filtro; pintar(); }));
+      caja.querySelectorAll(".ml-xlsx").forEach((b) => b.addEventListener("click", () => {
+        const base = `ticket_${String(cmr).replace(/\D/g, "")}`, hoy = new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 10);
+        if (b.dataset.xlsx === "puertos" && datos) {
+          descargarExcelFilas([["Clientes por puerto", datos.onus.map(filaExcelOnu)], ["Puertos", datos.puertos.map((p) => ({ "OLT": p.olt, "Tarjeta": p.tarjeta, "Puerto": p.puerto,
+            "Auditoría": p.fecha_auditoria_local ? formatearFechaHora(p.fecha_auditoria_local) : "", "Falla": p.falla || 0, "Sin electricidad": p.sin_luz || 0, "Caída previa": p.caida_previa || 0, "Sin cruzar": p.sin_cruzar || 0 }))]], `${base}_clientes_por_puerto_${hoy}.xlsx`);
+        } else if (b.dataset.xlsx === "ticket" && datos) {
+          const lista = datos.onus.filter((o) => filtro === "todos" || (filtro === "sin_cruzar" ? !o.cuenta : o.clasificacion === filtro));
+          descargarExcelFilas([["Clientes del ticket", lista.map(filaExcelOnu)]], `${base}_clientes_${filtro}_${hoy}.xlsx`);
+        } else if (b.dataset.xlsx === "alcrear" && datosCrear) {
+          descargarExcelFilas([["ONUs y clientes", (datosCrear.onus || []).map(filaExcelOnuTicket)]], `${base}_onus_y_clientes_${hoy}.xlsx`);
+        }
+      }));
       const bc = caja.querySelector("#ml_cruzar");
       if (bc) bc.addEventListener("click", async () => {
         const m = caja.querySelector("#ml_cruce_msg"); bc.disabled = true; m.textContent = "Cruzando...";

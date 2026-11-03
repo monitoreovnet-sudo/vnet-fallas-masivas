@@ -647,12 +647,12 @@ const CCA_ETIQUETA_TIPO = { falla: "Afectado (falla)", powerfail: "Sin electrici
 const CCA_COLUMNAS = [
   ["nombre", "Nombre / Compañía"], ["telefono_casa", "Teléfono de casa"], ["telefono_oficina", "Teléfono de oficina"], ["cuenta", "Número de cuenta"],
   ["sector", "Sector"], ["identificacion_externo", "Identificación externo"], ["estado_contrato", "Estado del contrato"],
-  ["ticket_cmr", "Nº Ticket"], ["oficina", "Oficina"], ["olt", "OLT"], ["tarjeta", "Tarjeta"], ["puerto", "Puerto"],
+  ["ticket_cmr", "Nº Ticket"], ["estado_ticket", "Estado del ticket"], ["oficina", "Oficina"], ["olt", "OLT"], ["tarjeta", "Tarjeta"], ["puerto", "Puerto"],
   ["fecha_auditoria", "Fecha de la auditoría"], ["clasificacion", "Tipo de afectación"],
-  ["apertura_cda", "Registro CDA"], ["apertura_cmr", "Apertura CMR"], ["solucion_cda", "Solución CDA"], ["solucion_cmr", "Solución CMR"],
+  ["apertura_cda", "Registro CDA"], ["apertura_cmr", "Apertura CMR"], ["fecha_falla", "Fecha de la falla"], ["solucion_cda", "Solución CDA"], ["solucion_cmr", "Solución CMR"],
   ["cierre_cda", "Cierre CDA"], ["cierre_cmr", "Cierre CMR"], ["observacion", "Observación"],
 ];
-const CCA_CAMPOS_FECHA = new Set(["fecha_auditoria", "apertura_cda", "apertura_cmr", "solucion_cda", "solucion_cmr", "cierre_cda", "cierre_cmr"]);
+const CCA_CAMPOS_FECHA = new Set(["fecha_auditoria", "fecha_falla", "apertura_cda", "apertura_cmr", "solucion_cda", "solucion_cmr", "cierre_cda", "cierre_cmr"]);
 const CCA_HOJA_CLIENTES = "Clientes afectados";
 const CCA_TITULO_SECTORES = "Sectores por cantidad de clientes activos";
 const CCA_HOJA_SECTORES = "Sectores por clientes activos";   // Excel limita el nombre de una hoja a 31 caracteres
@@ -682,6 +682,20 @@ function ccaSectores(filas) {
   return [...cuenta.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "es"))
     .map(([sector, n]) => ({ sector, clientes: n, porcentaje: total ? Math.round((n / total) * 10000) / 100 : 0 }));
 }
+const CCA_HOJA_TICKETS = "Resumen por ticket";
+function ccaResumenTickets(filas, fmtFecha) {
+  const m = new Map();
+  for (const f of filas) {
+    if (!m.has(f.ticket_cmr)) m.set(f.ticket_cmr, { f, cuentas: new Set(), onus: 0, sinCruzar: 0 });
+    const t = m.get(f.ticket_cmr); t.onus++; if (f.cuenta) t.cuentas.add(f.cuenta); else t.sinCruzar++;
+  }
+  return [...m.values()].map(({ f, cuentas, onus, sinCruzar }) => ({
+    "Nº Ticket": f.ticket_cmr, "Estado del ticket": f.estado_ticket || "", "Oficina": f.oficina || "",
+    "Fecha de la falla": ccaValorCelda("fecha_falla", f.fecha_falla, fmtFecha), "Apertura CMR": ccaValorCelda("apertura_cmr", f.apertura_cmr, fmtFecha),
+    "Solución CMR": ccaValorCelda("solucion_cmr", f.solucion_cmr, fmtFecha), "Cierre CMR": ccaValorCelda("cierre_cmr", f.cierre_cmr, fmtFecha),
+    "Clientes": cuentas.size, "ONUs": onus, "ONUs sin cruzar": sinCruzar,
+  }));
+}
 function ccaHojaSectores(filas) {
   const sec = ccaSectores(filas);
   return [[CCA_TITULO_SECTORES], [], ["Sector", "Clientes activos", "% del total"], ...sec.map((s) => [s.sector, s.clientes, s.porcentaje]),
@@ -703,6 +717,8 @@ function ccaHojaSectores(filas) {
     if (v("cca_ticket")) p.set("ticket", v("cca_ticket"));
     if (v("cca_oficina")) p.set("oficina_id", v("cca_oficina"));
     if (v("cca_olt")) p.set("olt", v("cca_olt").toUpperCase());
+    if (v("cca_estado")) p.set("estado_ticket", v("cca_estado"));
+    if (el("cca_historico").checked) p.set("historico", "1");
     if (v("cca_desde")) p.set("desde", v("cca_desde"));
     if (v("cca_hasta")) p.set("hasta", v("cca_hasta"));
     p.set("tipos", ["falla", "powerfail", "caida_previa"].filter((t) => el("cca_t_" + t).checked).join(","));
@@ -715,6 +731,9 @@ function ccaHojaSectores(filas) {
     const sel = el("cca_oficina"), actual = sel.value;
     sel.innerHTML = '<option value="">Todas</option>' + (L.oficinas || []).map((o) => `<option value="${esc(o.id)}">${esc(o.nombre)}</option>`).join("");
     sel.value = actual;
+    const se = el("cca_estado"), ae = se.value;
+    se.innerHTML = '<option value="">Todos</option>' + (L.estados_ticket || []).map((o) => `<option value="${esc(o.nombre)}">${esc(o.nombre)}</option>`).join("");
+    se.value = ae;
     el("cca_olts").innerHTML = (L.olts || []).map((o) => `<option value="${esc(o.codigo)}"></option>`).join("");
   }
   function pintar(d) {
@@ -724,7 +743,7 @@ function ccaHojaSectores(filas) {
       `${tile(r.sin_cruzar_excluidas, "ONUs sin cruzar no incluidas")}${tile(r.no_activos_excluidos, "Clientes no activos no incluidos")}</div>` +
       (r.truncado ? '<div class="ml-badge b-aviso">La lista es muy grande: se muestran solo los primeros 60.000 registros. Acota los filtros.</div>' : "");
     if (!filas.length) { el("cca_tabla").innerHTML = '<p class="hint">No hay clientes con esos filtros. Prueba quitando algún filtro o revisando que el ticket tenga una auditoría asociada.</p>'; return; }
-    const VISTA = CCA_COLUMNAS.filter(([c]) => ["nombre", "telefono_casa", "telefono_oficina", "cuenta", "sector", "estado_contrato", "ticket_cmr", "oficina", "olt", "tarjeta", "puerto", "clasificacion", "observacion"].includes(c));
+    const VISTA = CCA_COLUMNAS.filter(([c]) => ["nombre", "telefono_casa", "telefono_oficina", "cuenta", "sector", "estado_contrato", "ticket_cmr", "estado_ticket", "fecha_falla", "apertura_cmr", "solucion_cmr", "cierre_cmr", "oficina", "olt", "tarjeta", "puerto", "fecha_auditoria", "clasificacion", "observacion"].includes(c));
     const MAX = 300;
     el("cca_tabla").innerHTML = `<p class="hint">Vista previa de los primeros ${num(Math.min(MAX, filas.length))} de ${num(filas.length)} registros. El Excel trae todos y más columnas.</p>` +
       `<table class="rows-table"><thead><tr>${VISTA.map(([, t]) => `<th>${esc(t)}</th>`).join("")}</tr></thead><tbody>${
@@ -752,6 +771,7 @@ function ccaHojaSectores(filas) {
     if (!sinCambios()) return;
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ccaFilasExcel(ultimo.filas, fmtF)), CCA_HOJA_CLIENTES);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ccaResumenTickets(ultimo.filas, fmtF)), CCA_HOJA_TICKETS);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(ccaHojaSectores(ultimo.filas)), CCA_HOJA_SECTORES);
     XLSX.writeFile(wb, `clientes_afectados_${hoy()}.xlsx`);
   });
