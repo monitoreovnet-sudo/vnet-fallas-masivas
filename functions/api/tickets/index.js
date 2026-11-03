@@ -1,6 +1,7 @@
 import { json, badRequest, currentUserEmail, logCambio, nowIso } from "../../_lib/helpers.js";
 import { programarReevaluacion } from "../../_lib/asociacion.js";
 import { verificarTokenDuplicado } from "../../_lib/auth.js";
+import { registrarUso, escrituras } from "../../_lib/uso-d1.js";
 import { normCedula, normSerial } from "../../_lib/clientes.js";
 
 // GET /api/tickets?cmr=326159&estado=EN+CURSO&oficina_id=3&limit=50
@@ -208,8 +209,10 @@ export async function onRequestPost({ request, env, waitUntil }) {
         `INSERT INTO ticket_onus (ticket_id, olt, tarjeta, puerto, serial, cuenta, cedula, nombre, estado, direccion, creado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
         .bind(ticketId, t(o.olt, 80), t(o.tarjeta, 30), t(o.puerto, 30), normSerial(o.serial) || null, t(String(o.cuenta ?? "").replace(/\D/g, ""), 20),
           normCedula(o.cedula), t(o.nombre, 200), t(o.estado, 40), t(o.direccion, 300), ahora));
-      for (let i = 0; i < stmts.length; i += 100) await db.batch(stmts.slice(i, i + 100));
+      let esc = 0;
+      for (let i = 0; i < stmts.length; i += 100) esc += escrituras(await db.batch(stmts.slice(i, i + 100)));
       onusGuardadas = stmts.length;
+      await registrarUso(db, "ticket_onus", esc);
     } catch (e) { onusGuardadas = -1; }
   }
 

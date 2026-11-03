@@ -956,3 +956,17 @@ input, select, textarea, .multi-cat summary, .multi-cat .multi-lista { font-fami
 .dom-leyenda { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 10px; font-size: 13px; }
 .dom-leyenda span { display: inline-flex; align-items: center; gap: 7px; }
 .dom-leyenda i { width: 16px; height: 16px; border-radius: 4px; border: 2px solid rgba(0, 0, 0, .35); display: inline-block; }
+
+/* Reporte General de Clientes (Informe 2) */
+.ig-ruta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 10px 0 14px; font-size: 14px; }
+.ig-ruta a { color: var(--purple); cursor: pointer; text-decoration: underline; }
+.ig-ruta .ig-sep { color: #999; }
+.ig-ruta .ig-actual { font-weight: 700; color: var(--purple-dark); }
+.ig-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.ig-card { text-align: left; background: #fff; border: 1px solid #E5DAEA; border-left: 5px solid var(--purple); border-radius: 8px; padding: 12px 14px; cursor: pointer; font: inherit; color: inherit; box-shadow: 0 1px 3px rgba(0, 0, 0, .08); }
+.ig-card:hover { box-shadow: 0 3px 10px rgba(0, 0, 0, .18); transform: translateY(-1px); }
+.ig-card b { display: block; font-size: 15px; color: var(--purple-dark); margin-bottom: 4px; }
+.ig-card span { display: block; font-size: 13px; color: #555; }
+.ig-card.vacia { border-left-color: #bbb; opacity: .8; }
+.ig-barra { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0 10px; }
+#ig_grid { font-size: 13px; }

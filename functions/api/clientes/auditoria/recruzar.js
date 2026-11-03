@@ -1,4 +1,5 @@
 import { json, badRequest, requireRole } from "../../../_lib/helpers.js";
+import { registrarUso, escrituras } from "../../../_lib/uso-d1.js";
 import { ROLES_CLIENTES } from "../../../_lib/clientes.js";
 import { claves, buscarClientes, cruzarUna, basesDesactualizadas, resumenAuditoria } from "../../../_lib/cruce.js";
 
@@ -30,6 +31,6 @@ export async function onRequestPost({ request, env }) {
         c ? c.cedula_norm : null, c ? c.sector : null, c ? c.estado_contrato : null, c ? c.sucursal : null,
         c ? c.telefono_casa || null : null, c ? c.telefono_oficina || null : null, c ? c.cedula || null : null, o.id);
   });
-  await env.DB.batch(stmts);
+  await registrarUso(env.DB, "recruce", escrituras(await env.DB.batch(stmts)));
   return json({ siguiente: onus[onus.length - 1].id, procesadas: onus.length });
 }

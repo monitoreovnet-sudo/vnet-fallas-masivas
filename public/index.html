@@ -77,6 +77,7 @@
     <button class="tab-btn" data-tab="reporte" data-grupo="informes">Reporte Diario</button>
     <button class="tab-btn" data-tab="ciclo" data-grupo="informes">Ciclo 2026</button>
     <button class="tab-btn hidden" data-tab="informe_clientes" data-grupo="informes" id="nav_informe_clientes">Clientes Afectados</button>
+    <button class="tab-btn hidden" data-tab="informe_general" data-grupo="informes" id="nav_informe_general">Reporte General de Clientes</button>
     <button class="tab-btn hidden" data-tab="admin" data-grupo="administracion" id="nav_admin">Usuarios y catálogos</button>
     <button class="tab-btn" data-tab="consultar" data-grupo="administracion">Consultar / Log</button>
     <button class="tab-btn hidden" data-tab="repositorio" data-grupo="administracion" id="nav_repositorio">Repositorio de tickets</button>
@@ -902,6 +903,14 @@
     <div id="cca_domino"></div>
     <div id="cca_tabla"></div>
 
+  </section>
+
+  <section id="tab-informe_general" class="tab-panel full-bleed">
+    <h2>Reporte General de Clientes</h2>
+    <p class="hint">Clientes que conocemos de cada OLT: los que ya se cruzaron con Grafana al subir archivos de SmartOLT o al crear tickets. Entra a una oficina, elige una OLT y verás la lista de sus clientes con las veces que cada uno se ha visto afectado por una falla.</p>
+    <div id="ig_ruta" class="ig-ruta"></div>
+    <div id="ig_msg" class="msg"></div>
+    <div id="ig_contenido"></div>
   </section>
 
   <section id="tab-clientes" class="tab-panel">

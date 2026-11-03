@@ -202,7 +202,8 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
     const u = el("cli_uso_hoy"); if (!u) return;
     try {
       const d = await apiGet("/clientes/uso-hoy");
-      u.textContent = `Cambios de clientes escritos hoy: ${formatearMiles(d.usado)} de ${formatearMiles(d.tope)} (quedan ${formatearMiles(d.quedan)}). El contador se reinicia a las 8:00 pm, hora de Caracas.`;
+      u.innerHTML = `Escrituras de D1 de hoy (todo lo que se sube): <strong>${formatearMiles(d.usado)} de ${formatearMiles(d.tope)}</strong> (quedan ${formatearMiles(d.quedan)}). Se reinicia a las 8:00 pm, hora de Caracas.` +
+        (d.detalle && d.detalle.length ? `<br>` + d.detalle.map((x) => `${x.nombre}: ${formatearMiles(x.filas)}`).join(" · ") : "");
     } catch (e) { u.textContent = ""; }
   }
   async function cliCargarBases() {
@@ -825,4 +826,92 @@ function ccaHojaSectores(filas) {
   const previo = window.cliCargarAuditorias;
   window.cliCargarAuditorias = () => { if (previo) previo(); cargarOpciones(); };
   cargarOpciones();
+})();
+
+
+// ---------------------------------------------------------------
+// REPORTE GENERAL DE CLIENTES (Informe 2): Oficina → OLT → clientes
+// ---------------------------------------------------------------
+(function () {
+  const el = (id) => document.getElementById(id);
+  if (!el("ig_contenido")) return;
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const num = (n) => Number(n || 0).toLocaleString("es-VE");
+  const COLS = [
+    ["nombre", "Nombre del cliente"], ["cuenta", "Cuenta"], ["telefono_casa", "Teléfono"], ["telefono_oficina", "Teléfono oficina"], ["correo", "Correo"],
+    ["estado", "Estado"], ["ciudad", "Ciudad"], ["localidad", "Localidad"], ["sector", "Sector"], ["edificio", "Edificio"], ["oficina", "Oficina"],
+    ["olt", "OLT"], ["tarjeta", "Tarjeta"], ["puerto", "Puerto"], ["estado_contrato", "Estado del contrato"], ["veces_afectado", "Veces afectado"],
+  ];
+  let grid = null, filas = [], nombreArchivo = "clientes";
+
+  const edificio = (c) => (typeof smoEdificioDeDireccion === "function" ? smoEdificioDeDireccion(c.direccion) : "");
+  const ruta = (partes) => {
+    el("ig_ruta").innerHTML = partes.map((p, i) => (p.ir ? `<a data-i="${i}">${esc(p.t)}</a>` : `<span class="ig-actual">${esc(p.t)}</span>`)).join('<span class="ig-sep">›</span>');
+    el("ig_ruta").querySelectorAll("a").forEach((a) => a.addEventListener("click", () => partes[+a.dataset.i].ir()));
+  };
+  const msg = (t, ok) => { const m = el("ig_msg"); m.className = "msg" + (t ? (ok ? "" : " error") : ""); m.textContent = t || ""; };
+  const destruir = () => { if (grid) { try { grid.destroy(); } catch (e) { /* ya destruida */ } grid = null; } };
+
+  async function verOficinas() {
+    destruir(); msg("Cargando oficinas…", true);
+    ruta([{ t: "Oficinas" }]);
+    try {
+      const d = await apiGet("/clientes/informe2?nivel=oficinas");
+      msg("");
+      if (!d.oficinas.length) { el("ig_contenido").innerHTML = '<p class="hint">Todavía no hay clientes conocidos. Se llena al subir archivos de SmartOLT (Administración › Repositorio de clientes).</p>'; return; }
+      const total = d.oficinas.reduce((t, o) => t + o.clientes, 0);
+      el("ig_contenido").innerHTML = `<p class="hint">${num(d.oficinas.length)} oficinas · ${num(total)} clientes conocidos. Elige una oficina.</p><div class="ig-grid">${
+        d.oficinas.map((o) => `<button type="button" class="ig-card ${o.clientes ? "" : "vacia"}" data-of="${esc(o.oficina_id)}" data-nombre="${esc(o.oficina)}"><b>${esc(o.oficina)}</b><span>${num(o.olts)} OLT${o.olts === 1 ? "" : "s"} · ${num(o.clientes)} cliente${o.clientes === 1 ? "" : "s"} conocidos</span></button>`).join("")}</div>`;
+      el("ig_contenido").querySelectorAll(".ig-card").forEach((b) => b.addEventListener("click", () => verOlts(b.dataset.of, b.dataset.nombre)));
+    } catch (err) { msg(err.message, false); }
+  }
+
+  async function verOlts(ofId, ofNombre) {
+    destruir(); msg("Cargando OLTs…", true);
+    ruta([{ t: "Oficinas", ir: verOficinas }, { t: ofNombre }]);
+    try {
+      const d = await apiGet("/clientes/informe2?nivel=olts&oficina_id=" + encodeURIComponent(ofId));
+      msg("");
+      el("ig_contenido").innerHTML = `<div class="ig-barra"><button type="button" class="btn-secondary" id="ig_of_xlsx">Descargar Excel de toda la oficina</button><span class="hint">${num(d.olts.length)} OLTs. Elige una para ver sus clientes.</span></div>` +
+        (d.olts.length ? `<div class="ig-grid">${d.olts.map((o) => `<button type="button" class="ig-card ${o.clientes ? "" : "vacia"}" data-olt="${esc(o.olt)}"><b>${esc(o.olt)}</b><span>${num(o.clientes)} cliente${o.clientes === 1 ? "" : "s"} conocidos</span></button>`).join("")}</div>` : '<p class="hint">Esta oficina no tiene OLTs registradas.</p>');
+      el("ig_contenido").querySelectorAll(".ig-card").forEach((b) => b.addEventListener("click", () => verClientes({ olt: b.dataset.olt }, ofId, ofNombre)));
+      el("ig_of_xlsx").addEventListener("click", async () => {
+        const b = el("ig_of_xlsx"); b.disabled = true; msg("Preparando el Excel de la oficina…", true);
+        try { const r = await apiGet("/clientes/informe2?nivel=clientes&oficina_id=" + encodeURIComponent(ofId)); exportar(r.clientes, ofNombre.replace(/[^A-Za-z0-9]+/g, "_"), "xlsx"); msg(r.truncado ? `Se descargaron los primeros ${num(r.clientes.length)} de ${num(r.total)} clientes: baja por OLT para tener todos.` : "", !r.truncado); if (!r.truncado) msg(""); }
+        catch (err) { msg(err.message, false); } finally { b.disabled = false; }
+      });
+    } catch (err) { msg(err.message, false); }
+  }
+
+  const conEdificio = (lista) => lista.map((c) => ({ ...c, edificio: edificio(c) }));
+  function exportar(lista, nombre, tipo) {
+    const datos = conEdificio(lista).map((c) => { const o = {}; COLS.forEach(([k, t]) => { o[t] = c[k] ?? ""; }); return o; });
+    const hoy = new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 10);
+    if (tipo === "csv") { exportarCSVGenerico(datos, `clientes_${nombre}_${hoy}.csv`); return; }
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(datos), "Clientes"); XLSX.writeFile(wb, `clientes_${nombre}_${hoy}.xlsx`);
+  }
+
+  async function verClientes(filtro, ofId, ofNombre) {
+    destruir(); msg("Cargando clientes…", true);
+    ruta([{ t: "Oficinas", ir: verOficinas }, { t: ofNombre, ir: () => verOlts(ofId, ofNombre) }, { t: filtro.olt }]);
+    try {
+      const d = await apiGet("/clientes/informe2?nivel=clientes&olt=" + encodeURIComponent(filtro.olt));
+      msg(d.truncado ? `Se muestran los primeros ${num(d.clientes.length)} de ${num(d.total)} clientes.` : "", !d.truncado);
+      filas = conEdificio(d.clientes); nombreArchivo = filtro.olt;
+      el("ig_contenido").innerHTML = `<div class="ig-barra"><button type="button" class="btn-secondary" id="ig_xlsx">Descargar Excel</button><button type="button" class="btn-secondary" id="ig_csv">Descargar CSV</button><span class="hint" id="ig_conteo"></span></div><div id="ig_grid"></div>`;
+      if (!filas.length) { el("ig_grid").innerHTML = '<p class="hint">Todavía no hay clientes conocidos en esta OLT.</p>'; el("ig_xlsx").disabled = el("ig_csv").disabled = true; return; }
+      const cols = COLS.map(([c, t]) => ({ title: t, field: c, headerFilter: "input", minWidth: 80, ...(c === "nombre" ? { frozen: true } : {}),
+        ...(c === "veces_afectado" || c === "tarjeta" || c === "puerto" ? { sorter: "number", hozAlign: "right", headerFilterFunc: (hv, rv) => String(rv ?? "").includes(String(hv)) } : {}) }));
+      const alto = () => Math.max(360, window.innerHeight - el("ig_grid").getBoundingClientRect().top - 14);
+      el("ig_grid").style.height = alto() + "px";
+      grid = new Tabulator("#ig_grid", { data: filas, columns: cols, layout: "fitDataFill", height: alto(), placeholder: "Sin resultados con esos filtros" });
+      const conteo = () => { if (grid) el("ig_conteo").textContent = `${num(grid.getDataCount("active"))} de ${num(filas.length)} clientes. Cada columna tiene su filtro; el Excel baja lo que ves.`; };
+      grid.on("tableBuilt", conteo); grid.on("dataFiltered", () => setTimeout(conteo, 0)); grid.on("renderComplete", conteo);
+      const visibles = () => (grid ? grid.getData("active") : filas);
+      el("ig_xlsx").addEventListener("click", () => exportar(visibles(), nombreArchivo, "xlsx"));
+      el("ig_csv").addEventListener("click", () => exportar(visibles(), nombreArchivo, "csv"));
+    } catch (err) { msg(err.message, false); }
+  }
+
+  window.igAbrir = () => { if (!el("ig_contenido").innerHTML.trim() || grid === null) verOficinas(); };
 })();

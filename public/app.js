@@ -232,6 +232,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (btn.dataset.tab === "reporte" && reporteDatos.length === 0) cargarReporte();
     if (btn.dataset.tab === "ciclo" && cicloDatos.length === 0) cargarCiclo();
     if (btn.dataset.tab === "informe_clientes" && window.ccaCargarOpciones) window.ccaCargarOpciones();
+    if (btn.dataset.tab === "informe_general" && window.igAbrir) window.igAbrir();
     if (btn.dataset.tab === "clientes" && window.cliCargarBases) { window.cliCargarBases(); if (window.cliCargarFrescura) window.cliCargarFrescura(); if (window.cliCargarAuditorias) window.cliCargarAuditorias(); }
     ajustarTodasLasTablas();
     if (btn.dataset.tab === "consultar" && clGrid && clGridListo) clGrid.redraw(true);
@@ -762,7 +763,20 @@ async function smoLeerYPreguntar(files) {
   if (otros.length) { incluidos = await smoPreguntarEstados(analisis, otros); if (!incluidos) return null; }
   return { analisis, incluidos, malos };
 }
-let SMO_ONUS = [];   // ONUs del último análisis de SmartOLT: se guardan con el ticket al crearlo
+let SMO_ONUS = [];
+let MAPA_ONUS = [];   // TODAS las ONUs de los archivos de SmartOLT (cualquier estado): alimentan el mapa de clientes del Informe 2
+// Envía en lotes de 100 al mapa de clientes. No bloquea ni rompe el flujo del ticket si falla.
+function textoMapa(m) {
+  const u = m.usado != null ? ` Escrituras de D1 hoy: ${formatearMiles(m.usado)} de ${formatearMiles(m.tope)}.` : "";
+  return (m.lleno ? " ⚠ Se alcanzó el tope diario: el mapa de clientes quedó incompleto, se retoma con la próxima carga (después de las 8:00 pm)." : ` Mapa de clientes: ${m.cruzadas} de ${m.total} ONU(s) cruzadas.`) + u;
+}
+async function enviarMapaClientes(onus) {
+  const lista = (onus || []).map((o) => ({ sn: o.sn, name: o.name, olt: o.olt, board: o.board, port: o.port, onu: o.onu, status: o.status, contact: o.contact }));
+  let cruzadas = 0, usado = null, tope = null, lleno = false;
+  try { for (let i = 0; i < lista.length && !lleno; i += 100) { const r = await apiSend("/clientes/mapa/lote", "POST", { onus: lista.slice(i, i + 100) }); cruzadas += r.cruzadas || 0; if (r.usado != null) { usado = r.usado; tope = r.tope_dia; } lleno = !!r.tope; } }
+  catch (e) { return { error: true, cruzadas }; }
+  return { cruzadas, total: lista.length, usado, tope, lleno };
+}   // ONUs del último análisis de SmartOLT: se guardan con el ticket al crearlo
 
 (function () {
   const btn = document.getElementById("smo_btn");
@@ -794,6 +808,7 @@ let SMO_ONUS = [];   // ONUs del último análisis de SmartOLT: se guardan con e
         crearOficina: (ofi) => ({ oficina_id: ofi.id, nombre: ofi.nombre, olts_catalogo: catalogos[ofi.id] || [], olts: Array.from({ length: NUM_OLTS_POR_OFICINA }, nuevaOlt) }),
       });
       const oltsNuevas = new Set(grupos.map((g) => g.olt));
+      MAPA_ONUS = MAPA_ONUS.filter((o) => !oltsNuevas.has(o.olt)).concat(analisis.onus);
       SMO_ONUS = SMO_ONUS.filter((o) => !oltsNuevas.has(o.olt)).concat(r.onus);   // un nuevo análisis reemplaza solo las OLTs que trae
       renderOficinas();
       const d = el("c_descripcion");
@@ -1304,6 +1319,7 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
       ? `Ticket ${res.ticket_cmr} ya existía: se agregaron ${payload.puertos.length} registro(s) (#${res.id}).`
       : `Ticket ${res.ticket_cmr} creado correctamente (#${res.id}) con ${payload.puertos.length} puerto(s).`, true);
     limpiarFormularioCrear();
+    if (MAPA_ONUS.length) { const todas = MAPA_ONUS; MAPA_ONUS = []; enviarMapaClientes(todas).then((m) => { if (!m.error) showMsg(msg, msg.textContent + textoMapa(m), true); }); }
     if (payload.onus && payload.onus.length) {
       const r = await cruzarTicketGrafana(res.ticket_cmr);
       const t = textoCruce(r);
@@ -1488,6 +1504,7 @@ document.getElementById("mcs_btn").addEventListener("click", async () => {
     });
     await mcRefrescarTicket();
     document.getElementById("mcs_archivos").value = "";
+    enviarMapaClientes(analisis.onus).then((m) => { if (!m.error) showMsg(msg, msg.textContent + textoMapa(m), true); });
     const cr = res.onus_guardadas > 0 ? textoCruce(await cruzarTicketGrafana(mcTicket.ticket_cmr)) : "";
     showMsg(msg, `Listo: ${res.agregados} puerto(s) agregado(s), ${res.actualizados} con clientes afectados actualizados, ${res.onus_guardadas > 0 ? res.onus_guardadas : 0} ONU(s) registradas. El detalle quedó en la descripción.` + cr +
       (malos.length ? " " + malos.join(" · ") : ""), true);
@@ -2936,8 +2953,8 @@ let currentUser = null;
 const TABS_POR_ROL = {
   analista: ["pizarra", "reporte", "ciclo"],
   especialista: ["crear", "modificar", "pizarra", "reporte", "ciclo"],
-  supervisor: ["crear", "modificar", "pizarra", "reporte", "ciclo", "informe_clientes", "consultar", "repositorio", "clientes"],
-  administrador: ["crear", "modificar", "pizarra", "reporte", "ciclo", "informe_clientes", "consultar", "admin", "repositorio", "clientes"],
+  supervisor: ["crear", "modificar", "pizarra", "reporte", "ciclo", "informe_clientes", "informe_general", "consultar", "repositorio", "clientes"],
+  administrador: ["crear", "modificar", "pizarra", "reporte", "ciclo", "informe_clientes", "informe_general", "consultar", "admin", "repositorio", "clientes"],
 };
 
 function aplicarPermisosRol() {

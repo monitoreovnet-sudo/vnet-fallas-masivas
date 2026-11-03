@@ -1,6 +1,8 @@
 import { json, badRequest, requireRole } from "../../../_lib/helpers.js";
 import { ROLES_CLIENTES, normSerial } from "../../../_lib/clientes.js";
 import { claves, buscarClientes, cruzarUna, clasificar, normFechaCambio, basesDesactualizadas } from "../../../_lib/cruce.js";
+import { registrarUso, escrituras, usadoHoy, TOPE_DIA } from "../../../_lib/uso-d1.js";
+import { registrarMapa } from "../../../_lib/mapa-clientes.js";
 
 const MAX_LOTE = 100;
 const t = (v, n = 200) => { const s = String(v ?? "").trim(); return s ? s.slice(0, n) : null; };
@@ -20,6 +22,7 @@ export async function onRequestPost({ request, env }) {
   const onus = Array.isArray(b.onus) ? b.onus : [];
   if (!onus.length) return badRequest("El lote viene vacío.");
   if (onus.length > MAX_LOTE) return badRequest(`El lote no puede pasar de ${MAX_LOTE} ONUs.`);
+  if (await usadoHoy(env.DB) >= TOPE_DIA) return json({ error: `Se alcanzó el tope diario de ${TOPE_DIA.toLocaleString("es-VE")} escrituras de D1. Continúe después de las 8:00 pm (hora de Caracas).` }, 429);
   const aud = await env.DB.prepare("SELECT * FROM auditorias WHERE id = ?").bind(Number(b.auditoria_id)).first();
   if (!aud) return badRequest("La auditoría no existe.");
 
@@ -40,6 +43,12 @@ export async function onRequestPost({ request, env }) {
       c ? c.nombre : null, c ? (c.telefono_casa || c.telefono_oficina || null) : null, c ? c.cedula_norm : null, c ? c.sector : null,
       c ? c.estado_contrato : null, c ? c.sucursal : null, c ? c.telefono_casa || null : null, c ? c.telefono_oficina || null : null, c ? c.cedula || null : null);
   });
-  await env.DB.batch(stmts);
+  const esc1 = escrituras(await env.DB.batch(stmts));
+  // Mapa de clientes por OLT/tarjeta/puerto: toda ONU que cruzó con Grafana, esté o no en falla
+  const mp = await registrarMapa(env.DB, onus.map((o, i) => ({
+    sn_norm: normSerial(o.sn) || null, cliente: cruces[i].c, olt: (t(o.olt, 80) || aud.olt_nombre).toUpperCase(), tarjeta: ent(o.board), puerto: ent(o.port),
+    onu_num: t(o.onu, 20), status: t(o.status, 30), visto: aud.fecha_auditoria_local })));
+  await registrarUso(env.DB, "auditoria", esc1);
+  await registrarUso(env.DB, "mapa", mp.escrituras);
   return json({ guardadas: stmts.length });
 }

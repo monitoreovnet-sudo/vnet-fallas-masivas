@@ -4,6 +4,7 @@
 import { normNombre } from "./clientes.js";
 import { buscarClientes, cruzarUna, leerParametro } from "./cruce.js";
 import { nowIso } from "./helpers.js";
+import { registrarUso, escrituras } from "./uso-d1.js";
 
 const sinCeros = (s) => String(s).replace(/^0+(?=\d)/, "");
 export const TANDA_CRUCE = 100;
@@ -57,7 +58,9 @@ export async function cruzarTandaTicket(db, ticket, desdeId) {
         c.direccion || null, c.municipio || null, c.parroquia || null, c.sector || null, c.estado_contrato || null, c.fecha_creacion || null, c.sucursal,
         metodo, ahora, base, o.id));
   });
-  for (let i = 0; i < stmts.length; i += 100) await db.batch(stmts.slice(i, i + 100));
+  let esc = 0;
+  for (let i = 0; i < stmts.length; i += 100) esc += escrituras(await db.batch(stmts.slice(i, i + 100)));
+  await registrarUso(db, "cruce_ticket", esc);
   const fin = onus.length < TANDA_CRUCE;
   return { siguiente: fin ? null : onus[onus.length - 1].id, cruzadas: stmts.length, fuera_ventana: fuera, procesadas: onus.length, ...(fin ? await resumenCruceTicket(db, ticket.id) : {}) };
 }
