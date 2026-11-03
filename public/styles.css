@@ -923,3 +923,15 @@ input, select, textarea, .multi-cat summary, .multi-cat .multi-lista { font-fami
 /* Carga conjunta Grafana + SmartOLT */
 .cli-dos-archivos { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin: 12px 0; }
 .cli-dos-archivos small { display: block; margin-top: 4px; opacity: .8; }
+
+/* Aviso de diferencia de fechas SmartOLT vs Grafana */
+.modal-box.modal-dif { max-width: 460px; text-align: center; }
+.modal-dif .dif-ojo { display: flex; justify-content: center; margin-bottom: 6px; }
+.modal-dif .dif-bloque { margin: 10px 0 14px; }
+.modal-dif .dif-linea2 { display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 16px; }
+.modal-dif .dif-fechas { display: flex; align-items: flex-start; justify-content: center; gap: 22px; margin-top: 10px; }
+.modal-dif .dif-plat { font-weight: 700; color: var(--db-primary, #4A1259); }
+.modal-dif .dif-fecha { margin-top: 2px; font-size: 15px; }
+.modal-dif .dif-vs { color: #888; padding-top: 2px; }
+.modal-dif .dif-pregunta { font-weight: 700; margin: 8px 0 4px; }
+.modal-dif .modal-botones { justify-content: center; }

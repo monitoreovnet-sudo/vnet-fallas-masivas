@@ -227,7 +227,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
         detalle.push(`${t.ticket_cmr}: ${r.con_cliente ?? 0} de ${r.total ?? 0}`);
       }
       showMsg(msg, `Cruce terminado: ${formatearMiles(cruzadas)} ONU(s) cruzadas ahora en ${d.tickets.length} ticket(s)` +
-        (fuera ? `; ${formatearMiles(fuera)} fuera de la ventana de días respecto al archivo de Grafana` : "") + `. Con cliente / total por ticket: ${detalle.join(" · ")}.`, true);
+        (fuera ? `; ${formatearMiles(fuera)} ONU(s) quedaron sin cruzar porque la fecha en que se registraron en el ticket (app de fallas masivas) difiere en más de la ventana permitida de la fecha del archivo de Grafana de su sucursal` : "") + `. Con cliente / total por ticket: ${detalle.join(" · ")}.`, true);
     } catch (err) { showMsg(msg, err.message, false); }
     finally { cliCruzando = false; }
   }
@@ -497,6 +497,42 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
   };
   el("cli_aud_btn_analizar").addEventListener("click", audAnalizar); window.cliAnalizarAuditoria = audAnalizar;
 
+  // ---- Aviso de diferencia de fechas entre SmartOLT y Grafana (no bloquea: pide confirmación) ----
+  const textoDiferencia = (h) => {
+    if (h < 24) { const n = Math.round(h); return `${n} ${n === 1 ? "hora" : "horas"}`; }
+    const d = Math.round(h / 24); return `${d} ${d === 1 ? "día" : "días"}`;
+  };
+  const MESES_C = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  const fechaCorta = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(iso || ""); return m ? `${+m[3]} ${MESES_C[+m[2] - 1]} · ${m[4]}:${m[5]}` : (iso || ""); };
+  const SVG_OJO = `<svg viewBox="0 0 120 100" width="84" height="70" aria-hidden="true"><defs><linearGradient id="gOjo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFC83A"/><stop offset="1" stop-color="#F29A00"/></linearGradient></defs><path d="M6 46C26 14 94 14 114 46C94 78 26 78 6 46Z" fill="url(#gOjo)"/><ellipse cx="58" cy="46" rx="30" ry="25" fill="#fff"/><circle cx="58" cy="46" r="16" fill="#F5A300"/><circle cx="58" cy="46" r="10" fill="#1d1d1d"/><circle cx="54" cy="42" r="3" fill="#fff" opacity=".6"/><path d="M84 58L110 100H58Z" fill="#E8503A" stroke="#E8503A" stroke-width="6" stroke-linejoin="round"/><path d="M84 66L102 95H66Z" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><rect x="82" y="73" width="4" height="12" rx="2" fill="#E8503A"/><circle cx="84" cy="90" r="2.4" fill="#E8503A"/></svg>`;
+  const SVG_LUPA = `<svg viewBox="0 0 64 64" width="46" height="46" aria-hidden="true"><path d="M10 6h26l12 12v34a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4Z" fill="#fff" stroke="#111" stroke-width="3" stroke-linejoin="round"/><path d="M36 6v10a2 2 0 0 0 2 2h10Z" fill="#FFB84D" stroke="#111" stroke-width="3" stroke-linejoin="round"/><path d="M14 18h14M14 27h22M14 36h16M14 45h12" stroke="#111" stroke-width="3" stroke-linecap="round"/><path d="M47 47l11 11" stroke="#111" stroke-width="9" stroke-linecap="round"/><path d="M47 47l11 11" stroke="#F4645F" stroke-width="4" stroke-linecap="round"/><circle cx="38" cy="38" r="12" fill="#fff" stroke="#111" stroke-width="3"/><circle cx="38" cy="38" r="8" fill="#74D6FF" stroke="#111" stroke-width="2"/></svg>`;
+  function confirmarDiferenciaFechas(bases, fechaSmart) {
+    return new Promise((resolve) => {
+      const ov = document.createElement("div");
+      ov.className = "modal-overlay";
+      const bloques = bases.map((b) => `
+        <div class="dif-bloque">
+          <div class="dif-linea2">${SVG_LUPA}<span>Hay <b>${textoDiferencia(b.horas)}</b> entre SmartOLT y Grafana${bases.length > 1 ? " (" + esc(b.sucursal) + ")" : ""}</span></div>
+          <div class="dif-fechas">
+            <div><div class="dif-plat">SmartOLT</div><div class="dif-fecha">${fechaCorta(fechaSmart)}</div></div>
+            <div class="dif-vs">vs</div>
+            <div><div class="dif-plat">Grafana${bases.length > 1 ? "" : " · " + esc(b.sucursal)}</div><div class="dif-fecha">${fechaCorta(b.fecha_base)}</div></div>
+          </div>
+        </div>`).join("");
+      ov.innerHTML = `<div class="modal-box modal-dif" role="dialog" aria-modal="true">
+        <div class="dif-ojo">${SVG_OJO}</div>
+        ${bloques}
+        <p class="dif-pregunta">¿Seguro que quieres proseguir con la carga?</p>
+        <div class="modal-botones"><button type="button" class="btn-secondary" id="dif_no">Cancelar</button><button type="button" class="btn-primary" id="dif_si">Sí, continuar</button></div>
+      </div>`;
+      document.body.appendChild(ov);
+      const fin = (v) => { ov.remove(); resolve(v); };
+      ov.querySelector("#dif_no").addEventListener("click", () => fin(false));
+      ov.querySelector("#dif_si").addEventListener("click", () => fin(true));
+      ov.querySelector("#dif_no").focus();
+    });
+  }
+
   const audCargar = async () => {
     const msg = el("cli_aud_msg_carga"), btn = el("cli_aud_btn_cargar");
     if (!audAnalisis) return showMsg(msg, "Analiza primero el archivo.", false);
@@ -512,7 +548,15 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
         estado_filtro: audMeta.estado, fecha_auditoria_utc: audMeta.utc, fecha_auditoria_local: hora.length === 16 ? hora + ":00" : hora, total_onus: a.onus.length,
       });
       audId = ini.auditoria_id;
-      const avisos = ini.bases.filter((b) => b.desactualizada).map((b) => `La base de ${b.sucursal} tiene ${b.horas} horas de diferencia con esta auditoría (tolerancia ${ini.tolerancia_horas} h); actualízala y vuelve a cruzar.`);
+      const fechaSmart = hora.length === 16 ? hora + ":00" : hora;
+      const difs = ini.bases.filter((b) => b.desactualizada);
+      if (difs.length && !(await confirmarDiferenciaFechas(difs, fechaSmart))) {
+        try { await apiSend("/clientes/auditoria/abortar", "POST", { auditoria_id: audId }); } catch (e) { /* nada */ }
+        audId = null;
+        showMsg(msg, "Carga cancelada: no se guardó nada.", false);
+        return false;
+      }
+      const avisos = difs.map((b) => `Se cargó con ${textoDiferencia(b.horas)} de diferencia entre la base de Grafana de ${b.sucursal} (${fmt(b.fecha_base)}) y SmartOLT (${fmt(fechaSmart)}). Si quieres, sube un archivo más cercano en fecha y pulsa «Re-cruzar».`);
       for (let i = 0; i < a.onus.length; i += LOTE_AUD) {
         await apiSend("/clientes/auditoria/lote", "POST", { auditoria_id: audId, onus: a.onus.slice(i, i + LOTE_AUD) });
         showMsg(msg, `Cruzando… ${Math.min(i + LOTE_AUD, a.onus.length)} de ${a.onus.length}`, true);
@@ -565,7 +609,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
       if (listo.s) {
         showMsg(msg, "Cargando y cruzando SmartOLT con la base…", true);
         const ok = await window.cliCargarAuditoria();
-        if (!ok) { showMsg(msg, (hecho.length ? "Grafana quedó cargada. " : "") + "La carga de SmartOLT falló (mira el mensaje de abajo).", false); return; }
+        if (!ok) { showMsg(msg, (hecho.length ? "Grafana quedó cargada. " : "") + "La carga de SmartOLT no se completó (mira el mensaje de abajo).", false); btn.disabled = false; return; }
         hecho.push("SmartOLT");
       }
       listo = { g: false, s: false };
