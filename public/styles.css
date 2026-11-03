@@ -273,6 +273,13 @@ body {
   border-bottom: 3px solid var(--purple);
   font-weight: 600;
 }
+/* Pestañas mayores (grupos) y subpestañas del grupo activo */
+.tabs-grupos { background: var(--purple-dark); border-bottom: none; gap: 2px; padding-top: 6px; }
+.grupo-btn { border: none; background: rgba(255, 255, 255, .12); color: #fff; padding: 10px 22px; cursor: pointer; font-size: 15px; font-weight: 600; border-radius: 8px 8px 0 0; }
+.grupo-btn:hover { background: rgba(255, 255, 255, .22); }
+.grupo-btn.active { background: #fff; color: var(--purple-dark); }
+.tabs-sub { border-bottom: 2px solid var(--border); }
+.tab-btn.fuera-grupo { display: none; }
 
 main { padding: 20px 24px 60px; max-width: 1100px; margin: 0 auto; }
 

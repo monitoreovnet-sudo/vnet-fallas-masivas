@@ -65,16 +65,22 @@
     </div>
   </header>
 
-  <nav class="tabs">
-    <button class="tab-btn active" data-tab="crear">Crear Ticket</button>
-    <button class="tab-btn" data-tab="modificar">Editar Ticket</button>
-    <button class="tab-btn" data-tab="pizarra">Pizarra de Monitoreo</button>
-    <button class="tab-btn" data-tab="reporte">Reporte Diario</button>
-    <button class="tab-btn" data-tab="ciclo">Ciclo 2026</button>
-    <button class="tab-btn" data-tab="consultar">Consultar / Log</button>
-    <button class="tab-btn hidden" data-tab="admin" id="nav_admin">Administración</button>
-    <button class="tab-btn hidden" data-tab="repositorio" id="nav_repositorio">Repositorio</button>
-    <button class="tab-btn hidden" data-tab="clientes" id="nav_clientes">Clientes Afectados</button>
+  <nav class="tabs tabs-grupos" id="nav_grupos">
+    <button class="grupo-btn active" data-grupo="gestion">Gestión de Tickets</button>
+    <button class="grupo-btn" data-grupo="informes">Informes</button>
+    <button class="grupo-btn hidden" data-grupo="administracion">Administración</button>
+  </nav>
+  <nav class="tabs tabs-sub">
+    <button class="tab-btn active" data-tab="crear" data-grupo="gestion">Crear Ticket</button>
+    <button class="tab-btn" data-tab="modificar" data-grupo="gestion">Editar Ticket</button>
+    <button class="tab-btn" data-tab="pizarra" data-grupo="informes">Pizarra de Monitoreo</button>
+    <button class="tab-btn" data-tab="reporte" data-grupo="informes">Reporte Diario</button>
+    <button class="tab-btn" data-tab="ciclo" data-grupo="informes">Ciclo 2026</button>
+    <button class="tab-btn hidden" data-tab="informe_clientes" data-grupo="informes" id="nav_informe_clientes">Clientes Afectados</button>
+    <button class="tab-btn hidden" data-tab="admin" data-grupo="administracion" id="nav_admin">Usuarios y catálogos</button>
+    <button class="tab-btn" data-tab="consultar" data-grupo="administracion">Consultar / Log</button>
+    <button class="tab-btn hidden" data-tab="repositorio" data-grupo="administracion" id="nav_repositorio">Repositorio de tickets</button>
+    <button class="tab-btn hidden" data-tab="clientes" data-grupo="administracion" id="nav_clientes">Repositorio de clientes</button>
   </nav>
 
   <main id="app">
@@ -815,7 +821,7 @@
 
   <!-- ===================== REPOSITORIO (solo administrador) ===================== -->
   <section id="tab-repositorio" class="tab-panel">
-    <h2>Repositorio</h2>
+    <h2>Repositorio de tickets</h2>
 
     <h3>Ventanas de mantenimiento</h3>
     <p class="hint">
@@ -864,8 +870,41 @@
     <div id="repo_resultado"></div>
   </section>
 
-  <section id="tab-clientes" class="tab-panel">
+  <section id="tab-informe_clientes" class="tab-panel">
     <h2>Clientes Afectados</h2>
+    <h3>Informe 1 · Histórico de clientes afectados por falla</h3>
+    <p class="hint">Clientes de las auditorías asociadas a tickets, con los datos del ticket: número, estado, fecha de la falla, apertura, solución y cierre del CMR. Por defecto se usa la auditoría más reciente de cada puerto; marca «Incluir histórico» para ver todas las auditorías de cada falla. El Excel trae además una hoja por ticket y otra con los sectores por cantidad de clientes activos.</p>
+    <div id="cca_filtros" class="filtros-grid">
+      <div class="field"><label>Ticket CMR-COR</label><input id="cca_ticket" inputmode="numeric" placeholder="Número" /></div>
+      <div class="field"><label>Oficina</label><select id="cca_oficina"></select></div>
+      <div class="field"><label>Estado del ticket</label><select id="cca_estado"></select></div>
+      <div class="field"><label>OLT</label><input id="cca_olt" list="cca_olts" autocomplete="off" placeholder="Código de OLT" /><datalist id="cca_olts"></datalist></div>
+      <div class="field"><label>Auditoría desde</label><input id="cca_desde" type="date" /></div>
+      <div class="field"><label>Auditoría hasta</label><input id="cca_hasta" type="date" /></div>
+    </div>
+    <div class="cca-opciones">
+      <b>Tipo de afectación:</b>
+      <label class="chk"><input type="checkbox" id="cca_t_falla" checked /> Afectados (falla)</label>
+      <label class="chk"><input type="checkbox" id="cca_t_powerfail" checked /> Sin electricidad</label>
+      <label class="chk"><input type="checkbox" id="cca_t_caida_previa" /> Caída previa</label>
+      <span class="cca-sep"></span>
+      <label class="chk"><input type="checkbox" id="cca_historico" /> Incluir histórico (todas las auditorías)</label>
+      <label class="chk"><input type="checkbox" id="cca_activos" checked /> Solo contratos activos</label>
+      <label class="chk"><input type="checkbox" id="cca_sin_cruzar" /> Incluir ONUs sin cruzar</label>
+    </div>
+    <div class="cca-botones">
+      <button id="cca_buscar" class="btn-primary" type="button">Buscar</button>
+      <button id="cca_xlsx" class="btn-secondary" type="button" disabled>Descargar Excel</button>
+      <button id="cca_csv" class="btn-secondary" type="button" disabled>Descargar CSV</button>
+    </div>
+    <div id="cca_msg" class="msg"></div>
+    <div id="cca_resumen"></div>
+    <div id="cca_tabla"></div>
+
+  </section>
+
+  <section id="tab-clientes" class="tab-panel">
+    <h2>Repositorio de clientes: cruce Grafana y SmartOLT</h2>
     <p class="hint">Contiene datos personales (cédulas, teléfonos). Solo administrador y supervisor.</p>
 
     <h3>1. Carga de archivos: Grafana y SmartOLT</h3>
@@ -953,35 +992,9 @@
     <h3>Auditorías cargadas</h3>
     <div id="cli_auditorias"></div>
 
-    <h3>3. Informe 1 · Histórico de clientes afectados por falla</h3>
-    <p class="hint">Clientes de las auditorías asociadas a tickets, con los datos del ticket: número, estado, fecha de la falla, apertura, solución y cierre del CMR. Por defecto se usa la auditoría más reciente de cada puerto; marca «Incluir histórico» para ver todas las auditorías de cada falla. El Excel trae además una hoja por ticket y otra con los sectores por cantidad de clientes activos.</p>
-    <div id="cca_filtros" class="filtros-grid">
-      <div class="field"><label>Ticket CMR-COR</label><input id="cca_ticket" inputmode="numeric" placeholder="Número" /></div>
-      <div class="field"><label>Oficina</label><select id="cca_oficina"></select></div>
-      <div class="field"><label>Estado del ticket</label><select id="cca_estado"></select></div>
-      <div class="field"><label>OLT</label><input id="cca_olt" list="cca_olts" autocomplete="off" placeholder="Código de OLT" /><datalist id="cca_olts"></datalist></div>
-      <div class="field"><label>Auditoría desde</label><input id="cca_desde" type="date" /></div>
-      <div class="field"><label>Auditoría hasta</label><input id="cca_hasta" type="date" /></div>
-    </div>
-    <div class="cca-opciones">
-      <b>Tipo de afectación:</b>
-      <label class="chk"><input type="checkbox" id="cca_t_falla" checked /> Afectados (falla)</label>
-      <label class="chk"><input type="checkbox" id="cca_t_powerfail" checked /> Sin electricidad</label>
-      <label class="chk"><input type="checkbox" id="cca_t_caida_previa" /> Caída previa</label>
-      <span class="cca-sep"></span>
-      <label class="chk"><input type="checkbox" id="cca_historico" /> Incluir histórico (todas las auditorías)</label>
-      <label class="chk"><input type="checkbox" id="cca_activos" checked /> Solo contratos activos</label>
-      <label class="chk"><input type="checkbox" id="cca_sin_cruzar" /> Incluir ONUs sin cruzar</label>
-    </div>
-    <div class="cca-botones">
-      <button id="cca_buscar" class="btn-primary" type="button">Buscar</button>
-      <button id="cca_xlsx" class="btn-secondary" type="button" disabled>Descargar Excel</button>
-      <button id="cca_csv" class="btn-secondary" type="button" disabled>Descargar CSV</button>
-    </div>
-    <div id="cca_msg" class="msg"></div>
-    <div id="cca_resumen"></div>
-    <div id="cca_tabla"></div>
-
+    <h3>3. Informe de clientes afectados</h3>
+    <p class="hint">El informe con el histórico de clientes afectados por falla (con ticket, estado y fechas) está en la sección Informes.</p>
+    <button id="cli_ir_informe" class="btn-primary" type="button">Ir al Informe de clientes afectados →</button>
   </section>
 
   </main>

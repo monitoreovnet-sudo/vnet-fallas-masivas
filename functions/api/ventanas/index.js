@@ -4,7 +4,7 @@ import { usuarioDeSesion } from "../../_lib/auth.js";
 // GET /api/ventanas
 //   Sin sesión (Pizarra pública): solo { total, actualizado }.
 //   Con sesión: además la lista de ventanas y datos del archivo.
-// POST /api/ventanas  (solo administrador)
+// POST /api/ventanas  (administrador y supervisor)
 //   Body: { nombre_archivo, titulo, total_hojas, archivo_b64, filas:[...] }  (ya leído en el navegador).
 //   Reemplaza TODAS las ventanas anteriores por las del archivo nuevo.
 
@@ -35,7 +35,7 @@ export async function onRequestGet({ request, env }) {
 }
 
 export async function onRequestPost({ request, env }) {
-  const usuario = await requireAdmin(request, env);
+  const usuario = await requireAdmin(request, env, ["administrador", "supervisor"]);
   const body = await request.json();
   const db = env.DB;
   const filas = Array.isArray(body.filas) ? body.filas : [];

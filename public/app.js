@@ -198,8 +198,32 @@ window.addEventListener("resize", ajustarTodasLasTablas);
 // ---------------------------------------------------------------
 // Pestañas
 // ---------------------------------------------------------------
+// Pestañas mayores: cada subpestaña (.tab-btn) trae su grupo; las del rol que no corresponden siguen ocultas con "hidden".
+let grupoActual = "gestion";
+function mostrarGrupo(g) {
+  grupoActual = g;
+  document.querySelectorAll(".grupo-btn").forEach((b) => b.classList.toggle("active", b.dataset.grupo === g));
+  document.querySelectorAll(".tab-btn[data-grupo]").forEach((b) => b.classList.toggle("fuera-grupo", b.dataset.grupo !== g));
+}
+function actualizarGrupos() {
+  document.querySelectorAll(".grupo-btn").forEach((gb) => {
+    const hay = [...document.querySelectorAll(`.tab-btn[data-grupo="${gb.dataset.grupo}"]`)].some((b) => !b.classList.contains("hidden"));
+    gb.classList.toggle("hidden", !hay);
+  });
+  mostrarGrupo(grupoActual);
+}
+document.querySelectorAll(".grupo-btn").forEach((gb) => {
+  gb.addEventListener("click", () => {
+    const g = gb.dataset.grupo;
+    const act = document.querySelector(".tab-btn.active");
+    if (act && act.dataset.grupo === g) { mostrarGrupo(g); return; }
+    const primera = [...document.querySelectorAll(`.tab-btn[data-grupo="${g}"]`)].find((b) => !b.classList.contains("hidden"));
+    if (primera) primera.click();
+  });
+});
 document.querySelectorAll(".tab-btn").forEach((btn) => {
   btn.addEventListener("click", () => {
+    mostrarGrupo(btn.dataset.grupo);
     document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
     document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
     btn.classList.add("active");
@@ -207,6 +231,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (btn.dataset.tab === "pizarra" && pizarraDatos.length === 0) cargarPizarra();
     if (btn.dataset.tab === "reporte" && reporteDatos.length === 0) cargarReporte();
     if (btn.dataset.tab === "ciclo" && cicloDatos.length === 0) cargarCiclo();
+    if (btn.dataset.tab === "informe_clientes" && window.ccaCargarOpciones) window.ccaCargarOpciones();
     if (btn.dataset.tab === "clientes" && window.cliCargarBases) { window.cliCargarBases(); if (window.cliCargarFrescura) window.cliCargarFrescura(); if (window.cliCargarAuditorias) window.cliCargarAuditorias(); }
     ajustarTodasLasTablas();
     if (btn.dataset.tab === "consultar" && clGrid && clGridListo) clGrid.redraw(true);
@@ -2911,8 +2936,8 @@ let currentUser = null;
 const TABS_POR_ROL = {
   analista: ["pizarra", "reporte", "ciclo"],
   especialista: ["crear", "modificar", "pizarra", "reporte", "ciclo"],
-  supervisor: ["crear", "modificar", "pizarra", "reporte", "ciclo", "consultar", "clientes"],
-  administrador: ["crear", "modificar", "pizarra", "reporte", "ciclo", "consultar", "admin", "repositorio", "clientes"],
+  supervisor: ["crear", "modificar", "pizarra", "reporte", "ciclo", "informe_clientes", "consultar", "repositorio", "clientes"],
+  administrador: ["crear", "modificar", "pizarra", "reporte", "ciclo", "informe_clientes", "consultar", "admin", "repositorio", "clientes"],
 };
 
 function aplicarPermisosRol() {
@@ -2926,6 +2951,7 @@ function aplicarPermisosRol() {
   if (document.querySelector(".tab-btn.active")?.classList.contains("hidden")) {
     document.querySelector(`.tab-btn[data-tab="${permitidas[0]}"]`)?.click();
   }
+  actualizarGrupos();
 
   const esAdminCl = currentUser.rol === "administrador";
   document.getElementById("cl_barra_excel").classList.toggle("hidden", !clPuedeEditar());
@@ -4812,7 +4838,7 @@ function htmlResumenClientes(r, puertosN) {
     (r.base_desactualizada ? `<div class="ml-badge b-aviso">La base de clientes es anterior a la auditoría (puede estar desactualizada)</div>` : "");
 }
 function htmlVacioClientes() {
-  return `<p class="ml-vacio">Este ticket todavía no tiene auditorías de SmartOLT asociadas. Cuando se suba la auditoría de uno de sus puertos (pestaña Clientes Afectados) aparecerán aquí los clientes.</p>`;
+  return `<p class="ml-vacio">Este ticket todavía no tiene auditorías de SmartOLT asociadas. Cuando se suba la auditoría de uno de sus puertos (Administración › Repositorio de clientes) aparecerán aquí los clientes.</p>`;
 }
 function celdasOnu(o, conPuerto) {
   const sin = !o.cuenta;
@@ -4992,6 +5018,7 @@ async function entrarModoPublico() {
   mostrarApp();
   document.querySelectorAll(".tab-btn[data-tab]").forEach((b) => b.classList.toggle("hidden", b.dataset.tab !== "pizarra"));
   document.querySelector('.tab-btn[data-tab="pizarra"]').click();
+  actualizarGrupos();
   document.getElementById("btn_logout").classList.add("hidden");
   document.getElementById("btn_login_publico").classList.remove("hidden");
   document.getElementById("topbar_usuario_nombre").textContent = "";

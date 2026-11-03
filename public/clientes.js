@@ -633,6 +633,8 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
       showMsg(msg, "Carga terminada: " + hecho.join(" y ") + ".", true);
     } catch (err) { showMsg(msg, err.message, false); }
   });
+  const irInf = el("cli_ir_informe");
+  if (irInf) irInf.addEventListener("click", () => { const b = document.querySelector('.tab-btn[data-tab="informe_clientes"]'); if (b) b.click(); window.scrollTo(0, 0); });
   cargarAuditorias();
   cargarAlertas();
 }
@@ -736,6 +738,7 @@ function ccaHojaSectores(filas) {
     se.value = ae;
     el("cca_olts").innerHTML = (L.olts || []).map((o) => `<option value="${esc(o.codigo)}"></option>`).join("");
   }
+  window.ccaCargarOpciones = cargarOpciones;
   function pintar(d) {
     const r = d.resumen, filas = d.filas;
     const tile = (n, t) => `<div class="ml-tile"><b>${num(n)}</b><span>${t}</span></div>`;

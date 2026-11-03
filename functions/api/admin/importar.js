@@ -10,7 +10,7 @@ import { json, badRequest, requireAdmin } from "../../_lib/helpers.js";
 //    pisan cambios hechos desde la app). Si existía pero sin puertos, se le agregan.
 //  - Los puertos de un mismo ticket entran juntos en una misma transacción (batch).
 export async function onRequestPost({ request, env }) {
-  await requireAdmin(request, env);
+  await requireAdmin(request, env, ["administrador", "supervisor"]);
   const body = await request.json();
   const db = env.DB;
 

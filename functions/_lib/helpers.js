@@ -109,7 +109,7 @@ export function nowIso() {
 // Verifica que el usuario actual tenga rol 'administrador'.
 // Devuelve el usuario si tiene permiso, o lanza un objeto {status, body}
 // que el endpoint debe capturar y devolver tal cual.
-export async function requireAdmin(request, env) {
+export async function requireAdmin(request, env, roles = ["administrador"]) {
   const email = currentUserEmail(request);
   const db = env.DB;
   const usuario = await db
@@ -117,8 +117,8 @@ export async function requireAdmin(request, env) {
     .bind(email)
     .first();
 
-  if (!usuario || !usuario.activo || usuario.rol !== "administrador") {
-    throw { status: 403, body: { error: "No tienes permisos de administrador." } };
+  if (!usuario || !usuario.activo || !roles.includes(usuario.rol)) {
+    throw { status: 403, body: { error: roles.length > 1 ? "No tienes permisos de administrador ni de supervisor." : "No tienes permisos de administrador." } };
   }
   return usuario;
 }
