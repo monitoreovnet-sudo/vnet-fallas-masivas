@@ -1,5 +1,6 @@
 import { json, badRequest, requireRole, currentUserEmail } from "../../../_lib/helpers.js";
 import { ROLES_CLIENTES, normSucursal, FECHA_BASE_OK } from "../../../_lib/clientes.js";
+import { usadoHoy, TOPE_DIA } from "../../../_lib/uso-d1.js";
 
 // POST /api/clientes/carga/iniciar
 // Body: { sucursal, archivo, fecha_base, filas_leidas, filas_descartadas }
@@ -19,5 +20,5 @@ export async function onRequestPost({ request, env }) {
     `INSERT INTO cargas_base (sucursal, archivo, fecha_base, filas_leidas, filas_descartadas, usuario, estado)
      VALUES (?, ?, ?, ?, ?, ?, 'cargando')`)
     .bind(sucursal, String(b.archivo || "").slice(0, 200) || null, b.fecha_base, leidas, desc, currentUserEmail(request)).run();
-  return json({ carga_id: r.meta.last_row_id, sucursal, esperadas: leidas - desc }, 201);
+  return json({ carga_id: r.meta.last_row_id, sucursal, esperadas: leidas - desc, usado_hoy: await usadoHoy(env.DB), tope_dia: TOPE_DIA }, 201);
 }

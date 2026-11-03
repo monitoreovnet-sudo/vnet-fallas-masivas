@@ -196,7 +196,15 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
   const pausa = () => new Promise((r) => setTimeout(r, 0));
   const ahoraCaracas = () => new Date(Date.now() - 4 * 3600 * 1000).toISOString().slice(0, 19);
 
+  async function cliCargarUso() {
+    const u = el("cli_uso_hoy"); if (!u) return;
+    try {
+      const d = await apiGet("/clientes/uso-hoy");
+      u.textContent = `Cambios de clientes escritos hoy: ${formatearMiles(d.usado)} de ${formatearMiles(d.tope)} (quedan ${formatearMiles(d.quedan)}). El contador se reinicia a las 8:00 pm, hora de Caracas.`;
+    } catch (e) { u.textContent = ""; }
+  }
   async function cliCargarBases() {
+    cliCargarUso();
     const cont = el("cli_bases");
     try {
       const d = await apiGet("/clientes/bases");
@@ -335,7 +343,13 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
     const grupos = new Map();
     a.filas.forEach((f) => { if (!grupos.has(f.sucursal)) grupos.set(f.sucursal, []); grupos.get(f.sucursal).push(f); });
     const lista = [...grupos.entries()];
-    if (!confirm(`La base de ${lista.length} sucursal(es) se REEMPLAZARÁ con este archivo (${formatearMiles(a.filas.length)} clientes activos): ${lista.map(([n]) => n.toUpperCase()).join(", ")}.\n\nSolo se escribe lo que cambió (nuevos, modificados y dados de baja). Máximo ${formatearMiles(CLI_TOPE_DIA)} cambios por día (límite del plan gratuito). ¿Continuar?`)) return;
+    let uso = null; try { uso = await apiGet("/clientes/uso-hoy"); } catch (e) { /* si falla, se confirma sin el dato */ }
+    const lineaUso = uso
+      ? `\n\nHoy llevas ${formatearMiles(uso.usado)} de ${formatearMiles(uso.tope)} cambios (quedan ${formatearMiles(uso.quedan)}). Este archivo escribe como máximo ${formatearMiles(a.filas.length)} (los clientes que ya estén iguales en la base no cuentan).` +
+        (uso.usado + a.filas.length > uso.tope ? ` Con este archivo podrías pasar el límite: la carga se detiene al llegar y continúas mañana subiendo el MISMO archivo.` : "") +
+        ` El contador se reinicia a las 8:00 pm (hora de Caracas).`
+      : "";
+    if (!confirm(`La base de ${lista.length} sucursal(es) se REEMPLAZARÁ con este archivo (${formatearMiles(a.filas.length)} clientes activos): ${lista.map(([n]) => n.toUpperCase()).join(", ")}.\n\nSolo se escribe lo que cambió (nuevos, modificados y dados de baja). Máximo ${formatearMiles(CLI_TOPE_DIA)} cambios por día (límite del plan gratuito).${lineaUso}\n\n¿Continuar?`)) return;
     btn.disabled = true;
     const hechas = [], conflictos = [];
     let cargaId = null, cambiosHoy = 0, tope = false;
@@ -347,6 +361,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
           sucursal, archivo: cliNombreArchivo, fecha_base: cliFechaBase, filas_leidas: filas.length, filas_descartadas: 0,
         });
         cargaId = ini.carga_id;
+        if (ini.usado_hoy > cambiosHoy) cambiosHoy = ini.usado_hoy;   // lo que ya se cargó hoy cuenta para el tope
         const lotes = []; for (let i = 0; i < filas.length; i += CLI_LOTE) lotes.push(filas.slice(i, i + CLI_LOTE));
         let siguiente = 0, revisadas = 0;
         const t = { nuevas: 0, cambiadas: 0, existentes: 0 };
@@ -358,7 +373,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
             (r.conflictos || []).forEach((x) => conflictos.push(x));
             cambiosHoy += r.nuevas + r.cambiadas; revisadas += mio.length;
             if (cambiosHoy >= CLI_TOPE_DIA) tope = true;
-            showMsg(msg, `${etiqueta}: revisadas ${formatearMiles(revisadas)} de ${formatearMiles(filas.length)} · cambios hoy: ${formatearMiles(cambiosHoy)}`, true);
+            showMsg(msg, `${etiqueta}: revisadas ${formatearMiles(revisadas)} de ${formatearMiles(filas.length)} · cambios hoy: ${formatearMiles(cambiosHoy)} de ${formatearMiles(CLI_TOPE_DIA)}`, true);
           }
         };
         await Promise.all(Array.from({ length: Math.min(CLI_PARALELO, lotes.length) }, trabajador));

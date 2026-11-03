@@ -62,6 +62,8 @@ export async function onRequestPost({ request, env }) {
     if (igual) { iguales++; continue; }
     cambiadas++; stmts.push(env.DB.prepare(SQL_INSERT_CLIENTE).bind(...p));
   }
+  // El avance se anota en la carga (aunque luego falle) para saber cuántos cambios se han escrito hoy
+  if (stmts.length) stmts.push(env.DB.prepare("UPDATE cargas_base SET nuevas = COALESCE(nuevas, 0) + ?, cambiadas = COALESCE(cambiadas, 0) + ? WHERE id = ?").bind(nuevas, cambiadas, carga.id));
   if (stmts.length) await env.DB.batch(stmts);
   return json({ recibidas: filas.length, nuevas, cambiadas, existentes: iguales, conflictos });
 }
