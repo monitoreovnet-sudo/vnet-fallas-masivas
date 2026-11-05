@@ -1,5 +1,6 @@
 import { json, badRequest, requireRole } from "../../../_lib/helpers.js";
-import { registrarUso, escrituras } from "../../../_lib/uso-d1.js";
+import { registrarUso, escrituras, lecturasHoy, LECT_SUAVE } from "../../../_lib/uso-d1.js";
+import { contextoSucursales } from "../../../_lib/sucursal.js";
 import { ROLES_CLIENTES } from "../../../_lib/clientes.js";
 import { claves, buscarClientes, cruzarUna, basesDesactualizadas, resumenAuditoria } from "../../../_lib/cruce.js";
 
@@ -15,12 +16,13 @@ export async function onRequestPost({ request, env }) {
   const aud = await env.DB.prepare("SELECT * FROM auditorias WHERE id = ?").bind(Number(b.auditoria_id)).first();
   if (!aud) return badRequest("La auditoría no existe.");
   const desde = Number(b.desde_id) || 0;
-  const onus = (await env.DB.prepare("SELECT id, sn, name_smartolt AS name, contact FROM auditoria_onus WHERE auditoria_id = ? AND id > ? ORDER BY id LIMIT ?").bind(aud.id, desde, TANDA).all()).results;
+  const onus = (await env.DB.prepare("SELECT id, sn, name_smartolt AS name, contact, olt_nombre FROM auditoria_onus WHERE auditoria_id = ? AND id > ? ORDER BY id LIMIT ?").bind(aud.id, desde, TANDA).all()).results;
   if (!onus.length) return json({ siguiente: null, resumen: await resumenAuditoria(env.DB, aud.id) });
 
   const { mapa, alguna } = await basesDesactualizadas(env.DB, aud);
   const lista = onus.map(claves);
-  const mapas = await buscarClientes(env.DB, lista);
+  const mapas = await buscarClientes(env.DB, lista, { barrido: (await lecturasHoy(env.DB)) < LECT_SUAVE, sucursales: await contextoSucursales(env.DB), olts: onus.map((o) => o.olt_nombre) });
+  await registrarUso(env.DB, "lect_recruce", mapas.lecturas);
   const stmts = onus.map((o, i) => {
     const { cliente: c, metodo } = cruzarUna(lista[i], mapas);
     const desact = c ? (mapa.get(c.carga_id) ? 1 : 0) : (alguna ? 1 : 0);

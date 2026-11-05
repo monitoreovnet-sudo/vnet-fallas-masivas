@@ -1,6 +1,7 @@
 import { json, badRequest, requireRole, nowIso } from "../../../_lib/helpers.js";
 import { normSerial } from "../../../_lib/clientes.js";
 import { claves, buscarClientes, cruzarUna } from "../../../_lib/cruce.js";
+import { contextoSucursales } from "../../../_lib/sucursal.js";
 import { registrarUso, usadoHoy, TOPE_DIA } from "../../../_lib/uso-d1.js";
 import { registrarMapa } from "../../../_lib/mapa-clientes.js";
 
@@ -20,7 +21,10 @@ export async function onRequestPost({ request, env }) {
   if (onus.length > MAX_LOTE) return badRequest(`El lote no puede pasar de ${MAX_LOTE} ONUs.`);
   if (await usadoHoy(env.DB) >= TOPE_DIA) return json({ recibidas: onus.length, cruzadas: 0, nuevos: 0, actualizados: 0, tope: true });
   const visto = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(b.visto || "")) ? String(b.visto).slice(0, 19) : nowIso().replace(" ", "T");
-  const mapas = await buscarClientes(env.DB, onus.map(claves));
+  // Por serial y, en las sucursales que ya tienen índices, también por cuenta/cédula/nombre (sin barrer la base)
+  // Solo por serial (consulta por llave, casi sin lecturas): el cruce completo de las ONUs afectadas lo hace el propio ticket
+  const mapas = await buscarClientes(env.DB, onus.map(claves), { soloSerial: true, sucursales: await contextoSucursales(env.DB), olts: onus.map((o) => t(o.olt)) });
+  await registrarUso(env.DB, "lect_mapa", mapas.lecturas);
   const items = [];
   onus.forEach((o) => {
     const { cliente } = cruzarUna(claves(o), mapas);

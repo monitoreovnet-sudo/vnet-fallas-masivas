@@ -1,5 +1,6 @@
 import { json, badRequest, requireRole, currentUserEmail } from "../../../_lib/helpers.js";
 import { ROLES_CLIENTES, normSucursal, FECHA_BASE_OK } from "../../../_lib/clientes.js";
+import { asegurarTabla } from "../../../_lib/sucursal.js";
 import { usadoHoy, TOPE_DIA } from "../../../_lib/uso-d1.js";
 
 // POST /api/clientes/carga/iniciar
@@ -14,6 +15,7 @@ export async function onRequestPost({ request, env }) {
   if (!FECHA_BASE_OK.test(String(b.fecha_base || ""))) return badRequest("La fecha de la base no tiene un formato válido.");
   const leidas = Number(b.filas_leidas), desc = Number(b.filas_descartadas);
   if (!Number.isInteger(leidas) || leidas < 1 || !Number.isInteger(desc) || desc < 0 || desc > leidas) return badRequest("Los conteos de filas no son válidos.");
+  try { await asegurarTabla(env.DB, sucursal); } catch (e) { return badRequest("No se pudo preparar la tabla de la sucursal (¿falta aplicar la migración 047?): " + e.message); }
   // Cargas anteriores de esta sucursal que quedaron a medias (se cerró el navegador, etc.): se descartan.
   await env.DB.prepare("UPDATE cargas_base SET estado = 'fallida' WHERE sucursal = ? AND estado = 'cargando'").bind(sucursal).run();
   const r = await env.DB.prepare(

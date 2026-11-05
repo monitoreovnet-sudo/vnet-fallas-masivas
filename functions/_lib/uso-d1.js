@@ -4,13 +4,20 @@
 //   incluye índices), acumuladas por origen en la tabla uso_d1.
 export const TOPE_DIA = 80000;       // tope que se respeta (el real gratuito es 100.000)
 export const TOPE_REAL = 100000;
+// Lecturas de filas (límite gratuito real: 5.000.000 por día). Pasado el tope suave los cruces dejan de barrer la base y usan solo el serial.
+export const TOPE_LECT = 5000000, LECT_SUAVE = 3500000, LECT_DURO = 4700000;
 
 export const ORIGENES = {
   grafana: "Base de clientes (Grafana)", auditoria: "Archivos de SmartOLT (auditoría)", mapa: "Mapa de clientes (Informe 2)",
-  ticket_onus: "ONUs de tickets", cruce_ticket: "Cruce de ONUs de tickets", recruce: "Recruce de auditorías",
+  ticket_onus: "ONUs de tickets", cruce_ticket: "Cruce de ONUs de tickets", indices_carga: "Índices en la carga de Grafana", indices: "Creación de índices", recruce: "Recruce de auditorías",
+  lect_auditoria: "Lecturas: archivos de SmartOLT", lect_mapa: "Lecturas: mapa de clientes", lect_ticket: "Lecturas: cruce de tickets", lect_recruce: "Lecturas: recruce", lect_indices: "Lecturas: creación de índices",
 };
 
 // Suma las escrituras que reporta D1 en un resultado de run() o de batch()
+export function lecturas(res) {
+  const una = (r) => Number((r && r.meta && r.meta.rows_read) || 0);
+  return Array.isArray(res) ? res.reduce((s, r) => s + una(r), 0) : una(res);
+}
 export function escrituras(res) {
   const una = (r) => Number((r && r.meta && r.meta.rows_written) || 0);
   return Array.isArray(res) ? res.reduce((s, r) => s + una(r), 0) : una(res);
@@ -36,4 +43,7 @@ export async function detalleHoy(db) {
   } catch (e) { /* sin migración 043 */ }
   return detalle;
 }
-export async function usadoHoy(db) { return (await detalleHoy(db)).reduce((s, d) => s + d.filas, 0); }
+// detalleHoy mezcla escrituras (origen normal) y lecturas (origen "lect_...")
+export const esLectura = (d) => String(d.origen).startsWith("lect_");
+export async function usadoHoy(db) { return (await detalleHoy(db)).filter((d) => !esLectura(d)).reduce((s, d) => s + d.filas, 0); }
+export async function lecturasHoy(db) { return (await detalleHoy(db)).filter(esLectura).reduce((s, d) => s + d.filas, 0); }

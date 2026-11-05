@@ -49,40 +49,90 @@ const COLS = `c.carga_id, c.cuenta, c.sucursal, c.nombre, c.telefono_casa, c.tel
 const FROM = `FROM clientes_base c`;
 
 // Busca en D1 todo lo necesario para un lote de ONUs. D1 admite 90 parámetros por consulta.
-// Fase 1: por serial (la llave de la tabla: rápido). Fase 2: SOLO para las ONUs que no cruzaron por serial, una búsqueda
-// por cuenta / cédula / nombre (la tabla no tiene índices para ellas: cada consulta lee la tabla, por eso se hace una sola por tanda).
-export async function buscarClientes(db, lista) {
+// Cada sucursal tiene su propia tabla (llave = cuenta). Para cada ONU se busca solo en las tablas de las sucursales de su OLT:
+//   Fase 1: por serial (una lectura de la tabla de la sucursal). Fase 2: SOLO para las ONUs que no cruzaron por serial:
+//   por cuenta (llave de la tabla: casi sin lecturas) y por cédula / nombre (leen la tabla de la sucursal; solo si opts.barrido lo permite).
+// Las sucursales que aún no se han vuelto a cargar en su tabla nueva se siguen buscando en la tabla vieja (clientes_base).
+export async function buscarClientes(db, lista, opts = {}) {
+  if (opts.soloSerial) opts = { ...opts, barrido: false, soloSerial: true };
+  else if (opts.barrido === undefined) opts = { ...opts, barrido: true };
+  let leidas = 0;
+  const contar = (res) => { for (const r of res) leidas += Number((r && r.meta && r.meta.rows_read) || 0); return res; };
   const mapas = { serial_norm: new Map(), cuenta: new Map(), cedula_norm: new Map(), nombre_norm: new Map() };
   const buscados = { cuenta: new Set(), cedula_norm: new Set(), nombre_norm: new Set() };
-  // Solo se anota lo que de verdad se buscó (así "único" sigue significando único en toda la base)
+  // Solo se anota lo que de verdad se buscó (así "único" sigue significando único dentro de lo buscado)
   const meter = (col, rows) => { for (const f of rows) { const key = f[col]; if (key === null || key === undefined) continue; if (buscados[col] && !buscados[col].has(key)) continue; if (!mapas[col].has(key)) mapas[col].set(key, []); mapas[col].get(key).push(f); } };
 
-  const seriales = [...new Set(lista.map((k) => k.snNorm).filter(Boolean))];
-  if (seriales.length) {
-    const res = await db.batch(chunks(seriales, 90).map((parte) => db.prepare(`SELECT ${COLS} ${FROM} WHERE c.clave IN (${parte.map(() => "?").join(",")})`).bind(...parte)));
-    res.forEach((r) => meter("serial_norm", r.results));
-  }
+  const ctx = opts.sucursales || { tablas: new Map(), vieja: true, sucursalesDe: () => [] };
+  const migradas = [...ctx.tablas.keys()];
+  const EXCL = migradas.length ? ` AND c.sucursal NOT IN (${migradas.map((m) => "'" + m.replace(/'/g, "''") + "'").join(",")})` : "";
+  const todasTablas = [...ctx.tablas.entries()];                       // [sucursal, tabla]
+  // Dónde buscar a cada ONU: tablas nuevas de su(s) sucursal(es) y/o la tabla vieja
+  const dondeDe = lista.map((_, i) => {
+    const sucs = opts.olts && opts.olts[i] ? ctx.sucursalesDe(opts.olts[i]) : [];
+    // vieja: true = toda la tabla vieja; lista = solo esas sucursales de la tabla vieja; false = no se usa
+    if (!sucs.length) return { tablas: opts.barrido ? todasTablas : [], vieja: ctx.vieja };           // OLT sin sucursal: antes se buscaba en toda la base
+    const pend = sucs.filter((s) => !ctx.tablas.has(s));
+    return { tablas: sucs.filter((s) => ctx.tablas.has(s)).map((s) => [s, ctx.tablas.get(s)]), vieja: ctx.vieja && pend.length ? pend : false };
+  });
+  let omitidas = 0;
+  const nuevas = (filas) => filas.map((f) => ({ ...f, _t: 1 }));        // marca las filas que vienen de tablas nuevas
 
-  const sinSerial = lista.filter((k) => !(k.snNorm && unico(mapas.serial_norm.get(k.snNorm), true)));
-  const claves = [];
-  const vistos = new Set();
-  const add = (col, v) => { const id = col + "|" + v; if (v && !vistos.has(id)) { vistos.add(id); claves.push([col, v]); buscados[col].add(v); } };
-  for (const k of sinSerial) {
-    [...k.contactC, ...k.cuentaName].forEach((c) => add("cuenta", c));
-    k.cedulas.forEach((c) => add("cedula_norm", c));
-    if (k.nombreC) add("nombre_norm", k.nombreC);
+  // ---- Fase 1: serial ----
+  const sPorTabla = new Map(), sViejos = new Set();
+  lista.forEach((k, i) => {
+    if (!k.snNorm) return;
+    dondeDe[i].tablas.forEach(([, t]) => { if (!sPorTabla.has(t)) sPorTabla.set(t, new Set()); sPorTabla.get(t).add(k.snNorm); });
+    if (dondeDe[i].vieja) sViejos.add(k.snNorm);
+  });
+  const st1 = [], tipo1 = [];
+  for (const [t, set] of sPorTabla) for (const parte of chunks([...set], 90)) { st1.push(db.prepare(`SELECT ${COLS} FROM ${t} c WHERE c.serial_norm IN (${parte.map(() => "?").join(",")})`).bind(...parte)); tipo1.push(1); }
+  for (const parte of chunks([...sViejos], 90)) { st1.push(db.prepare(`SELECT ${COLS} ${FROM} WHERE c.clave IN (${parte.map(() => "?").join(",")})${EXCL}`).bind(...parte)); tipo1.push(0); }
+  if (st1.length) contar(await db.batch(st1)).forEach((r, j) => meter("serial_norm", tipo1[j] ? nuevas(r.results) : r.results));
+
+  // ---- Fase 2: las que no cruzaron por serial ----
+  const sinSerial = lista.map((k, i) => [k, i]).filter(([k]) => !(k.snNorm && unico(mapas.serial_norm.get(k.snNorm), true)));
+  const porTabla = new Map();     // tabla -> { cuenta:Set, scan:{ cedula_norm:Set, nombre_norm:Set } }
+  const viejas = { cuenta: new Set(), cedula_norm: new Set(), nombre_norm: new Set() };
+  const add = (col, v, k, donde) => {
+    if (!v) return;
+    if (!k.alcance) k.alcance = { cuenta: { vieja: false, tablas: new Set() }, cedula_norm: { vieja: false, tablas: new Set() }, nombre_norm: { vieja: false, tablas: new Set() } };
+    const al = k.alcance[col];
+    for (const [suc, t] of donde.tablas) {
+      if (col !== "cuenta" && !opts.barrido) { omitidas++; continue; }      // cédula / nombre leen la tabla entera de la sucursal
+      if (!porTabla.has(t)) porTabla.set(t, { cuenta: new Set(), cedula_norm: new Set(), nombre_norm: new Set() });
+      porTabla.get(t)[col].add(v); al.tablas.add(suc); buscados[col].add(v);
+    }
+    if (donde.vieja) {
+      if (!opts.barrido) { omitidas++; return; }                           // la tabla vieja se barre entera: solo con permiso
+      viejas[col].add(v); al.vieja = al.vieja === true || donde.vieja === true ? true : new Set([...(al.vieja || []), ...donde.vieja]); buscados[col].add(v);
+    }
+  };
+  for (const [k, i] of sinSerial) {
+    [...k.contactC, ...k.cuentaName].forEach((c) => add("cuenta", c, k, dondeDe[i]));
+    k.cedulas.forEach((c) => add("cedula_norm", c, k, dondeDe[i]));
+    if (k.nombreC) add("nombre_norm", k.nombreC, k, dondeDe[i]);
   }
-  const stmts = [];
-  for (const parte of chunks(claves, 85)) {
+  const st2 = [], tipo2 = [];
+  for (const [t, cols] of porTabla) {
+    for (const parte of chunks([...cols.cuenta], 90)) { st2.push(db.prepare(`SELECT ${COLS} FROM ${t} c WHERE c.cuenta IN (${parte.map(() => "?").join(",")})`).bind(...parte)); tipo2.push(1); }
+    const scan = [...cols.cedula_norm].map((v) => ["cedula_norm", v]).concat([...cols.nombre_norm].map((v) => ["nombre_norm", v]));
+    for (const parte of chunks(scan, 85)) {
+      const por = { cedula_norm: [], nombre_norm: [] }; parte.forEach(([c, v]) => por[c].push(v));
+      const cond = Object.entries(por).filter(([, v]) => v.length).map(([c, v]) => `c.${c} IN (${v.map(() => "?").join(",")})`);
+      st2.push(db.prepare(`SELECT ${COLS} FROM ${t} c WHERE ${cond.join(" OR ")}`).bind(...Object.values(por).flat())); tipo2.push(1);
+    }
+  }
+  const clavesV = Object.entries(viejas).flatMap(([col, set]) => [...set].map((v) => [col, v]));
+  for (const parte of chunks(clavesV, 85)) {
     const por = { cuenta: [], cedula_norm: [], nombre_norm: [] };
     parte.forEach(([col, v]) => por[col].push(v));
     const cond = Object.entries(por).filter(([, v]) => v.length).map(([col, v]) => `c.${col} IN (${v.map(() => "?").join(",")})`);
-    stmts.push(db.prepare(`SELECT ${COLS} ${FROM} WHERE ${cond.join(" OR ")}`).bind(...Object.values(por).flat()));
+    st2.push(db.prepare(`SELECT ${COLS} ${FROM} WHERE (${cond.join(" OR ")})${EXCL}`).bind(...Object.values(por).flat())); tipo2.push(0);
   }
-  if (stmts.length) {
-    const res = await db.batch(stmts);
-    res.forEach((r) => { meter("cuenta", r.results); meter("cedula_norm", r.results); meter("nombre_norm", r.results); });
-  }
+  mapas.sin_barrido = omitidas > 0;
+  if (st2.length) contar(await db.batch(st2)).forEach((r, j) => { const filas = tipo2[j] ? nuevas(r.results) : r.results; meter("cuenta", filas); meter("cedula_norm", filas); meter("nombre_norm", filas); });
+  mapas.lecturas = leidas;
   return mapas;
 }
 
@@ -114,19 +164,26 @@ function unico(cands, recientes = false) {
   return null;
 }
 
+// Candidatos de una clave para ESTA ONU: si se buscó solo en algunas sucursales, solo valen los de esas sucursales
+const vale = (k, col, lista) => {
+  const al = k.alcance && k.alcance[col];
+  if (!lista) return [];
+  if (!al) return lista;
+  return lista.filter((f) => (f._t ? al.tablas.has(f.sucursal) : al.vieja === true || (al.vieja && al.vieja.has(f.sucursal))));
+};
 // Cascada para UNA ONU. Devuelve { cliente, metodo } o { cliente: null, metodo: null }.
 export function cruzarUna(k, mapas) {
   let f = k.snNorm ? unico(mapas.serial_norm.get(k.snNorm), true) : null;
   if (f) return { cliente: f, metodo: "serial" };
-  for (const c of k.contactC) { f = unico(mapas.cuenta.get(c)); if (f) return { cliente: f, metodo: "contact" }; }
-  for (const c of k.cuentaName) { f = unico(mapas.cuenta.get(c)); if (f) return { cliente: f, metodo: "cuenta_en_name" }; }
+  for (const c of k.contactC) { f = unico(vale(k, "cuenta", mapas.cuenta.get(c))); if (f) return { cliente: f, metodo: "contact" }; }
+  for (const c of k.cuentaName) { f = unico(vale(k, "cuenta", mapas.cuenta.get(c))); if (f) return { cliente: f, metodo: "cuenta_en_name" }; }
   if (k.cedulas.length) {
-    const encontrados = k.cedulas.flatMap((c) => mapas.cedula_norm.get(c) || []);
+    const encontrados = k.cedulas.flatMap((c) => vale(k, "cedula_norm", mapas.cedula_norm.get(c)));
     f = unico(encontrados);
     if (f) return { cliente: f, metodo: "cedula_en_name" };
   }
   if (k.nombreC) {
-    const cands = mapas.nombre_norm.get(k.nombreC) || [];
+    const cands = vale(k, "nombre_norm", mapas.nombre_norm.get(k.nombreC));
     // nombre exacto y ÚNICO en toda la base (no se desempata por contrato activo)
     if (cands.length === 1) return { cliente: cands[0], metodo: "nombre" };
   }

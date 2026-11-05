@@ -76,6 +76,8 @@ function cliNormSerial(v) {
   const n = String(cliSerialDesdeCientifico(v).texto).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   return /^\d+$/.test(n) ? n.replace(/^0+(?=\d)/, "") : n;
 }
+// Número de cuenta limpio (la llave de cada tabla de sucursal)
+function cliCuenta(f) { const c = String(f.cuenta ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").trim().slice(0, 40); return c || null; }
 function cliClave(f) { const c = String(f.cuenta ?? "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "").trim().slice(0, 40); return c ? (cliNormSerial(f.serial_onu) || "SIN-SN-" + c) : null; }
 // "15-03-2023" o "2023-03-15" -> "2023-03-15" (para comparar fechas de contrato como texto)
 function cliFechaContrato(v) { const s = String(v ?? "").trim(); const m = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/.exec(s); if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; const n = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return n ? n[0] : ""; }
@@ -203,7 +205,8 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
     try {
       const d = await apiGet("/clientes/uso-hoy");
       u.innerHTML = `Escrituras de D1 de hoy (todo lo que se sube): <strong>${formatearMiles(d.usado)} de ${formatearMiles(d.tope)}</strong> (quedan ${formatearMiles(d.quedan)}). Se reinicia a las 8:00 pm, hora de Caracas.` +
-        (d.detalle && d.detalle.length ? `<br>` + d.detalle.map((x) => `${x.nombre}: ${formatearMiles(x.filas)}`).join(" · ") : "");
+        (d.detalle && d.detalle.length ? `<br>` + d.detalle.map((x) => `${x.nombre}: ${formatearMiles(x.filas)}`).join(" · ") : "") +
+        (d.lecturas ? `<br>Lecturas de D1 de hoy: <strong>${formatearMiles(d.lecturas.usado)} de ${formatearMiles(d.lecturas.tope)}</strong>` + (d.lecturas.detalle.length ? " (" + d.lecturas.detalle.map((x) => `${x.nombre.replace("Lecturas: ", "")}: ${formatearMiles(x.filas)}`).join(" · ") + ")" : "") : "");
     } catch (e) { u.textContent = ""; }
   }
   async function cliCargarBases() {
@@ -218,6 +221,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
     } catch (err) { cont.innerHTML = `<p class="msg error">${esc(err.message)}</p>`; }
   }
   window.cliCargarBases = cliCargarBases;
+
 
   const NOMBRE_SEM = { verde: "VERDE", amarillo: "AMARILLO", naranja: "NARANJA", rojo: "ROJO", sin_base: "ROJO" };
   async function cliCargarFrescura() {
@@ -381,7 +385,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
         };
         await Promise.all(Array.from({ length: Math.min(CLI_PARALELO, lotes.length) }, trabajador));
         const completa = !tope && revisadas >= filas.length;
-        const cuerpo = { carga_id: cargaId, ...t, completa, claves: completa ? filas.map(cliClave) : undefined };
+        const cuerpo = { carga_id: cargaId, ...t, completa, claves: completa ? filas.map(cliCuenta).filter(Boolean) : undefined, claves_tipo: "cuenta" };
         let fin = await apiSend("/clientes/carga/finalizar", "POST", cuerpo);
         if (fin.requiere_confirmacion) {
           if (!confirm(`${sucursal.toUpperCase()}: este archivo deja fuera a ${formatearMiles(fin.bajas)} de los ${formatearMiles(fin.total)} clientes que hay hoy en la base (más del 30 %). ¿Es el archivo correcto y completo de la sucursal? Si aceptas, esos clientes se darán de baja.`)) {

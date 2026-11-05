@@ -2,6 +2,7 @@
 // "Clientes conocidos de una OLT" = toda ONU que apareció en un archivo de SmartOLT (en cualquier estado) o en un ticket y cruzó con Grafana: tabla clientes_olt.
 // Grafana no trae la OLT/tarjeta/puerto: esa ubicación solo la da SmartOLT, por eso el reporte crece con cada archivo de SmartOLT que se sube.
 import { mapaEquivalencias, canon, numDe, variantes } from "./asociacion.js";
+import { TABLA_OK } from "./sucursal.js";
 
 const MAX_CLIENTES = 20000;
 const trozos = (a, n) => { const r = []; for (let i = 0; i < a.length; i += n) r.push(a.slice(i, i + n)); return r; };
@@ -65,7 +66,7 @@ export async function nivelClientes(db, canonOlts) {
 
   const [mapa, veces1, veces2] = await db.batch([
     db.prepare(
-      `SELECT clave, sn_norm, cuenta, olt, tarjeta, puerto, visto, nombre, telefono_casa, telefono_oficina, correo, sector, direccion, municipio, parroquia, estado_contrato
+      `SELECT clave, sn_norm, sucursal, cuenta, olt, tarjeta, puerto, visto, nombre, telefono_casa, telefono_oficina, correo, sector, direccion, municipio, parroquia, estado_contrato
          FROM clientes_olt WHERE olt IN (${ph})`).bind(...lista),
     db.prepare(
       `SELECT DISTINCT COALESCE(o.sn_norm, o.cuenta) AS k, ta.ticket_id
@@ -81,21 +82,32 @@ export async function nivelClientes(db, canonOlts) {
   const clientes = new Map();
   for (const r of mapa.results) {
     const k = r.sn_norm || r.cuenta;
-    clientes.set(k, { k, sn: r.sn_norm || "", cuenta: r.cuenta, olt: r.olt, tarjeta: r.tarjeta, puerto: r.puerto, fecha: r.visto || "",
+    clientes.set(k, { k, sn: r.sn_norm || "", sucursal: r.sucursal || "", cuenta: r.cuenta, olt: r.olt, tarjeta: r.tarjeta, puerto: r.puerto, fecha: r.visto || "",
       nombre: r.nombre, tel_casa: r.telefono_casa || "", tel_oficina: r.telefono_oficina || "", correo: r.correo || "", estado: "", ciudad: r.municipio || "", localidad: r.parroquia || "",
       sector: r.sector || "", direccion: r.direccion || "", estado_contrato: r.estado_contrato || "" });
   }
-  // Datos vigentes de Grafana (estado, ciudad, localidad, correo, teléfonos, dirección) por serial
-  const seriales = [...clientes.values()].map((c) => c.sn).filter(Boolean);
-  const lecturas = trozos(seriales, 90).map((p) => db.prepare(
-    `SELECT clave, cuenta, nombre, telefono_casa, telefono_oficina, correo, estado_geo, municipio, parroquia, sector, direccion, estado_contrato, sucursal
-       FROM clientes_base WHERE clave IN (${p.map(() => "?").join(",")})`).bind(...p));
-  const grafana = new Map();
-  if (lecturas.length) (await db.batch(lecturas)).forEach((r) => r.results.forEach((g) => grafana.set(g.clave, g)));
+  // Datos vigentes de Grafana (estado, ciudad, localidad, correo, teléfonos, dirección): por cuenta en la tabla de su sucursal; por serial en la tabla vieja
+  const tablas = new Map();
+  try { (await db.prepare("SELECT sucursal, tabla FROM sucursal_tablas WHERE listo = 1").all()).results.forEach((r) => { if (TABLA_OK.test(r.tabla)) tablas.set(r.sucursal, r.tabla); }); } catch (e) { /* sin migración 047 */ }
+  const COLS_G = "cuenta, nombre, telefono_casa, telefono_oficina, correo, estado_geo, municipio, parroquia, sector, direccion, estado_contrato, sucursal";
+  const grafana = new Map();     // sn || cuenta -> fila
+  const porTabla = new Map(), viejos = [];
+  for (const c of clientes.values()) {
+    const t = tablas.get(c.sucursal);
+    if (t && c.cuenta) { if (!porTabla.has(t)) porTabla.set(t, []); porTabla.get(t).push(c); } else if (c.sn) viejos.push(c.sn);
+  }
+  const lecturas = [];
+  for (const [t, cs] of porTabla) for (const p of trozos(cs.map((c) => c.cuenta), 90)) lecturas.push([t, db.prepare(`SELECT ${COLS_G} FROM ${t} WHERE cuenta IN (${p.map(() => "?").join(",")})`).bind(...p)]);
+  const lecV = trozos(viejos, 90).map((p) => db.prepare(
+    `SELECT clave, ${COLS_G} FROM clientes_base WHERE clave IN (${p.map(() => "?").join(",")})`).bind(...p));
+  const porCuentaT = new Map();
+  if (lecturas.length) (await db.batch(lecturas.map((x) => x[1]))).forEach((r, i) => r.results.forEach((g) => porCuentaT.set(lecturas[i][0] + "|" + g.cuenta, g)));
+  if (lecV.length) { try { (await db.batch(lecV)).forEach((r) => r.results.forEach((g) => grafana.set(g.clave, g))); } catch (e) { /* tabla vieja ya eliminada */ } }
 
   const salida = [];
   for (const c of clientes.values()) {
-    const g = grafana.get(c.sn);
+    const tb = tablas.get(c.sucursal);
+    const g = (tb && porCuentaT.get(tb + "|" + c.cuenta)) || grafana.get(c.sn);
     if (g) Object.assign(c, {
       cuenta: g.cuenta || c.cuenta, nombre: g.nombre || c.nombre, tel_casa: g.telefono_casa || c.tel_casa, tel_oficina: g.telefono_oficina || c.tel_oficina, correo: g.correo || c.correo,
       estado: g.estado_geo || c.estado, ciudad: g.municipio || c.ciudad, localidad: g.parroquia || c.localidad, sector: g.sector || c.sector,

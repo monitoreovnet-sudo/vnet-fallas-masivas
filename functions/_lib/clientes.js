@@ -57,18 +57,13 @@ export function fechaISO(v) {
   return m ? `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}` : s || null;
 }
 
-// Convierte una fila del navegador en la fila de clientes_base (la normalización la hace el servidor).
-// Llave única de la base acumulativa: el serial de la ONU (o SIN-SN-<cuenta> si la cuenta no tiene serial).
-export function claveCliente(r) {
-  const cuenta = limpio(r.cuenta, 40);
-  if (!cuenta) return null;
-  return normSerial(r.serial_onu) || ("SIN-SN-" + cuenta);
-}
+// Convierte una fila del navegador en la fila de la tabla de su sucursal (la normalización la hace el servidor).
+// Llave de cada tabla: el número de cuenta (contrato). Orden de los valores = COLUMNAS_TABLA de sucursal.js.
 export function filaCliente(r, cargaId, sucursal) {
   const cuenta = limpio(r.cuenta, 40);
   if (!cuenta) return null;
   return [
-    claveCliente(r), cargaId, cuenta, limpio(r.estado_contrato, 30), fechaISO(r.fecha_creacion), sucursal,
+    cuenta, cargaId, limpio(r.estado_contrato, 30), fechaISO(r.fecha_creacion), sucursal,
     limpio(r.cedula, 30), normCedula(r.cedula), limpio(r.tipo_cliente, 60),
     limpio(r.nombre), normNombre(r.nombre), limpio(r.genero, 30),
     limpio(r.telefono_casa, 60), limpio(r.telefono_oficina, 60), limpio(r.correo, 200), limpio(r.correo_iptv, 200),
@@ -77,10 +72,12 @@ export function filaCliente(r, cargaId, sucursal) {
     limpio(r.sector, 150), normSector(r.sector) || null, limpio(r.plan, 150),
   ];
 }
-export const SQL_INSERT_CLIENTE =
-  `INSERT OR REPLACE INTO clientes_base (clave, carga_id, cuenta, estado_contrato, fecha_creacion, sucursal, cedula, cedula_norm, tipo_cliente,
+// Cuenta tal como se guarda (para comparar con la lista de cuentas del archivo al dar de baja)
+export const cuentaCliente = (c) => limpio(c, 40);
+export const sqlInsertCliente = (tabla) =>
+  `INSERT OR REPLACE INTO ${tabla} (cuenta, carga_id, estado_contrato, fecha_creacion, sucursal, cedula, cedula_norm, tipo_cliente,
      nombre, nombre_norm, genero, telefono_casa, telefono_oficina, correo, correo_iptv, serial_onu, serial_norm,
      estado_geo, direccion, municipio, parroquia, sector, sector_norm, plan)
-   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
 
 export const FECHA_BASE_OK = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/;

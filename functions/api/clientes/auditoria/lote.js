@@ -1,7 +1,8 @@
 import { json, badRequest, requireRole } from "../../../_lib/helpers.js";
 import { ROLES_CLIENTES, normSerial } from "../../../_lib/clientes.js";
 import { claves, buscarClientes, cruzarUna, clasificar, normFechaCambio, basesDesactualizadas } from "../../../_lib/cruce.js";
-import { registrarUso, escrituras, usadoHoy, TOPE_DIA } from "../../../_lib/uso-d1.js";
+import { contextoSucursales } from "../../../_lib/sucursal.js";
+import { registrarUso, escrituras, usadoHoy, lecturasHoy, TOPE_DIA, LECT_SUAVE, LECT_DURO } from "../../../_lib/uso-d1.js";
 import { registrarMapa } from "../../../_lib/mapa-clientes.js";
 
 const MAX_LOTE = 100;
@@ -28,7 +29,9 @@ export async function onRequestPost({ request, env }) {
 
   const { mapa, alguna } = await basesDesactualizadas(env.DB, aud);
   const lista = onus.map(claves);
-  const mapas = await buscarClientes(env.DB, lista);
+  const leidasHoy = await lecturasHoy(env.DB);
+  if (leidasHoy >= LECT_DURO) return json({ error: "Se alcanzó el tope diario de lecturas de D1. Continúe después de las 8:00 pm (hora de Caracas)." }, 429);
+  const mapas = await buscarClientes(env.DB, lista, { barrido: leidasHoy < LECT_SUAVE, sucursales: await contextoSucursales(env.DB), olts: onus.map((o) => t(o.olt, 80) || aud.olt_nombre) });
   const cruces = lista.map((k) => {
     const { cliente: c, metodo } = cruzarUna(k, mapas);
     return { c, metodo, desact: c ? (mapa.get(c.carga_id) ? 1 : 0) : (alguna ? 1 : 0) };
@@ -49,6 +52,7 @@ export async function onRequestPost({ request, env }) {
     sn_norm: normSerial(o.sn) || null, cliente: cruces[i].c, olt: (t(o.olt, 80) || aud.olt_nombre).toUpperCase(), tarjeta: ent(o.board), puerto: ent(o.port),
     onu_num: t(o.onu, 20), status: t(o.status, 30), visto: aud.fecha_auditoria_local })));
   await registrarUso(env.DB, "auditoria", esc1);
+  await registrarUso(env.DB, "lect_auditoria", mapas.lecturas);
   await registrarUso(env.DB, "mapa", mp.escrituras);
-  return json({ guardadas: stmts.length });
+  return json({ guardadas: stmts.length, solo_serial: !!mapas.sin_barrido });
 }

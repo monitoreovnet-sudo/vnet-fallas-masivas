@@ -5,6 +5,7 @@ import { normNombre } from "./clientes.js";
 import { buscarClientes, cruzarUna, leerParametro } from "./cruce.js";
 import { nowIso } from "./helpers.js";
 import { registrarUso, escrituras } from "./uso-d1.js";
+import { contextoSucursales } from "./sucursal.js";
 
 const sinCeros = (s) => String(s).replace(/^0+(?=\d)/, "");
 export const TANDA_CRUCE = 100;
@@ -34,14 +35,15 @@ export async function resumenCruceTicket(db, ticketId) {
 export async function cruzarTandaTicket(db, ticket, desdeId) {
   if (["RESUELTO", "CERRADO"].includes(ticket.estado_ticket)) return { siguiente: null, cruzadas: 0, fuera_ventana: 0, omitido: "El ticket ya está " + ticket.estado_ticket + ".", ...(await resumenCruceTicket(db, ticket.id)) };
   const onus = (await db.prepare(
-    "SELECT id, serial, cuenta, cedula, nombre, creado_en FROM ticket_onus WHERE ticket_id = ? AND id > ? AND cli_cuenta IS NULL ORDER BY id LIMIT ?")
+    "SELECT id, olt, serial, cuenta, cedula, nombre, creado_en FROM ticket_onus WHERE ticket_id = ? AND id > ? AND cli_cuenta IS NULL ORDER BY id LIMIT ?")
     .bind(ticket.id, desdeId, TANDA_CRUCE).all()).results;
   if (!onus.length) return { siguiente: null, cruzadas: 0, fuera_ventana: 0, ...(await resumenCruceTicket(db, ticket.id)) };
 
   const dias = await leerParametro(db, "ventana_ticket_grafana_dias", 2);
   const vigentes = new Map((await db.prepare("SELECT sucursal, fecha_base FROM cargas_base WHERE estado = 'vigente'").all()).results.map((b) => [b.sucursal, b.fecha_base]));
   const lista = onus.map(clavesDeOnuTicket);
-  const mapas = await buscarClientes(db, lista);
+  const mapas = await buscarClientes(db, lista, { barrido: true, sucursales: await contextoSucursales(db), olts: onus.map((o) => o.olt) });
+  await registrarUso(db, "lect_ticket", mapas.lecturas);
   const ahora = nowIso();
   const stmts = [];
   let fuera = 0;
