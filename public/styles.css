@@ -779,6 +779,8 @@ input:focus, select:focus, textarea:focus {
 /* ---------- Filtros de los informes: lista desplegable con casillas (selección múltiple) ---------- */
 .db-filtro-item { position: relative; }
 .db-filtro-item select.ms-nativo { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; padding: 0; border: 0; left: 0; bottom: 0; }
+.filtros-grid .field select.ms-nativo { position: absolute; opacity: 0; pointer-events: none; width: 1px; height: 1px; padding: 0; border: 0; left: 0; bottom: 0; }
+.filtros-grid .field { position: relative; }
 .ms { position: relative; min-width: 0; }
 .ms-btn { width: 100%; text-align: left; font-family: var(--db-font); font-size: 14px; color: var(--db-gris); background: var(--db-white);
   border: 1px solid #d0d0d0; border-radius: 6px; padding: 8px 30px 8px 10px; cursor: pointer; min-width: 0;

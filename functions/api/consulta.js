@@ -74,20 +74,31 @@ export async function onRequestGet({ request, env }) {
   `;
   const binds = [];
 
-  if (p("ticket_cmr")) { sql += " AND t.ticket_cmr LIKE ?"; binds.push(`%${p("ticket_cmr")}%`); }
-  if (p("tickets_vinculados")) { sql += " AND t.tickets_vinculados LIKE ?"; binds.push(`%${p("tickets_vinculados")}%`); }
-  if (p("categoria_afectacion")) { sql += " AND t.categoria_afectacion = ?"; binds.push(p("categoria_afectacion")); }
-  if (p("afectacion")) { sql += " AND t.afectacion = ?"; binds.push(p("afectacion")); }
-  if (p("unidad_resolutoria")) { sql += " AND t.unidad_resolutoria = ?"; binds.push(p("unidad_resolutoria")); }
-  if (p("oficina_id")) { sql += " AND p.oficina_id = ?"; binds.push(p("oficina_id")); }
-  if (p("region")) { sql += " AND o.estado = ?"; binds.push(p("region")); }
-  if (p("olt")) { sql += " AND p.olt = ?"; binds.push(p("olt")); }
+  // Cada filtro admite varios valores (el mismo parámetro repetido): dentro de un filtro es "o", entre filtros es "y".
+  const varios = (nombre) => [...new Set(url.searchParams.getAll(nombre).map((x) => x.trim()).filter(Boolean))].slice(0, 60);
+  const enLista = (col, nombre) => { const v = varios(nombre); if (!v.length) return; sql += ` AND ${col} IN (${v.map(() => "?").join(",")})`; binds.push(...v); };
+  // Números de ticket: uno o varios separados por coma, punto y coma o espacio (cada uno se busca por contenido)
+  const porContenido = (col, nombre) => {
+    const v = [...new Set(p(nombre).split(/[\s,;]+/).filter(Boolean))].slice(0, 40); if (!v.length) return;
+    sql += ` AND (${v.map(() => `${col} LIKE ?`).join(" OR ")})`; binds.push(...v.map((x) => `%${x}%`));
+  };
+  porContenido("t.ticket_cmr", "ticket_cmr");
+  porContenido("t.tickets_vinculados", "tickets_vinculados");
+  enLista("t.categoria_afectacion", "categoria_afectacion");
+  enLista("t.afectacion", "afectacion");
+  enLista("t.unidad_resolutoria", "unidad_resolutoria");
+  enLista("p.oficina_id", "oficina_id");
+  enLista("o.estado", "region");
+  enLista("p.olt", "olt");
 
-  const estadoTicket = p("estado_ticket");
-  if (estadoTicket === "__ABIERTOS__") {
-    sql += " AND t.estado_ticket <> 'CERRADO'";
-  } else if (estadoTicket) {
-    sql += " AND t.estado_ticket = ?"; binds.push(estadoTicket);
+  // Estado del ticket: "__ABIERTOS__" = distinto de CERRADO; puede ir junto con otros estados concretos
+  const estados = varios("estado_ticket");
+  if (estados.length) {
+    const concretos = estados.filter((x) => x !== "__ABIERTOS__");
+    const conds = [];
+    if (estados.includes("__ABIERTOS__")) conds.push("t.estado_ticket <> 'CERRADO'");
+    if (concretos.length) { conds.push(`t.estado_ticket IN (${concretos.map(() => "?").join(",")})`); binds.push(...concretos); }
+    sql += ` AND (${conds.join(" OR ")})`;
   }
 
   sql += " ORDER BY t.ticket_cmr DESC, p.olt, p.tarjeta, p.puerto";
@@ -147,15 +158,15 @@ export async function onRequestGet({ request, env }) {
   });
 
   // Filtros que dependen de campos calculados, aplicados en memoria.
-  const filtroNum = (v) => (v === "" ? null : Number(v));
-  const diaAp = filtroNum(p("dia_apertura")), mesAp = filtroNum(p("mes_apertura")), anioAp = filtroNum(p("anio_apertura"));
-  const diaCi = filtroNum(p("dia_cierre")), mesCi = filtroNum(p("mes_cierre")), anioCi = filtroNum(p("anio_cierre"));
-  const grupoH = p("grupo_horario");
-  const sem = p("semaforo");
+  const nums = (nombre) => { const v = varios(nombre).map(Number).filter(Number.isFinite); return v.length ? v : null; };
+  const diaAp = nums("dia_apertura"), mesAp = nums("mes_apertura"), anioAp = nums("anio_apertura");
+  const diaCi = nums("dia_cierre"), mesCi = nums("mes_cierre"), anioCi = nums("anio_cierre");
+  const grupoH = varios("grupo_horario");
+  const sem = varios("semaforo");
 
   // Los filtros de grupo horario y semáforo no dependen de las fechas: se aplican antes para calcular las fechas disponibles.
-  if (grupoH) filas = filas.filter((f) => f.grupo_horario === grupoH);
-  if (sem) filas = filas.filter((f) => f.semaforo === sem);
+  if (grupoH.length) filas = filas.filter((f) => grupoH.includes(f.grupo_horario));
+  if (sem.length) filas = filas.filter((f) => sem.includes(f.semaforo));
 
   // Fechas realmente presentes en los registros que cumplen TODOS los demás filtros (sin contar Día/Mes/Año).
   // El navegador arma con esto los selectores de Año, Mes y Día en cascada (solo muestra valores que existen).
@@ -165,12 +176,12 @@ export async function onRequestGet({ request, env }) {
   const aTriples = (set) => [...set].map((x) => x.split("-").map(Number));
   const fechas = { apertura: aTriples(setAp), cierre: aTriples(setCi) };
 
-  if (diaAp !== null) filas = filas.filter((f) => f.dia_apertura === diaAp);
-  if (mesAp !== null) filas = filas.filter((f) => f.mes_apertura === mesAp);
-  if (anioAp !== null) filas = filas.filter((f) => f.anio_apertura === anioAp);
-  if (diaCi !== null) filas = filas.filter((f) => f.dia_cierre === diaCi);
-  if (mesCi !== null) filas = filas.filter((f) => f.mes_cierre === mesCi);
-  if (anioCi !== null) filas = filas.filter((f) => f.anio_cierre === anioCi);
+  if (diaAp) filas = filas.filter((f) => diaAp.includes(f.dia_apertura));
+  if (mesAp) filas = filas.filter((f) => mesAp.includes(f.mes_apertura));
+  if (anioAp) filas = filas.filter((f) => anioAp.includes(f.anio_apertura));
+  if (diaCi) filas = filas.filter((f) => diaCi.includes(f.dia_cierre));
+  if (mesCi) filas = filas.filter((f) => mesCi.includes(f.mes_cierre));
+  if (anioCi) filas = filas.filter((f) => anioCi.includes(f.anio_cierre));
 
   // ?limite=N → solo las primeras N filas (la vista previa del Generador de reportes no necesita más)
   const limite = Number(p("limite"));

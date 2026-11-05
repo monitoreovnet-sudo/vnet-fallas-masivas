@@ -2239,24 +2239,66 @@ const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto"
 function llenarSelectSimple(id, opciones, placeholder) {
   const el = document.getElementById(id);
   el.innerHTML = `<option value="">${placeholder}</option>` + opciones.map((o) => `<option value="${o.value}">${o.label}</option>`).join("");
+  if (CL_MS.includes(id)) clMsRefrescar(id);
+}
+
+// ---- Consultar / Log: TODOS los filtros de lista admiten selección múltiple (casillas) ----
+const CL_MS = ["cl_dia_apertura", "cl_mes_apertura", "cl_anio_apertura", "cl_dia_cierre", "cl_mes_cierre", "cl_anio_cierre",
+  "cl_categoria", "cl_afectacion", "cl_grupo_horario", "cl_semaforo", "cl_estado", "cl_unidad", "cl_region", "cl_oficina", "cl_olt"];
+const clSel = {};   // id del filtro -> Set de valores marcados (texto)
+const clVals = (id) => [...(clSel[id] || [])];
+function clMsRefrescar(id) {
+  const nativo = document.getElementById(id);
+  if (!nativo) return;
+  if (!clSel[id]) clSel[id] = new Set();
+  let cont = document.getElementById(`${id}_ms`);
+  if (!cont) {
+    nativo.classList.add("ms-nativo"); nativo.tabIndex = -1;
+    cont = document.createElement("div"); cont.className = "ms"; cont.id = `${id}_ms`;
+    cont.innerHTML = `<button type="button" class="ms-btn" aria-haspopup="listbox"><span class="ms-txt"></span></button>` +
+      `<div class="ms-panel hidden"><div class="ms-lista"></div><div class="ms-pie"><button type="button" class="ms-limpiar">Quitar selección</button></div></div>`;
+    nativo.insertAdjacentElement("afterend", cont);
+    const panel = cont.querySelector(".ms-panel");
+    cont.querySelector(".ms-btn").addEventListener("click", () => {
+      const abrir = panel.classList.contains("hidden");
+      document.querySelectorAll(".ms-panel").forEach((x) => x.classList.add("hidden"));
+      if (abrir) panel.classList.remove("hidden");
+    });
+    cont.querySelector(".ms-limpiar").addEventListener("click", () => { clSel[id].clear(); clMsRefrescar(id); nativo.dispatchEvent(new Event("change")); });
+    cont.querySelector(".ms-lista").addEventListener("change", (e) => {
+      const cb = e.target.closest("input[type=checkbox]"); if (!cb) return;
+      if (cb.checked) clSel[id].add(cb.value); else clSel[id].delete(cb.value);
+      clMsRefrescar(id); nativo.dispatchEvent(new Event("change"));
+    });
+  }
+  const placeholder = nativo.options[0] ? nativo.options[0].textContent : "Todos";
+  const ops = [...nativo.options].slice(1).map((o) => [o.value, o.textContent]);
+  const validos = new Set(ops.map(([v]) => v));
+  [...clSel[id]].forEach((v) => { if (!validos.has(v)) clSel[id].delete(v); });   // lo marcado que ya no existe se quita
+  const set = clSel[id], lista = cont.querySelector(".ms-lista"), scroll = lista.scrollTop;
+  lista.innerHTML = ops.length
+    ? ops.map(([v, l]) => `<label class="ms-op"><input type="checkbox" value="${escHtml(v)}" ${set.has(v) ? "checked" : ""} /><span>${escHtml(l)}</span></label>`).join("")
+    : `<div class="ms-vacio">Sin opciones</div>`;
+  lista.scrollTop = scroll;
+  const etiquetas = ops.filter(([v]) => set.has(v)).map(([, l]) => l);
+  cont.querySelector(".ms-txt").textContent = !set.size ? placeholder : etiquetas.length === 1 ? etiquetas[0] : `${set.size} seleccionados`;
+  cont.querySelector(".ms-btn").classList.toggle("ms-activo", set.size > 0);
+  cont.querySelector(".ms-btn").title = etiquetas.join(", ");
 }
 
 function clEscalera() {
-  const region = document.getElementById("cl_region").value;
-  const selOfi = document.getElementById("cl_oficina"), selOlt = document.getElementById("cl_olt");
-  const ofiPrev = selOfi.value, oltPrev = selOlt.value;
-  const ofis = LOOKUPS.oficinas.filter((o) => !region || o.estado === region);
-  llenarSelectSimple("cl_oficina", ofis.map((o) => ({ value: o.id, label: o.nombre })), "Todas");
-  selOfi.value = ofis.some((o) => String(o.id) === ofiPrev) ? ofiPrev : "";
+  const regs = new Set(clVals("cl_region"));
+  const ofis = LOOKUPS.oficinas.filter((o) => !regs.size || regs.has(o.estado));
+  llenarSelectSimple("cl_oficina", ofis.map((o) => ({ value: o.id, label: o.nombre })), "Todas");   // quita las oficinas marcadas que ya no corresponden
+  const ofiSel = new Set(clVals("cl_oficina"));
   const idsOfi = new Set(ofis.map((o) => String(o.id)));
   const mapa = LOOKUPS.olt_oficina || [];
   let olts;
-  if (selOfi.value) olts = mapa.filter((m) => String(m.oficina_id) === selOfi.value).map((m) => m.olt);
-  else if (region) olts = mapa.filter((m) => idsOfi.has(String(m.oficina_id))).map((m) => m.olt);
+  if (ofiSel.size) olts = mapa.filter((m) => ofiSel.has(String(m.oficina_id))).map((m) => m.olt);
+  else if (regs.size) olts = mapa.filter((m) => idsOfi.has(String(m.oficina_id))).map((m) => m.olt);
   else olts = [...LOOKUPS.olts.map((o) => o.codigo), ...(LOOKUPS.olts_usados || [])];   // catálogo vigente + los que ya aparecen en tickets (históricos)
   olts = [...new Set(olts)].sort((a, b) => a.localeCompare(b));
   llenarSelectSimple("cl_olt", olts.map((c) => ({ value: c, label: c })), "Todos");
-  selOlt.value = olts.includes(oltPrev) ? oltPrev : "";
 }
 function initFiltrosConsulta() {
   llenarSelectSimple("cl_dia_apertura", [], "Día");
@@ -2281,17 +2323,21 @@ function initFiltrosConsulta() {
   document.getElementById("cl_oficina").addEventListener("change", clEscalera);
 
   const estadoEl = document.getElementById("cl_estado");
-  estadoEl.innerHTML = `<option value="">Todos</option><option value="__ABIERTOS__" selected>Distinto de Cerrado</option>` +
+  estadoEl.innerHTML = `<option value="">Todos</option><option value="__ABIERTOS__">Distinto de Cerrado</option>` +
     LOOKUPS.estados_ticket.map((e)=>`<option value="${e.nombre}">${e.nombre}</option>`).join("");
+  clSel.cl_estado = new Set(["__ABIERTOS__"]);   // por defecto: distinto de Cerrado
+  clMsRefrescar("cl_estado");
 }
 
 // FECHAS-PURE-START
 // triples = [[año, mes, día], ...] con las fechas que existen en los registros; sel = lo que el usuario ya eligió.
 // Cada selector ofrece solo los valores que existen combinados con lo elegido en los otros dos (cascada completa).
 function opcionesFechaEnCascada(triples, sel) {
-  const ok = (t, omitir) => (omitir === "anio" || !sel.anio || t[0] === sel.anio)
-    && (omitir === "mes" || !sel.mes || t[1] === sel.mes)
-    && (omitir === "dia" || !sel.dia || t[2] === sel.dia);
+  const A = (x) => (Array.isArray(x) ? x : x ? [x] : []);   // acepta uno o varios valores elegidos
+  const sa = A(sel.anio), sm = A(sel.mes), sd = A(sel.dia);
+  const ok = (t, omitir) => (omitir === "anio" || !sa.length || sa.includes(t[0]))
+    && (omitir === "mes" || !sm.length || sm.includes(t[1]))
+    && (omitir === "dia" || !sd.length || sd.includes(t[2]));
   const unicos = (idx, omitir) => [...new Set(triples.filter((t) => ok(t, omitir)).map((t) => t[idx]))].sort((a, b) => a - b);
   return { anios: unicos(0, "anio"), meses: unicos(1, "mes"), dias: unicos(2, "dia") };
 }
@@ -2299,30 +2345,26 @@ function opcionesFechaEnCascada(triples, sel) {
 let clFechas = { apertura: [], cierre: [] };   // fechas existentes que devolvió la última consulta
 
 function clActualizarFechas(eje) {
-  const el = (parte) => document.getElementById(`cl_${parte}_${eje}`);
   const triples = clFechas[eje] || [];
-  const leer = () => ({ anio: Number(el("anio").value) || 0, mes: Number(el("mes").value) || 0, dia: Number(el("dia").value) || 0 });
-  let sel = leer();
-  let o = opcionesFechaEnCascada(triples, sel);
-  // si lo elegido ya no existe junto con lo demás (p. ej. cambió el año y ese mes no tiene datos), se limpia
-  for (let i = 0; i < 3; i++) {
-    let cambio = false;
-    if (sel.anio && !o.anios.includes(sel.anio)) { sel.anio = 0; cambio = true; }
-    if (sel.mes && !o.meses.includes(sel.mes)) { sel.mes = 0; cambio = true; }
-    if (sel.dia && !o.dias.includes(sel.dia)) { sel.dia = 0; cambio = true; }
-    if (!cambio) break;
-    o = opcionesFechaEnCascada(triples, sel);
-  }
-  llenarSelectSimple(`cl_anio_${eje}`, o.anios.map((a) => ({ value: a, label: a })), "Año");
-  llenarSelectSimple(`cl_mes_${eje}`, o.meses.map((m) => ({ value: m, label: MESES[m - 1] })), "Mes");
-  llenarSelectSimple(`cl_dia_${eje}`, o.dias.map((d) => ({ value: d, label: d })), "Día");
-  el("anio").value = sel.anio || ""; el("mes").value = sel.mes || ""; el("dia").value = sel.dia || "";
+  const leer = (parte) => clVals(`cl_${parte}_${eje}`).map(Number).filter(Boolean);
+  const todo = opcionesFechaEnCascada(triples, {});
+  // se quita solo lo marcado que ya no existe en los registros; lo demás se conserva aunque otra elección lo deje sin datos
+  const sel = { anio: leer("anio").filter((x) => todo.anios.includes(x)), mes: leer("mes").filter((x) => todo.meses.includes(x)), dia: leer("dia").filter((x) => todo.dias.includes(x)) };
+  const o = opcionesFechaEnCascada(triples, sel);
+  const unir = (a, b) => [...new Set([...a, ...b])].sort((x, y) => x - y);   // opciones en cascada + lo ya marcado (para poder desmarcarlo)
+  clSel[`cl_anio_${eje}`] = new Set(sel.anio.map(String)); clSel[`cl_mes_${eje}`] = new Set(sel.mes.map(String)); clSel[`cl_dia_${eje}`] = new Set(sel.dia.map(String));
+  llenarSelectSimple(`cl_anio_${eje}`, unir(o.anios, sel.anio).map((a) => ({ value: a, label: a })), "Año");
+  llenarSelectSimple(`cl_mes_${eje}`, unir(o.meses, sel.mes).map((m) => ({ value: m, label: MESES[m - 1] })), "Mes");
+  llenarSelectSimple(`cl_dia_${eje}`, unir(o.dias, sel.dia).map((d) => ({ value: d, label: d })), "Día");
 }
 
 function construirQueryConsulta() {
   const params = new URLSearchParams();
+  // Los dos números de ticket aceptan varios, separados por coma o espacio
+  for (const [param, id] of [["ticket_cmr", "cl_ticket_cmr"], ["tickets_vinculados", "cl_tickets_vinculados"]]) {
+    const v = document.getElementById(id).value.trim(); if (v) params.set(param, v);
+  }
   const campos = {
-    ticket_cmr: "cl_ticket_cmr", tickets_vinculados: "cl_tickets_vinculados",
     dia_apertura: "cl_dia_apertura", mes_apertura: "cl_mes_apertura", anio_apertura: "cl_anio_apertura",
     dia_cierre: "cl_dia_cierre", mes_cierre: "cl_mes_cierre", anio_cierre: "cl_anio_cierre",
     categoria_afectacion: "cl_categoria", afectacion: "cl_afectacion",
@@ -2330,10 +2372,7 @@ function construirQueryConsulta() {
     estado_ticket: "cl_estado", unidad_resolutoria: "cl_unidad",
     region: "cl_region", oficina_id: "cl_oficina", olt: "cl_olt",
   };
-  for (const [param, id] of Object.entries(campos)) {
-    const v = document.getElementById(id).value;
-    if (v) params.set(param, v);
-  }
+  for (const [param, id] of Object.entries(campos)) clVals(id).forEach((v) => params.append(param, v));
   return params.toString();
 }
 
