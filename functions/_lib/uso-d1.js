@@ -8,7 +8,7 @@ export const TOPE_REAL = 100000;
 export const TOPE_LECT = 5000000, LECT_SUAVE = 3500000, LECT_DURO = 4700000;
 
 export const ORIGENES = {
-  grafana: "Base de clientes (Grafana)", auditoria: "Archivos de SmartOLT (auditoría)", mapa: "Mapa de clientes (Informe 2)",
+  grafana: "Base de clientes (Grafana)", cola_noche: "Cola nocturna de Grafana (aplicada)", cola_subida: "Cola de Grafana (guardar trozos)", auditoria: "Archivos de SmartOLT (auditoría)", mapa: "Mapa de clientes (Informe 2)",
   ticket_onus: "ONUs de tickets", cruce_ticket: "Cruce de ONUs de tickets", indices_carga: "Índices en la carga de Grafana", indices: "Creación de índices", recruce: "Recruce de auditorías",
   lect_auditoria: "Lecturas: archivos de SmartOLT", lect_mapa: "Lecturas: mapa de clientes", lect_ticket: "Lecturas: cruce de tickets", lect_recruce: "Lecturas: recruce", lect_indices: "Lecturas: creación de índices",
 };
@@ -35,7 +35,7 @@ export async function registrarUso(db, origen, filas) {
 
 export async function detalleHoy(db) {
   const g = await db.prepare(
-    `SELECT COALESCE(SUM(COALESCE(nuevas, 0) + COALESCE(cambiadas, 0) + COALESCE(bajas, 0)), 0) AS n FROM cargas_base WHERE date(fecha) = date('now')`).first();
+    `SELECT COALESCE(SUM(COALESCE(nuevas, 0) + COALESCE(cambiadas, 0) + COALESCE(bajas, 0)), 0) AS n FROM cargas_base WHERE date(fecha) = date('now') AND COALESCE(en_cola, 0) = 0`).first();
   const detalle = [{ origen: "grafana", nombre: ORIGENES.grafana, filas: Number((g && g.n) || 0) }];
   try {
     (await db.prepare("SELECT origen, filas FROM uso_d1 WHERE dia = date('now') ORDER BY filas DESC").all()).results

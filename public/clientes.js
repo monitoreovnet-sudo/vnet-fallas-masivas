@@ -192,6 +192,7 @@ if (typeof module !== "undefined") module.exports = { cliNormSerial, cliSerialEs
 
 // ---------------- Interfaz (solo navegador) ----------------
 if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
+  const CLI_COLA_FILAS = 200, CLI_COLA_CUENTAS = 8000;   // trozos de la cola nocturna
   const CLI_LOTE = 250, CLI_PARALELO = 4, CLI_TOPE_DIA = 80000;   // tope diario de clientes nuevos (plan gratuito de D1: 100.000 escrituras/día; el resto lo usa la app)                          // filas por envío al servidor
   let cliAnalisis = null, cliNombreArchivo = "", cliFechaBase = "";
   const el = (id) => document.getElementById(id);
@@ -211,6 +212,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
   }
   async function cliCargarBases() {
     cliCargarUso();
+    if (window.cliCargarCola) window.cliCargarCola();
     const cont = el("cli_bases");
     try {
       const d = await apiGet("/clientes/bases");
@@ -342,6 +344,101 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
     for (let i = 0; i < 100; i++) { const r = await apiSend("/clientes/carga/purgar", "POST", {}); if (!r.pendientes) break; }
   }
 
+  // ---- Cola nocturna: el archivo se guarda comprimido en trozos y la app lo aplica de noche (12:00 am Caracas) ----
+  const gzipB64 = async (obj) => {
+    const flujo = new Blob([JSON.stringify(obj)]).stream().pipeThrough(new CompressionStream("gzip"));
+    const u = new Uint8Array(await new Response(flujo).arrayBuffer());
+    let b = ""; for (let i = 0; i < u.length; i += 0x8000) b += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000));
+    return btoa(b);
+  };
+  const cliEncolarGrafana = async (lista, a) => {
+    const msg = el("cli_msg_carga"), btn = el("cli_btn_cargar");
+    if (typeof CompressionStream === "undefined") return showMsg(msg, "Este navegador no puede comprimir el archivo. Desmarca «Aplicar de noche» o usa Chrome/Edge actualizado.", false);
+    if (!confirm(`Se guardará el archivo (${formatearMiles(a.filas.length)} clientes activos de ${lista.length} sucursal(es): ${lista.map(([n]) => n.toUpperCase()).join(", ")}) en la cola.\n\nDe noche (12:00 am, hora de Caracas) la app lo aplica solo, hasta ${formatearMiles(60000)} cambios por noche; si falta, continúa la noche siguiente. Cada sucursal reemplaza a la suya cuando termina.\n\nSi para alguna sucursal ya había un archivo esperando en la cola, este lo reemplaza. ¿Continuar?`)) return false;
+    btn.disabled = true;
+    const hechas = []; let cargaId = null;
+    try {
+      for (let g = 0; g < lista.length; g++) {
+        const [sucursal, filas] = lista[g];
+        const etiqueta = `Sucursal ${g + 1} de ${lista.length} (${sucursal})`;
+        const ini = await apiSend("/clientes/carga/iniciar", "POST", { sucursal, archivo: cliNombreArchivo, fecha_base: cliFechaBase, filas_leidas: filas.length, filas_descartadas: 0 });
+        cargaId = ini.carga_id;
+        await apiSend("/clientes/cola/subir", "POST", { carga_id: cargaId, abrir: true });
+        const trozos = []; for (let i = 0; i < filas.length; i += CLI_COLA_FILAS) trozos.push(filas.slice(i, i + CLI_COLA_FILAS));
+        const cuentas = filas.map(cliCuenta).filter(Boolean);
+        const tcuentas = []; for (let i = 0; i < cuentas.length; i += CLI_COLA_CUENTAS) tcuentas.push(cuentas.slice(i, i + CLI_COLA_CUENTAS));
+        const tareas = trozos.map((t, seq) => ({ tipo: "filas", seq, datos: t })).concat(tcuentas.map((t, seq) => ({ tipo: "cuentas", seq, datos: t })));
+        let sig = 0, subidos = 0;
+        const trabajador = async () => {
+          while (sig < tareas.length) {
+            const t = tareas[sig++];
+            await apiSend("/clientes/cola/subir", "POST", { carga_id: cargaId, tipo: t.tipo, seq: t.seq, n: t.datos.length, datos: await gzipB64(t.datos) });
+            subidos++;
+            showMsg(msg, `${etiqueta}: guardando en la cola… ${formatearMiles(subidos)} de ${formatearMiles(tareas.length)} trozos`, true);
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(CLI_PARALELO, tareas.length) }, trabajador));
+        await apiSend("/clientes/cola/encolar", "POST", { carga_id: cargaId, total_chunks: trozos.length, cuentas_chunks: tcuentas.length, completa: true, filas: filas.length });
+        cargaId = null;
+        hechas.push(`${sucursal}: ${formatearMiles(filas.length)} clientes en cola`);
+      }
+      el("cli_archivo").value = ""; el("cli_preview").classList.add("hidden"); cliAnalisis = null;
+      showMsg(msg, `Archivo guardado en la cola. ${hechas.join(" · ")}. Se aplica solo esta noche (12:00 am, hora de Caracas); puedes ver el avance abajo, en «Cola nocturna de Grafana».`, true);
+      cliCargarCola();
+      return true;
+    } catch (err) {
+      if (cargaId) { try { await apiSend("/clientes/cola/accion", "POST", { carga_id: cargaId, accion: "cancelar" }); } catch (e) { /* nada */ } }
+      showMsg(msg, `No se pudo guardar en la cola: ${err.message}. ` + (hechas.length ? `Ya guardadas: ${hechas.join(" · ")}. ` : "") + "Vuelve a intentarlo con el mismo archivo.", false);
+      cliCargarCola();
+      return false;
+    } finally { btn.disabled = false; }
+  };
+
+  const ESTADO_COLA = { subiendo: "Subiendo", pendiente: "Esperando la noche", espera_confirmacion: "Espera tu confirmación", lista: "Aplicada", error: "Descartada", cancelada: "Cancelada" };
+  async function cliCargarCola() {
+    const cont = el("cli_cola"); if (!cont) return;
+    try {
+      const d = await apiGet("/clientes/cola/estado");
+      const filas = d.cargas.map((c) => {
+        const avance = c.estado === "lista" ? "100 %" : c.total_chunks ? Math.min(100, Math.round(100 * c.sig / c.total_chunks)) + " %" : "—";
+        const cambios = `+${formatearMiles(c.nuevas)} nuevos` + (c.cambiadas ? `, ${formatearMiles(c.cambiadas)} actualizados` : "") + (c.estado === "lista" && c.bajas ? `, ${formatearMiles(c.bajas)} bajas` : "");
+        let accion = "";
+        if (c.estado === "espera_confirmacion") accion = `<span class="hint">Deja fuera a ${formatearMiles(c.bajas)} de ${formatearMiles(c.total_base)} clientes.</span> <button type="button" data-cola="confirmar" data-id="${c.carga_id}">Confirmar bajas</button> <button type="button" data-cola="cancelar" data-id="${c.carga_id}">Cancelar carga</button>`;
+        else if (c.estado === "pendiente") accion = `<button type="button" data-cola="cancelar" data-id="${c.carga_id}">Cancelar</button>`;
+        else if (c.error) accion = `<span class="hint">${esc(c.error)}</span>`;
+        return `<tr><td>${esc(c.sucursal)}</td><td>${esc(c.archivo || "")}</td><td>${ESTADO_COLA[c.estado] || c.estado}</td><td>${avance}</td><td>${cambios}</td><td>${accion}</td></tr>`;
+      }).join("");
+      const hayPend = d.cargas.some((c) => c.estado === "pendiente");
+      cont.innerHTML = (filas ? `<table class="tabla"><thead><tr><th>Sucursal</th><th>Archivo</th><th>Estado</th><th>Avance</th><th>Cambios</th><th></th></tr></thead><tbody>${filas}</tbody></table>` : `<p class="hint">No hay archivos en la cola.</p>`) +
+        `<p class="hint">Hoy la cola ha escrito ${formatearMiles(d.usado_noche)} de ${formatearMiles(d.tope_noche)} cambios (quedan ${formatearMiles(d.quedan)}).` + (d.cron_configurado ? "" : ` <strong>Aún no está configurado el proceso automático de la noche (CRON_TOKEN): mientras tanto usa «Procesar ahora».</strong>`) + `</p>` +
+        (hayPend ? `<button type="button" id="cli_cola_ahora">Procesar ahora</button> <span id="cli_cola_msg" class="hint"></span>` : "");
+      const ahora = el("cli_cola_ahora");
+      if (ahora) ahora.addEventListener("click", cliProcesarCola);
+    } catch (e) { cont.textContent = ""; }
+  }
+  async function cliProcesarCola() {
+    const b = el("cli_cola_ahora"), m = el("cli_cola_msg"); b.disabled = true;
+    try {
+      for (let i = 0; i < 2000; i++) {
+        const r = await apiSend("/clientes/cola/procesar", "POST", {});
+        if (m) m.textContent = r.sucursal ? `${r.sucursal}: trozo ${r.sig || 0} de ${r.total_chunks || "?"}` : "";
+        if (!r.seguir) { if (m) m.textContent = r.motivo === "sin_cupo" ? "Se acabó el cupo de cambios de hoy; continúa mañana." : "Listo."; break; }
+        if (r.motivo === "espera_confirmacion") { await cliCargarCola(); if (el("cli_cola_msg")) el("cli_cola_msg").textContent = "Una carga espera tu confirmación de bajas."; }
+      }
+    } catch (e) { if (m) m.textContent = "Se detuvo: " + e.message; }
+    cliCargarCola(); cliCargarBases(); cliCargarFrescura();
+  }
+  document.addEventListener("click", async (ev) => {
+    const t = ev.target.closest && ev.target.closest("[data-cola]"); if (!t) return;
+    const accion = t.dataset.cola, id = Number(t.dataset.id);
+    if (accion === "cancelar" && !confirm("¿Cancelar esta carga? La base de la sucursal queda como estaba (lo ya aplicado no se deshace).")) return;
+    if (accion === "confirmar" && !confirm("Estos clientes se darán de baja de la base. ¿Es el archivo correcto y completo?")) return;
+    t.disabled = true;
+    try { await apiSend("/clientes/cola/accion", "POST", { carga_id: id, accion }); } catch (e) { alert(e.message); }
+    cliCargarCola();
+  });
+  window.cliCargarCola = cliCargarCola;
+
   const cliCargarGrafana = async () => {
     const msg = el("cli_msg_carga"), btn = el("cli_btn_cargar");
     if (!cliAnalisis) return showMsg(msg, "Analiza primero el archivo.", false);
@@ -350,6 +447,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
     const grupos = new Map();
     a.filas.forEach((f) => { if (!grupos.has(f.sucursal)) grupos.set(f.sucursal, []); grupos.get(f.sucursal).push(f); });
     const lista = [...grupos.entries()];
+    if (el("cli_encolar") && el("cli_encolar").checked) return cliEncolarGrafana(lista, a);
     let uso = null; try { uso = await apiGet("/clientes/uso-hoy"); } catch (e) { /* si falla, se confirma sin el dato */ }
     const lineaUso = uso
       ? `\n\nHoy llevas ${formatearMiles(uso.usado)} de ${formatearMiles(uso.tope)} cambios (quedan ${formatearMiles(uso.quedan)}). Este archivo escribe como máximo ${formatearMiles(a.filas.length)} (los clientes que ya estén iguales en la base no cuentan).` +

@@ -969,6 +969,7 @@
         <input id="cli_sucursal" readonly />
         <small id="cli_aviso_sucursal"></small>
       </div>
+      <label class="check"><input type="checkbox" id="cli_encolar" checked /> Aplicar de noche (12:00 am, hora de Caracas) — recomendado: subes el archivo una vez y la app lo aplica sola, hasta 60.000 cambios por noche.</label>
       <button id="cli_btn_cargar" class="hidden" type="button" tabindex="-1" aria-hidden="true"></button>
     </div>
     <div id="cli_aud_preview" class="hidden">
@@ -992,6 +993,9 @@
     <div id="cli_duplicadas"></div>
     <div id="cli_resultado"></div>
     <div id="cli_aud_resultado"></div>
+
+    <h3>Cola nocturna de Grafana</h3>
+    <div id="cli_cola"></div>
 
     <h3>Bases cargadas</h3>
     <div id="cli_bases"></div>

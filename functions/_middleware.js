@@ -1,4 +1,5 @@
 import { usuarioDeSesion } from "./_lib/auth.js";
+import { esTokenCron } from "./_lib/cron.js";
 
 // Rutas de la API que NO requieren sesión iniciada.
 const RUTAS_PUBLICAS = new Set(["/api/auth/login", "/api/auth/logout", "/api/me"]);
@@ -28,7 +29,9 @@ export async function onRequest(context) {
   // igual -- lo que protege los datos es que ninguna llamada a /api/* fuera
   // de estas dos rutas funciona sin haber iniciado sesión antes.
   const esApi = url.pathname.startsWith("/api/");
-  if (esApi && !RUTAS_PUBLICAS.has(url.pathname)) {
+  // El cron nocturno (GitHub Actions) entra SOLO a esta ruta y con el token secreto
+  const porCron = request.method === "POST" && url.pathname === "/api/clientes/cola/procesar" && esTokenCron(request, env);
+  if (esApi && !porCron && !RUTAS_PUBLICAS.has(url.pathname)) {
     const sesion = await usuarioDeSesion(request, env);
     const publicoGet = request.method === "GET" && RUTAS_PUBLICAS_GET.has(url.pathname);
     if (sesion && sesion.cambio && !RUTAS_SESION_LIMITADA.has(url.pathname) && !publicoGet) {

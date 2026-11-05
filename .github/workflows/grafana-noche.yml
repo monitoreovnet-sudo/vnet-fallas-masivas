@@ -1,0 +1,40 @@
+# Aplica de noche la cola de Grafana: 04:00 UTC = 12:00 am de Caracas.
+# Llama una y otra vez a /api/clientes/cola/procesar (cada llamada aplica un trozo) hasta que no quede cola o se acabe el cupo de la noche.
+# Necesita dos "secrets" del repositorio: APP_URL (la dirección de la app, sin barra final) y CRON_TOKEN (el mismo valor que la variable CRON_TOKEN de Cloudflare Pages).
+name: Grafana de noche
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  procesar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Procesar la cola
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_TOKEN: ${{ secrets.CRON_TOKEN }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_TOKEN" ]; then echo "Faltan los secrets APP_URL y/o CRON_TOKEN"; exit 1; fi
+          errores=0
+          for i in $(seq 1 2500); do
+            resp=$(curl -sS -m 90 -w '\n%{http_code}' -X POST \
+              -H "Authorization: Bearer $CRON_TOKEN" -H "Content-Type: application/json" -d '{}' \
+              "$APP_URL/api/clientes/cola/procesar") || resp=$'\n000'
+            code=$(echo "$resp" | tail -n1); cuerpo=$(echo "$resp" | head -n -1)
+            if [ "$code" != "200" ]; then
+              errores=$((errores+1)); echo "Intento $i: HTTP $code $cuerpo"
+              [ "$errores" -ge 5 ] && { echo "Demasiados errores seguidos"; exit 1; }
+              sleep 5; continue
+            fi
+            errores=0
+            if [ $((i % 25)) -eq 0 ]; then echo "Llamada $i: $cuerpo"; fi
+            case "$cuerpo" in
+              *'"seguir":true'*) ;;
+              *) echo "Fin en la llamada $i: $cuerpo"; exit 0 ;;
+            esac
+          done
+          echo "Se llegó al máximo de llamadas; la cola sigue mañana."
