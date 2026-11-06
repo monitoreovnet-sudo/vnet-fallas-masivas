@@ -54,5 +54,5 @@ export async function onRequestPost({ request, env }) {
   await registrarUso(env.DB, "auditoria", esc1);
   await registrarUso(env.DB, "lect_auditoria", mapas.lecturas);
   await registrarUso(env.DB, "mapa", mp.escrituras);
-  return json({ guardadas: stmts.length, solo_serial: !!mapas.sin_barrido });
+  return json({ guardadas: stmts.length, solo_serial: !!mapas.sin_barrido, lecturas: mapas.lecturas || 0 });
 }

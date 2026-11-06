@@ -656,6 +656,14 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
       } catch (err) { problemas.push(`${f.name}: ${err.message}`); }
     }
     if (!items.length) return showMsg(msg, "Ninguno de los archivos se pudo leer. " + problemas.slice(0, 5).join(" · "), false);
+    // Los que ya se cargaron antes (mismo nombre de archivo) se saltan, para no duplicar auditorías al reanudar
+    let yaCargados = 0;
+    try {
+      const ya = new Set((await apiSend("/clientes/auditoria/existentes", "POST", { archivos: items.map((x) => x.nombre) })).cargados || []);
+      yaCargados = items.filter((x) => ya.has(x.nombre)).length;
+      for (let i = items.length - 1; i >= 0; i--) if (ya.has(items[i].nombre)) items.splice(i, 1);
+    } catch (e) { /* si falla la consulta se cargan todos */ }
+    if (!items.length) { audLote = []; return showMsg(msg, `Los ${yaCargados} archivos ya estaban cargados: no queda nada por subir.`, true); }
     items.sort((x, y) => String(x.meta.utc).localeCompare(String(y.meta.utc)));
     audLote = items;
     const totalOnus = items.reduce((t, x) => t + x.a.onus.length, 0);
@@ -670,9 +678,9 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
     el("cli_aud_lote").innerHTML = `<p class="hint">Se cargarán uno por uno, del más antiguo al más reciente, con la hora de Caracas que trae el nombre de cada archivo.</p>` +
       `<table class="rows-table"><thead><tr><th>Archivo / OLT</th><th>ONUs</th><th>Hora (Caracas)</th></tr></thead><tbody>` +
       items.map((x) => `<tr><td>${esc(x.olt)} <small>${esc(x.nombre.slice(0, 60))}</small></td><td>${x.a.onus.length}</td><td>${esc(fmt(x.meta.local))}</td></tr>`).join("") + `</tbody></table>` +
-      (problemas.length ? `<p class="msg error">No se incluyen ${problemas.length} archivo(s): ${problemas.slice(0, 8).map(esc).join(" · ")}${problemas.length > 8 ? " …" : ""}</p>` : "");
+      (yaCargados ? `<p class="hint">Se saltan ${yaCargados} archivo(s) que ya estaban cargados.</p>` : "") + (problemas.length ? `<p class="msg error">No se incluyen ${problemas.length} archivo(s): ${problemas.slice(0, 8).map(esc).join(" · ")}${problemas.length > 8 ? " …" : ""}</p>` : "");
     el("cli_aud_preview").classList.remove("hidden");
-    showMsg(msg, `${items.length} archivos analizados (${formatearMiles(totalOnus)} ONUs). Revisa y confirma la carga.`, true);
+    showMsg(msg, `${items.length} archivos por cargar (${formatearMiles(totalOnus)} ONUs)${yaCargados ? `, ${yaCargados} ya estaban cargados` : ""}. Revisa y confirma la carga.`, true);
   }
   const pausa2 = () => new Promise((r) => setTimeout(r, 0));
   el("cli_aud_btn_analizar").addEventListener("click", audAnalizar); window.cliAnalizarAuditoria = audAnalizar;
@@ -734,13 +742,15 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
         if (opts.acepta) opts.acepta.ok = true;
       }
       const avisos = difs.map((b) => `Se cargó con ${textoDiferencia(b.horas)} de diferencia entre la base de Grafana de ${b.sucursal} (${fmt(b.fecha_base)}) y SmartOLT (${fmt(fechaSmart)}). Si quieres, sube un archivo más cercano en fecha y pulsa «Re-cruzar».`);
+      let lecturas = 0;
       for (let i = 0; i < it.a.onus.length; i += LOTE_AUD) {
-        await apiSend("/clientes/auditoria/lote", "POST", { auditoria_id: audId, onus: it.a.onus.slice(i, i + LOTE_AUD) });
+        const rl = await apiSend("/clientes/auditoria/lote", "POST", { auditoria_id: audId, onus: it.a.onus.slice(i, i + LOTE_AUD) });
+        lecturas += Number(rl.lecturas || 0);
         showMsg(msg, `${opts.prefijo || ""}Cruzando… ${Math.min(i + LOTE_AUD, it.a.onus.length)} de ${it.a.onus.length}`, true);
       }
       const fin = await apiSend("/clientes/auditoria/finalizar", "POST", { auditoria_id: audId, esperadas: it.a.onus.length });
       audId = null;
-      return { fin, avisos, olt: it.olt };
+      return { fin, avisos, olt: it.olt, lecturas };
     } catch (err) {
       if (audId) { try { await apiSend("/clientes/auditoria/abortar", "POST", { auditoria_id: audId }); } catch (e) { /* nada */ } }
       throw err;
@@ -761,10 +771,10 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
         catch (err) { detenido = `Se detuvo en el archivo ${i + 1} de ${lote.length} (${it.olt}): ${err.message}`; break; }
         if (!r) { detenido = `Cargas canceladas desde el archivo ${i + 1} de ${lote.length}.`; break; }
         hechas++;
-        filas.push(`<tr><td>${esc(it.olt)}</td><td>${r.fin.resumen.total}</td><td>${r.fin.resumen.cruzadas}</td><td>${esc(fmt(r.fin.auditoria.fecha_local))}</td></tr>`);
+        filas.push(`<tr><td>${esc(it.olt)}</td><td>${r.fin.resumen.total}</td><td>${r.fin.resumen.cruzadas}</td><td>${esc(fmt(r.fin.auditoria.fecha_local))}</td><td>${formatearMiles(r.lecturas)}</td></tr>`);
         audLote = lote.slice(i + 1);
       }
-      el("cli_aud_resultado").innerHTML = filas.length ? `<h4>Auditorías cargadas en este lote (${hechas})</h4><table class="rows-table"><thead><tr><th>OLT</th><th>ONUs</th><th>Cruzadas</th><th>Hora (Caracas)</th></tr></thead><tbody>${filas.join("")}</tbody></table>` : "";
+      el("cli_aud_resultado").innerHTML = filas.length ? `<h4>Auditorías cargadas en este lote (${hechas})</h4><table class="rows-table"><thead><tr><th>OLT</th><th>ONUs</th><th>Cruzadas</th><th>Hora (Caracas)</th><th>Lecturas D1</th></tr></thead><tbody>${filas.join("")}</tbody></table>` : "";
       cargarAlertas(); cargarAuditorias();
       if (detenido) {
         const pend = lote.slice(hechas);

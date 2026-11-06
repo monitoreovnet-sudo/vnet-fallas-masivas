@@ -86,7 +86,8 @@ export async function buscarClientes(db, lista, opts = {}) {
     if (dondeDe[i].vieja) sViejos.add(k.snNorm);
   });
   const st1 = [], tipo1 = [];
-  for (const [t, set] of sPorTabla) for (const parte of chunks([...set], 90)) { st1.push(db.prepare(`SELECT ${COLS} FROM ${t} c WHERE c.serial_norm IN (${parte.map(() => "?").join(",")})`).bind(...parte)); tipo1.push(1); }
+  // Las tablas de sucursal no tienen índice por serial: se leen enteras. Con json_each todos los seriales van en UNA consulta (una sola lectura de la tabla por lote)
+  for (const [t, set] of sPorTabla) for (const parte of chunks([...set], 400)) { st1.push(db.prepare(`SELECT ${COLS} FROM ${t} c WHERE c.serial_norm IN (SELECT value FROM json_each(?))`).bind(JSON.stringify(parte))); tipo1.push(1); }
   for (const parte of chunks([...sViejos], 90)) { st1.push(db.prepare(`SELECT ${COLS} ${FROM} WHERE c.clave IN (${parte.map(() => "?").join(",")})${EXCL}`).bind(...parte)); tipo1.push(0); }
   if (st1.length) contar(await db.batch(st1)).forEach((r, j) => meter("serial_norm", tipo1[j] ? nuevas(r.results) : r.results));
 
@@ -117,10 +118,10 @@ export async function buscarClientes(db, lista, opts = {}) {
   for (const [t, cols] of porTabla) {
     for (const parte of chunks([...cols.cuenta], 90)) { st2.push(db.prepare(`SELECT ${COLS} FROM ${t} c WHERE c.cuenta IN (${parte.map(() => "?").join(",")})`).bind(...parte)); tipo2.push(1); }
     const scan = [...cols.cedula_norm].map((v) => ["cedula_norm", v]).concat([...cols.nombre_norm].map((v) => ["nombre_norm", v]));
-    for (const parte of chunks(scan, 85)) {
+    for (const parte of chunks(scan, 400)) {
       const por = { cedula_norm: [], nombre_norm: [] }; parte.forEach(([c, v]) => por[c].push(v));
-      const cond = Object.entries(por).filter(([, v]) => v.length).map(([c, v]) => `c.${c} IN (${v.map(() => "?").join(",")})`);
-      st2.push(db.prepare(`SELECT ${COLS} FROM ${t} c WHERE ${cond.join(" OR ")}`).bind(...Object.values(por).flat())); tipo2.push(1);
+      const cond = Object.entries(por).filter(([, v]) => v.length).map(([c]) => `c.${c} IN (SELECT value FROM json_each(?))`);
+      st2.push(db.prepare(`SELECT ${COLS} FROM ${t} c WHERE ${cond.join(" OR ")}`).bind(...Object.entries(por).filter(([, v]) => v.length).map(([, v]) => JSON.stringify(v)))); tipo2.push(1);
     }
   }
   const clavesV = Object.entries(viejas).flatMap(([col, set]) => [...set].map((v) => [col, v]));
