@@ -519,7 +519,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
 // ---------------- Auditoría SmartOLT (UI) ----------------
 if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo")) {
   const LOTE_AUD = 100;
-  let audAnalisis = null, audNombre = "", audMeta = null;
+  let audAnalisis = null, audNombre = "", audMeta = null, audLote = [];   // audLote: varios archivos de SmartOLT a la vez
   const el = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fmt = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || ""); return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : (iso || ""); };
@@ -610,9 +610,13 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
 
   const audAnalizar = async () => {
     const msg = el("cli_aud_msg_analisis");
-    el("cli_aud_preview").classList.add("hidden"); el("cli_aud_resultado").innerHTML = "";
-    const f = el("cli_aud_archivo").files[0];
-    if (!f) return showMsg(msg, "Elige primero el archivo CSV de SmartOLT.", false);
+    el("cli_aud_preview").classList.add("hidden"); el("cli_aud_resultado").innerHTML = ""; el("cli_aud_lote").innerHTML = "";
+    audLote = []; audAnalisis = null;
+    const archivos = Array.from(el("cli_aud_archivo").files);
+    if (!archivos.length) return showMsg(msg, "Elige primero el archivo CSV de SmartOLT.", false);
+    if (archivos.length > 1) return audAnalizarVarios(archivos, msg);
+    el("cli_aud_fecha").closest(".field").classList.remove("hidden");
+    const f = archivos[0];
     try {
       const a = cliParsearAuditoria(cliDecodificar(new Uint8Array(await f.arrayBuffer())));
       if (!a.onus.length) throw new Error("El archivo no trae ninguna ONU legible.");
@@ -632,6 +636,45 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
       showMsg(msg, "Archivo analizado. Confirma la hora de la auditoría (hora de Caracas) y carga.", true);
     } catch (err) { showMsg(msg, err.message, false); }
   };
+
+  // ---- Varios archivos de SmartOLT a la vez: se analizan todos y se cargan uno por uno, del más antiguo al más reciente ----
+  async function audAnalizarVarios(archivos, msg) {
+    const vistos = new Set(), items = [], problemas = [];
+    for (let i = 0; i < archivos.length; i++) {
+      const f = archivos[i];
+      showMsg(msg, `Leyendo archivos… ${i + 1} de ${archivos.length}`, true);
+      await pausa2();
+      if (vistos.has(f.name)) { problemas.push(`${f.name}: repetido, se ignora`); continue; }
+      vistos.add(f.name);
+      try {
+        const a = cliParsearAuditoria(cliDecodificar(new Uint8Array(await f.arrayBuffer())));
+        if (!a.onus.length) throw new Error("no trae ninguna ONU legible");
+        const meta = cliParsearNombreSmartolt(f.name);
+        if (!meta) throw new Error("el nombre no tiene el formato de SmartOLT");
+        const olt = Object.entries(a.olts).sort((x, y) => y[1] - x[1])[0][0];
+        items.push({ nombre: f.name, a, meta, olt });
+      } catch (err) { problemas.push(`${f.name}: ${err.message}`); }
+    }
+    if (!items.length) return showMsg(msg, "Ninguno de los archivos se pudo leer. " + problemas.slice(0, 5).join(" · "), false);
+    items.sort((x, y) => String(x.meta.utc).localeCompare(String(y.meta.utc)));
+    audLote = items;
+    const totalOnus = items.reduce((t, x) => t + x.a.onus.length, 0);
+    const olts = new Set(items.map((x) => x.olt));
+    const estados = {}; items.forEach((x) => Object.entries(x.a.estados).forEach(([k, v]) => { estados[k] = (estados[k] || 0) + v; }));
+    el("cli_aud_olt").textContent = `${olts.size} OLT distinta(s)`; el("cli_aud_aviso_olt").textContent = "";
+    el("cli_aud_filtro").textContent = `${items.length} archivos`;
+    el("cli_aud_onus").textContent = formatearMiles(totalOnus);
+    el("cli_aud_estados").textContent = Object.entries(estados).map(([k, v]) => `${k}: ${formatearMiles(v)}`).join(" · ");
+    el("cli_aud_utc").textContent = `${fmt(items[0].meta.utc)} a ${fmt(items[items.length - 1].meta.utc)} (UTC)`;
+    el("cli_aud_fecha").closest(".field").classList.add("hidden");   // en lote se usa la hora del nombre de cada archivo
+    el("cli_aud_lote").innerHTML = `<p class="hint">Se cargarán uno por uno, del más antiguo al más reciente, con la hora de Caracas que trae el nombre de cada archivo.</p>` +
+      `<table class="rows-table"><thead><tr><th>Archivo / OLT</th><th>ONUs</th><th>Hora (Caracas)</th></tr></thead><tbody>` +
+      items.map((x) => `<tr><td>${esc(x.olt)} <small>${esc(x.nombre.slice(0, 60))}</small></td><td>${x.a.onus.length}</td><td>${esc(fmt(x.meta.local))}</td></tr>`).join("") + `</tbody></table>` +
+      (problemas.length ? `<p class="msg error">No se incluyen ${problemas.length} archivo(s): ${problemas.slice(0, 8).map(esc).join(" · ")}${problemas.length > 8 ? " …" : ""}</p>` : "");
+    el("cli_aud_preview").classList.remove("hidden");
+    showMsg(msg, `${items.length} archivos analizados (${formatearMiles(totalOnus)} ONUs). Revisa y confirma la carga.`, true);
+  }
+  const pausa2 = () => new Promise((r) => setTimeout(r, 0));
   el("cli_aud_btn_analizar").addEventListener("click", audAnalizar); window.cliAnalizarAuditoria = audAnalizar;
 
   // ---- Aviso de diferencia de fechas entre SmartOLT y Grafana (no bloquea: pide confirmación) ----
@@ -643,7 +686,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
   const fechaCorta = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(iso || ""); return m ? `${+m[3]} ${MESES_C[+m[2] - 1]} · ${m[4]}:${m[5]}` : (iso || ""); };
   const SVG_OJO = `<svg viewBox="0 0 120 100" width="84" height="70" aria-hidden="true"><defs><linearGradient id="gOjo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFC83A"/><stop offset="1" stop-color="#F29A00"/></linearGradient></defs><path d="M6 46C26 14 94 14 114 46C94 78 26 78 6 46Z" fill="url(#gOjo)"/><ellipse cx="58" cy="46" rx="30" ry="25" fill="#fff"/><circle cx="58" cy="46" r="16" fill="#F5A300"/><circle cx="58" cy="46" r="10" fill="#1d1d1d"/><circle cx="54" cy="42" r="3" fill="#fff" opacity=".6"/><path d="M84 58L110 100H58Z" fill="#E8503A" stroke="#E8503A" stroke-width="6" stroke-linejoin="round"/><path d="M84 66L102 95H66Z" fill="#fff" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><rect x="82" y="73" width="4" height="12" rx="2" fill="#E8503A"/><circle cx="84" cy="90" r="2.4" fill="#E8503A"/></svg>`;
   const SVG_LUPA = `<svg viewBox="0 0 64 64" width="46" height="46" aria-hidden="true"><path d="M10 6h26l12 12v34a4 4 0 0 1-4 4H10a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4Z" fill="#fff" stroke="#111" stroke-width="3" stroke-linejoin="round"/><path d="M36 6v10a2 2 0 0 0 2 2h10Z" fill="#FFB84D" stroke="#111" stroke-width="3" stroke-linejoin="round"/><path d="M14 18h14M14 27h22M14 36h16M14 45h12" stroke="#111" stroke-width="3" stroke-linecap="round"/><path d="M47 47l11 11" stroke="#111" stroke-width="9" stroke-linecap="round"/><path d="M47 47l11 11" stroke="#F4645F" stroke-width="4" stroke-linecap="round"/><circle cx="38" cy="38" r="12" fill="#fff" stroke="#111" stroke-width="3"/><circle cx="38" cy="38" r="8" fill="#74D6FF" stroke="#111" stroke-width="2"/></svg>`;
-  function confirmarDiferenciaFechas(bases, fechaSmart) {
+  function confirmarDiferenciaFechas(bases, fechaSmart, nLote) {
     return new Promise((resolve) => {
       const ov = document.createElement("div");
       ov.className = "modal-overlay";
@@ -659,6 +702,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
       ov.innerHTML = `<div class="modal-box modal-dif" role="dialog" aria-modal="true">
         <div class="dif-ojo">${SVG_OJO}</div>
         ${bloques}
+        ${nLote > 1 ? `<p class="hint">Es el primer aviso del lote de ${nLote} archivos: si continúas, no se vuelve a preguntar en los demás.</p>` : ""}
         <p class="dif-pregunta">¿Seguro que quieres proseguir con la carga?</p>
         <div class="modal-botones"><button type="button" class="btn-secondary" id="dif_no">Cancelar</button><button type="button" class="btn-primary" id="dif_si">Sí, continuar</button></div>
       </div>`;
@@ -670,7 +714,72 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
     });
   }
 
+  // Sube una auditoría (un archivo) y la cruza. Devuelve { fin, avisos, olt }, o null si el usuario canceló por la diferencia de fechas.
+  async function subirAuditoria(it, hora, msg, opts = {}) {
+    let audId = null;
+    try {
+      const ini = await apiSend("/clientes/auditoria/iniciar", "POST", {
+        archivo: it.nombre, olt_id_smartolt: it.meta.oltid, olt_nombre: it.olt, tarjeta: it.meta.tarjeta, puerto: it.meta.puerto,
+        estado_filtro: it.meta.estado, fecha_auditoria_utc: it.meta.utc, fecha_auditoria_local: hora.length === 16 ? hora + ":00" : hora, total_onus: it.a.onus.length,
+      });
+      audId = ini.auditoria_id;
+      const fechaSmart = hora.length === 16 ? hora + ":00" : hora;
+      const difs = ini.bases.filter((b) => b.desactualizada);
+      if (difs.length && !(opts.acepta && opts.acepta.ok)) {
+        if (!(await confirmarDiferenciaFechas(difs, fechaSmart, opts.nLote || 1))) {
+          try { await apiSend("/clientes/auditoria/abortar", "POST", { auditoria_id: audId }); } catch (e) { /* nada */ }
+          audId = null;
+          return null;
+        }
+        if (opts.acepta) opts.acepta.ok = true;
+      }
+      const avisos = difs.map((b) => `Se cargó con ${textoDiferencia(b.horas)} de diferencia entre la base de Grafana de ${b.sucursal} (${fmt(b.fecha_base)}) y SmartOLT (${fmt(fechaSmart)}). Si quieres, sube un archivo más cercano en fecha y pulsa «Re-cruzar».`);
+      for (let i = 0; i < it.a.onus.length; i += LOTE_AUD) {
+        await apiSend("/clientes/auditoria/lote", "POST", { auditoria_id: audId, onus: it.a.onus.slice(i, i + LOTE_AUD) });
+        showMsg(msg, `${opts.prefijo || ""}Cruzando… ${Math.min(i + LOTE_AUD, it.a.onus.length)} de ${it.a.onus.length}`, true);
+      }
+      const fin = await apiSend("/clientes/auditoria/finalizar", "POST", { auditoria_id: audId, esperadas: it.a.onus.length });
+      audId = null;
+      return { fin, avisos, olt: it.olt };
+    } catch (err) {
+      if (audId) { try { await apiSend("/clientes/auditoria/abortar", "POST", { auditoria_id: audId }); } catch (e) { /* nada */ } }
+      throw err;
+    }
+  }
+
+  const audCargarVarios = async () => {
+    const msg = el("cli_aud_msg_carga"), btn = el("cli_aud_btn_cargar");
+    const lote = audLote.slice(), acepta = { ok: false }, filas = [];
+    let hechas = 0, detenido = null;
+    btn.disabled = true;
+    try {
+      for (let i = 0; i < lote.length; i++) {
+        const it = lote[i];
+        const prefijo = `Archivo ${i + 1} de ${lote.length} (${it.olt}): `;
+        let r;
+        try { r = await subirAuditoria(it, it.meta.local.slice(0, 16), msg, { acepta, nLote: lote.length, prefijo }); }
+        catch (err) { detenido = `Se detuvo en el archivo ${i + 1} de ${lote.length} (${it.olt}): ${err.message}`; break; }
+        if (!r) { detenido = `Cargas canceladas desde el archivo ${i + 1} de ${lote.length}.`; break; }
+        hechas++;
+        filas.push(`<tr><td>${esc(it.olt)}</td><td>${r.fin.resumen.total}</td><td>${r.fin.resumen.cruzadas}</td><td>${esc(fmt(r.fin.auditoria.fecha_local))}</td></tr>`);
+        audLote = lote.slice(i + 1);
+      }
+      el("cli_aud_resultado").innerHTML = filas.length ? `<h4>Auditorías cargadas en este lote (${hechas})</h4><table class="rows-table"><thead><tr><th>OLT</th><th>ONUs</th><th>Cruzadas</th><th>Hora (Caracas)</th></tr></thead><tbody>${filas.join("")}</tbody></table>` : "";
+      cargarAlertas(); cargarAuditorias();
+      if (detenido) {
+        const pend = lote.slice(hechas);
+        el("cli_aud_lote").innerHTML = `<p class="msg error">Quedan ${pend.length} archivo(s) sin cargar:</p><ul>${pend.slice(0, 40).map((x) => `<li>${esc(x.olt)} <small>${esc(x.nombre.slice(0, 70))}</small></li>`).join("")}${pend.length > 40 ? `<li>… y ${pend.length - 40} más</li>` : ""}</ul>`;
+        showMsg(msg, `${hechas} de ${lote.length} archivos cargados. ${detenido} Lo ya cargado quedó guardado. Pulsa «Confirmar y cargar» para seguir con los pendientes (si fue el límite diario de D1, mañana después de las 8:00 pm).`, false);
+        return false;
+      }
+      el("cli_aud_preview").classList.add("hidden"); el("cli_aud_archivo").value = ""; audLote = [];
+      showMsg(msg, `Listo: ${hechas} auditorías cargadas y cruzadas.`, true);
+      return true;
+    } finally { btn.disabled = false; }
+  };
+
   const audCargar = async () => {
+    if (audLote.length > 1 || (audLote.length === 1 && !audAnalisis)) return audCargarVarios();
     const msg = el("cli_aud_msg_carga"), btn = el("cli_aud_btn_cargar");
     if (!audAnalisis) return showMsg(msg, "Analiza primero el archivo.", false);
     const hora = el("cli_aud_fecha").value;
@@ -678,28 +787,10 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
     const a = audAnalisis;
     const olt = Object.entries(a.olts).sort((x, y) => y[1] - x[1])[0][0];
     btn.disabled = true;
-    let audId = null;
     try {
-      const ini = await apiSend("/clientes/auditoria/iniciar", "POST", {
-        archivo: audNombre, olt_id_smartolt: audMeta.oltid, olt_nombre: olt, tarjeta: audMeta.tarjeta, puerto: audMeta.puerto,
-        estado_filtro: audMeta.estado, fecha_auditoria_utc: audMeta.utc, fecha_auditoria_local: hora.length === 16 ? hora + ":00" : hora, total_onus: a.onus.length,
-      });
-      audId = ini.auditoria_id;
-      const fechaSmart = hora.length === 16 ? hora + ":00" : hora;
-      const difs = ini.bases.filter((b) => b.desactualizada);
-      if (difs.length && !(await confirmarDiferenciaFechas(difs, fechaSmart))) {
-        try { await apiSend("/clientes/auditoria/abortar", "POST", { auditoria_id: audId }); } catch (e) { /* nada */ }
-        audId = null;
-        showMsg(msg, "Carga cancelada: no se guardó nada.", false);
-        return false;
-      }
-      const avisos = difs.map((b) => `Se cargó con ${textoDiferencia(b.horas)} de diferencia entre la base de Grafana de ${b.sucursal} (${fmt(b.fecha_base)}) y SmartOLT (${fmt(fechaSmart)}). Si quieres, sube un archivo más cercano en fecha y pulsa «Re-cruzar».`);
-      for (let i = 0; i < a.onus.length; i += LOTE_AUD) {
-        await apiSend("/clientes/auditoria/lote", "POST", { auditoria_id: audId, onus: a.onus.slice(i, i + LOTE_AUD) });
-        showMsg(msg, `Cruzando… ${Math.min(i + LOTE_AUD, a.onus.length)} de ${a.onus.length}`, true);
-      }
-      const fin = await apiSend("/clientes/auditoria/finalizar", "POST", { auditoria_id: audId, esperadas: a.onus.length });
-      audId = null;
+      const r = await subirAuditoria({ nombre: audNombre, a, meta: audMeta, olt }, hora, msg);
+      if (!r) { showMsg(msg, "Carga cancelada: no se guardó nada.", false); return false; }
+      const { fin, avisos } = r;
       showMsg(msg, `Auditoría cargada: ${fin.resumen.cruzadas} de ${fin.resumen.total} ONUs cruzadas.`, true);
       pintarResumen(fin.resumen, { olt, tarjeta: audMeta.tarjetaTxt, puerto: audMeta.puertoTxt, fecha_local: fin.auditoria.fecha_local }, avisos, fin.asociacion);
       cargarAlertas();
@@ -707,7 +798,6 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
       cargarAuditorias();
       return true;
     } catch (err) {
-      if (audId) { try { await apiSend("/clientes/auditoria/abortar", "POST", { auditoria_id: audId }); } catch (e) { /* nada */ } }
       showMsg(msg, "La carga falló y no se guardó nada: " + err.message, false);
     } finally { btn.disabled = false; }
   };

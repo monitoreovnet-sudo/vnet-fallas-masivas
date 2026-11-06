@@ -940,8 +940,8 @@
         <small>Solo entran los clientes con Estado del contrato "Activo". Si una ONU está en más de una cuenta activa se conserva la de contrato más reciente y se te avisa. Solo se escribe lo que cambió (máximo 80.000 cambios por día: si se llega al tope, al día siguiente subes el MISMO archivo y continúa). La fecha sale del nombre del archivo (UTC, se muestra en hora de Caracas).</small>
       </div>
       <div class="field">
-        <label>Archivo de SmartOLT (.csv, "ONUs list")</label>
-        <input type="file" id="cli_aud_archivo" accept=".csv,.txt" />
+        <label>Archivo(s) de SmartOLT (.csv, "ONUs list") — puedes elegir varios a la vez</label>
+        <input type="file" id="cli_aud_archivo" accept=".csv,.txt" multiple />
         <small>Separado por <code>;</code>. La hora del nombre del archivo viene en UTC y se muestra convertida a hora de Caracas para que la confirmes. Cada ONU se cruza con la base de todas las sucursales cargadas.</small>
       </div>
     </div>
@@ -985,6 +985,7 @@
         <label>Fecha y hora de la auditoría (hora de Caracas) — confírmala</label>
         <input id="cli_aud_fecha" type="datetime-local" />
       </div>
+      <div id="cli_aud_lote"></div>
       <button id="cli_aud_btn_cargar" class="hidden" type="button" tabindex="-1" aria-hidden="true"></button>
     </div>
     <button id="cli_u_cargar" class="btn-primary" type="button" disabled>2. Confirmar y cargar</button>
