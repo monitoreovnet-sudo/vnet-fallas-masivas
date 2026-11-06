@@ -50,7 +50,8 @@ export async function onRequestPost({ request, env }) {
   // Mapa de clientes por OLT/tarjeta/puerto: toda ONU que cruzó con Grafana, esté o no en falla
   const mp = await registrarMapa(env.DB, onus.map((o, i) => ({
     sn_norm: normSerial(o.sn) || null, cliente: cruces[i].c, olt: (t(o.olt, 80) || aud.olt_nombre).toUpperCase(), tarjeta: ent(o.board), puerto: ent(o.port),
-    onu_num: t(o.onu, 20), status: t(o.status, 30), visto: aud.fecha_auditoria_local })));
+    onu_num: t(o.onu, 20), status: t(o.status, 30), visto: aud.fecha_auditoria_local,
+    ubicacion: [t(o.zone, 100), t(o.address, 200)].filter(Boolean).join(" — ") || null })));
   await registrarUso(env.DB, "auditoria", esc1);
   await registrarUso(env.DB, "lect_auditoria", mapas.lecturas);
   await registrarUso(env.DB, "mapa", mp.escrituras);

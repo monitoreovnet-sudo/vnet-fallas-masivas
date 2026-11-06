@@ -1117,3 +1117,112 @@ function ccaHojaSectores(filas) {
 
   window.igAbrir = () => { if (!el("ig_contenido").innerHTML.trim() || grid === null) verOficinas(); };
 })();
+
+
+// ---------------------------------------------------------------
+// CLIENTES POR OLT: lista del cruce Grafana × SmartOLT con filtros y Excel
+// ---------------------------------------------------------------
+(function () {
+  const el = (id) => document.getElementById(id);
+  if (!el("co_grid") || typeof CL_MS === "undefined") return;
+  const num = (n) => Number(n || 0).toLocaleString("es-VE");
+  const IDS = ["co_sucursal", "co_estado", "co_oficina", "co_olt", "co_estatus_olt", "co_estatus_grafana"];
+  IDS.forEach((i) => { if (!CL_MS.includes(i)) CL_MS.push(i); });
+  const COLS = [
+    ["nombre", "Nombre"], ["telefono", "Teléfono"], ["telefono_oficina", "Teléfono oficina"], ["correo", "Correo"], ["cuenta", "Nro. de contrato"], ["cedula", "Cédula"],
+    ["sucursal", "Sucursal"], ["estado", "Estado"], ["oficina", "Oficina"], ["olt", "OLT"], ["tarjeta", "Tarjeta"], ["puerto", "Puerto"], ["sector", "Sector"],
+    ["municipio", "Municipio"], ["direccion", "Dirección"], ["ubicacion", "Ubicación (SmartOLT)"], ["estatus_grafana", "Estatus Grafana"], ["estatus_olt", "Estatus SmartOLT"],
+    ["serial", "Serial ONU"], ["ultima_vez", "Visto en SmartOLT"],
+  ];
+  let opciones = null, grid = null, cargadas = 0, parar = false, ocupado = false;
+  const msg = (t, ok) => { const m = el("co_msg"); m.className = "msg" + (t ? (ok ? "" : " error") : ""); m.textContent = t || ""; };
+  const hoy = () => new Date(Date.now() - 4 * 3600000).toISOString().slice(0, 10);
+
+  function llenarOlts() {
+    const ofis = new Set(clVals("co_oficina").map(String));
+    const lista = (opciones.olts || []).filter((o) => !ofis.size || ofis.has(String(o.oficina_id)));
+    llenarSelectSimple("co_olt", lista.map((o) => ({ value: o.olt, label: o.olt })), "Todas");
+  }
+  async function cargarOpciones(silencio) {
+    if (opciones) return;
+    if (!silencio) msg("Cargando filtros…", true);
+    try {
+      opciones = await apiGet("/clientes/clientes-olt/opciones");
+      const simple = (v) => v.map((x) => ({ value: x, label: x }));
+      llenarSelectSimple("co_sucursal", simple(opciones.sucursales), "Todas");
+      llenarSelectSimple("co_estado", simple(opciones.estados), "Todos");
+      llenarSelectSimple("co_oficina", opciones.oficinas.map((o) => ({ value: o.id, label: o.nombre })), "Todas");
+      llenarSelectSimple("co_estatus_olt", simple(opciones.estatus_olt), "Todos");
+      llenarSelectSimple("co_estatus_grafana", simple(opciones.estatus_grafana), "Todos");
+      llenarOlts();
+      el("co_oficina").addEventListener("change", llenarOlts);
+      if (!silencio) msg(opciones.olts.length ? "" : "Todavía no hay clientes conocidos. Se llena al subir archivos de SmartOLT.", true);
+    } catch (err) { opciones = null; if (!silencio) msg(err.message, false); }
+  }
+
+  const query = () => IDS.map((id) => [id.replace(/^co_/, "").replace("estatus_olt", "estatus_olt"), clVals(id)])
+    .filter(([, v]) => v.length).map(([k, v]) => `${k === "oficina" ? "oficina_id" : k}=${encodeURIComponent(v.join(","))}`).join("&");
+
+  async function buscar() {
+    if (ocupado) return;
+    ocupado = true; parar = false; cargadas = 0;
+    el("co_buscar").disabled = true; el("co_detener").classList.remove("hidden"); el("co_xlsx").disabled = el("co_csv").disabled = true; el("co_actualizar").disabled = true;
+    if (grid) { try { grid.destroy(); } catch (e) { /* ya destruida */ } grid = null; }
+    const q = query();
+    let desde = 0, primera = true;
+    try {
+      for (let guard = 0; guard < 400 && !parar; guard++) {
+        const d = await apiGet(`/clientes/clientes-olt/lista?${q}${q ? "&" : ""}desde=${desde}`);
+        if (primera) {
+          primera = false;
+          const alto = () => Math.max(360, window.innerHeight - el("co_grid").getBoundingClientRect().top - 14);
+          el("co_grid").style.height = alto() + "px";
+          const cols = COLS.map(([c, t]) => ({ title: t, field: c, headerFilter: "input", minWidth: 90, ...(c === "nombre" ? { frozen: true } : {}),
+            ...(c === "tarjeta" || c === "puerto" ? { sorter: "number", hozAlign: "right", headerFilterFunc: (hv, rv) => String(rv ?? "").includes(String(hv)) } : {}) }));
+          grid = new Tabulator("#co_grid", { data: d.clientes, columns: cols, layout: "fitDataFill", height: alto(), placeholder: "Sin resultados con esos filtros" });
+        } else if (d.clientes.length) grid.addData(d.clientes);
+        cargadas += d.clientes.length;
+        el("co_conteo").textContent = `${num(cargadas)} clientes cargados${d.siguiente !== null && !parar ? "…" : ""}`;
+        if (d.siguiente === null) { desde = null; break; }
+        desde = d.siguiente;
+      }
+      const completo = desde === null;
+      el("co_conteo").textContent = `${num(cargadas)} clientes${completo ? "" : " (carga detenida: faltan algunos; vuelve a buscar o afina los filtros)"}. Cada columna tiene su propio filtro; el Excel baja lo que ves.`;
+      msg(cargadas ? "" : "No hay clientes con esos filtros.", true);
+    } catch (err) { msg(err.message, false); }
+    finally { ocupado = false; el("co_buscar").disabled = false; el("co_detener").classList.add("hidden"); el("co_actualizar").disabled = false; el("co_xlsx").disabled = el("co_csv").disabled = !cargadas; }
+  }
+
+  function exportar(tipo) {
+    if (!grid) return;
+    const datos = grid.getData("active").map((c) => { const o = {}; COLS.forEach(([k, t]) => { o[t] = c[k] ?? ""; }); return o; });
+    if (tipo === "csv") { exportarCSVGenerico(datos, `clientes_por_olt_${hoy()}.csv`); return; }
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(datos), "Clientes por OLT"); XLSX.writeFile(wb, `clientes_por_olt_${hoy()}.xlsx`);
+  }
+
+  async function actualizar() {
+    if (ocupado) return;
+    if (!confirm("Se pondrán al día los datos de TODOS los clientes del informe con la base de Grafana de su sucursal (solo se escribe lo que cambió). Puede tardar unos minutos y gastar escrituras de D1. ¿Continuar?")) return;
+    ocupado = true; el("co_actualizar").disabled = true; el("co_buscar").disabled = true;
+    let desde = 0, vistas = 0, cambios = 0;
+    try {
+      for (let guard = 0; guard < 5000; guard++) {
+        const r = await apiSend("/clientes/clientes-olt/actualizar", "POST", { desde });
+        vistas += r.procesadas; cambios += r.actualizadas;
+        msg(`Actualizando… ${num(vistas)} clientes revisados, ${num(cambios)} con cambios`, true);
+        if (r.siguiente === null) break;
+        desde = r.siguiente;
+      }
+      msg(`Listo: ${num(vistas)} clientes revisados, ${num(cambios)} actualizados. Vuelve a pulsar «Buscar» para ver los datos nuevos.`, true);
+      opciones = null; cargarOpciones(true);
+    } catch (err) { msg(`Se detuvo: ${err.message}. Lo ya actualizado quedó guardado; vuelve a pulsar el botón para seguir (empieza de nuevo, pero solo escribe lo que falte).`, false); }
+    finally { ocupado = false; el("co_actualizar").disabled = false; el("co_buscar").disabled = false; }
+  }
+
+  el("co_buscar").addEventListener("click", buscar);
+  el("co_detener").addEventListener("click", () => { parar = true; });
+  el("co_xlsx").addEventListener("click", () => exportar("xlsx"));
+  el("co_csv").addEventListener("click", () => exportar("csv"));
+  el("co_actualizar").addEventListener("click", actualizar);
+  window.coAbrir = () => cargarOpciones();
+})();

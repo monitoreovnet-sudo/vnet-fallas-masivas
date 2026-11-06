@@ -129,4 +129,4 @@ export async function oltsDeOficina(db, oficinaId) {
   const r = await nivelOlts(db, oficinaId);
   return r.olts.map((o) => o.canon);
 }
-export { canon as canonOlt, mapaEquivalencias };
+export { canon as canonOlt, mapaEquivalencias, catalogo, infoOlt, variantes };

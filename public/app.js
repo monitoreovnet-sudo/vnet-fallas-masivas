@@ -233,6 +233,7 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
     if (btn.dataset.tab === "ciclo" && cicloDatos.length === 0) cargarCiclo();
     if (btn.dataset.tab === "informe_clientes" && window.ccaCargarOpciones) window.ccaCargarOpciones();
     if (btn.dataset.tab === "informe_general" && window.igAbrir) window.igAbrir();
+    if (btn.dataset.tab === "informe_olt" && window.coAbrir) window.coAbrir();
     if (btn.dataset.tab === "clientes" && window.cliCargarBases) { window.cliCargarBases(); if (window.cliCargarFrescura) window.cliCargarFrescura(); if (window.cliCargarAuditorias) window.cliCargarAuditorias(); }
     ajustarTodasLasTablas();
     if (btn.dataset.tab === "consultar" && clGrid && clGridListo) clGrid.redraw(true);
@@ -2992,8 +2993,8 @@ let currentUser = null;
 const TABS_POR_ROL = {
   analista: ["pizarra", "reporte", "ciclo"],
   especialista: ["crear", "modificar", "pizarra", "reporte", "ciclo"],
-  supervisor: ["crear", "modificar", "pizarra", "reporte", "ciclo", "informe_clientes", "informe_general", "consultar", "repositorio", "clientes"],
-  administrador: ["crear", "modificar", "pizarra", "reporte", "ciclo", "informe_clientes", "informe_general", "consultar", "admin", "repositorio", "clientes"],
+  supervisor: ["crear", "modificar", "pizarra", "reporte", "ciclo", "informe_clientes", "informe_general", "informe_olt", "consultar", "repositorio", "clientes"],
+  administrador: ["crear", "modificar", "pizarra", "reporte", "ciclo", "informe_clientes", "informe_general", "informe_olt", "consultar", "admin", "repositorio", "clientes"],
 };
 
 function aplicarPermisosRol() {

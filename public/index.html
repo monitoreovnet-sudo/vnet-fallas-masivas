@@ -78,6 +78,7 @@
     <button class="tab-btn" data-tab="ciclo" data-grupo="informes">Ciclo 2026</button>
     <button class="tab-btn hidden" data-tab="informe_clientes" data-grupo="informes" id="nav_informe_clientes">Clientes Afectados</button>
     <button class="tab-btn hidden" data-tab="informe_general" data-grupo="informes" id="nav_informe_general">Reporte General de Clientes</button>
+    <button class="tab-btn hidden" data-tab="informe_olt" data-grupo="informes" id="nav_informe_olt">Clientes por OLT</button>
     <button class="tab-btn hidden" data-tab="admin" data-grupo="administracion" id="nav_admin">Usuarios y catálogos</button>
     <button class="tab-btn" data-tab="consultar" data-grupo="administracion">Consultar / Log</button>
     <button class="tab-btn hidden" data-tab="repositorio" data-grupo="administracion" id="nav_repositorio">Repositorio de tickets</button>
@@ -911,6 +912,29 @@
     <div id="ig_ruta" class="ig-ruta"></div>
     <div id="ig_msg" class="msg"></div>
     <div id="ig_contenido"></div>
+  </section>
+
+  <section id="tab-informe_olt" class="tab-panel full-bleed">
+    <h2>Clientes por OLT</h2>
+    <p class="hint">Lista de clientes resultante del cruce Grafana × SmartOLT: cada fila es una ONU conocida con los datos de su cliente, su ubicación en la OLT y los dos estatus (contrato en Grafana y ONU en SmartOLT). Se llena al subir archivos de SmartOLT. Contiene datos personales: solo administrador y supervisor.</p>
+    <div id="co_filtros" class="filtros-grid">
+      <div class="field"><label>Sucursal Grafana</label><select id="co_sucursal"></select></div>
+      <div class="field"><label>Estado</label><select id="co_estado"></select></div>
+      <div class="field"><label>Oficina</label><select id="co_oficina"></select></div>
+      <div class="field"><label>OLT</label><select id="co_olt"></select></div>
+      <div class="field"><label>Estatus SmartOLT</label><select id="co_estatus_olt"></select></div>
+      <div class="field"><label>Estatus Grafana</label><select id="co_estatus_grafana"></select></div>
+    </div>
+    <div class="ig-barra">
+      <button type="button" class="btn-primary" id="co_buscar">Buscar</button>
+      <button type="button" class="btn-secondary hidden" id="co_detener">Detener</button>
+      <button type="button" class="btn-secondary" id="co_xlsx" disabled>Descargar Excel</button>
+      <button type="button" class="btn-secondary" id="co_csv" disabled>Descargar CSV</button>
+      <button type="button" class="btn-secondary" id="co_actualizar" title="Pone al día los datos de estos clientes con la última base de Grafana de cada sucursal">Actualizar con Grafana</button>
+      <span class="hint" id="co_conteo"></span>
+    </div>
+    <div id="co_msg" class="msg"></div>
+    <div id="co_grid"></div>
   </section>
 
   <section id="tab-clientes" class="tab-panel">

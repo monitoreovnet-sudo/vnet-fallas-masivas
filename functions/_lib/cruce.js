@@ -45,7 +45,7 @@ export function claves(onu) {
 const chunks = (arr, n) => { const r = []; for (let i = 0; i < arr.length; i += n) r.push(arr.slice(i, i + n)); return r; };
 const COLS = `c.carga_id, c.cuenta, c.sucursal, c.nombre, c.telefono_casa, c.telefono_oficina, c.cedula, c.cedula_norm, c.sector,
               c.estado_contrato, c.fecha_creacion, c.serial_norm, c.nombre_norm,
-              c.direccion, c.correo, c.correo_iptv, c.municipio, c.parroquia`;
+              c.direccion, c.correo, c.correo_iptv, c.municipio, c.parroquia, c.estado_geo`;
 const FROM = `FROM clientes_base c`;
 
 // Busca en D1 todo lo necesario para un lote de ONUs. D1 admite 90 parámetros por consulta.
