@@ -1,7 +1,7 @@
 import { json, badRequest, requireRole } from "../../../_lib/helpers.js";
 import { ROLES_CLIENTES } from "../../../_lib/clientes.js";
 import { TABLA_OK } from "../../../_lib/sucursal.js";
-import { registrarUso, escrituras, lecturas, usadoHoy, TOPE_DIA } from "../../../_lib/uso-d1.js";
+import { registrarUso, escrituras, lecturas, revisarCupo } from "../../../_lib/uso-d1.js";
 
 const TANDA = 150;
 const FUERA = "Fuera de la base activa";
@@ -18,7 +18,7 @@ export async function onRequestPost({ request, env }) {
   if (no) return no;
   const b = await request.json().catch(() => ({}));
   const db = env.DB, desde = Math.max(0, Number(b.desde) || 0);
-  if (await usadoHoy(db) >= TOPE_DIA) return json({ error: "Se alcanzó el tope diario de escrituras de D1. Continúe después de las 8:00 pm (hora de Caracas)." }, 429);
+  { const sin = await revisarCupo(db); if (sin) return json(sin, 429); }
   let filas;
   try {
     filas = await db.prepare(`SELECT rowid AS rid, cuenta, sucursal, ${CAMPOS.map(([c]) => c).join(", ")} FROM clientes_olt WHERE rowid > ? ORDER BY rowid LIMIT ${TANDA}`).bind(desde).all();

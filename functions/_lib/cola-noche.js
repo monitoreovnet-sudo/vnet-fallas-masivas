@@ -1,4 +1,4 @@
-import { TOPE_DIA, usadoHoy } from "./uso-d1.js";
+import { TOPE_DIA, MARGEN, usadoHoy, lecturasHoy, sinCupoLectura } from "./uso-d1.js";
 
 export const TOPE_NOCHE = 60000;   // cambios que la cola puede escribir por día (el resto del tope diario queda para el trabajo normal)
 
@@ -10,5 +10,5 @@ export async function presupuestoNoche(db) {
     usadoNoche = Number((r && r.filas) || 0);
   } catch (e) { /* sin migración 043 */ }
   const usado = await usadoHoy(db);
-  return { usadoNoche, usado, restante: Math.max(0, Math.min(TOPE_NOCHE - usadoNoche, TOPE_DIA - usado)) };
+  return { usadoNoche, usado, restante: sinCupoLectura(await lecturasHoy(db)) ? 0 : Math.max(0, Math.min(TOPE_NOCHE - usadoNoche, TOPE_DIA - MARGEN - usado)) };
 }

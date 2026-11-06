@@ -1,6 +1,7 @@
 import { json, badRequest, requireRole, currentUserEmail } from "../../../_lib/helpers.js";
 import { ROLES_CLIENTES, FECHA_BASE_OK } from "../../../_lib/clientes.js";
 import { horasEntre, leerParametro } from "../../../_lib/cruce.js";
+import { revisarCupo } from "../../../_lib/uso-d1.js";
 
 // POST /api/clientes/auditoria/iniciar
 // Body: { archivo, olt_id_smartolt, olt_nombre, tarjeta, puerto, estado_filtro, fecha_auditoria_utc, fecha_auditoria_local, total_onus }
@@ -8,6 +9,7 @@ import { horasEntre, leerParametro } from "../../../_lib/cruce.js";
 export async function onRequestPost({ request, env }) {
   const no = await requireRole(env.DB, request, ROLES_CLIENTES);
   if (no) return no;
+  { const sin = await revisarCupo(env.DB); if (sin) return json(sin, 429); }
   const b = await request.json();
   const olt = String(b.olt_nombre || "").trim().toUpperCase();
   if (!olt) return badRequest("No se pudo determinar la OLT de la auditoría.");

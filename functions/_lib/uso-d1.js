@@ -5,7 +5,20 @@
 export const TOPE_DIA = 80000;       // tope que se respeta (el real gratuito es 100.000)
 export const TOPE_REAL = 100000;
 // Lecturas de filas (límite gratuito real: 5.000.000 por día). Pasado el tope suave los cruces dejan de barrer la base y usan solo el serial.
-export const TOPE_LECT = 5000000, LECT_SUAVE = 3500000, LECT_DURO = 4700000;
+// Los topes propios van MUY por debajo del real porque D1 también cuenta lecturas que la app no mide (pantallas, login, tickets...).
+export const TOPE_LECT = 5000000, LECT_SUAVE = 2000000, LECT_DURO = 3000000;
+// Margen mínimo: cuando a un tope le quedan menos de MARGEN filas, ya no se acepta ningún archivo hasta que se reinicie el contador (8:00 pm Caracas).
+export const MARGEN = 1000;
+export const sinCupoEscritura = (usado) => usado >= TOPE_DIA - MARGEN;
+export const sinCupoLectura = (leidas) => leidas >= LECT_DURO - MARGEN;
+export const MSG_ESCRITURAS = `Se alcanzó el tope diario de escrituras de D1 (queda menos de ${MARGEN.toLocaleString("es-VE")} de margen). No se puede subir ningún archivo hasta las 8:00 pm, hora de Caracas.`;
+export const MSG_LECTURAS = `Se alcanzó el tope diario de lecturas de D1 (queda menos de ${MARGEN.toLocaleString("es-VE")} de margen). No se puede subir ningún archivo hasta las 8:00 pm, hora de Caracas.`;
+// Revisa ambos topes; devuelve null si hay cupo o { error } listo para responder con 429
+export async function revisarCupo(db) {
+  if (sinCupoEscritura(await usadoHoy(db))) return { error: MSG_ESCRITURAS };
+  if (sinCupoLectura(await lecturasHoy(db))) return { error: MSG_LECTURAS };
+  return null;
+}
 
 export const ORIGENES = {
   grafana: "Base de clientes (Grafana)", cola_noche: "Cola nocturna de Grafana (aplicada)", cola_subida: "Cola de Grafana (guardar trozos)", auditoria: "Archivos de SmartOLT (auditoría)", mapa: "Mapa de clientes (Informe 2)",

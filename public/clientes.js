@@ -193,7 +193,7 @@ if (typeof module !== "undefined") module.exports = { cliNormSerial, cliSerialEs
 // ---------------- Interfaz (solo navegador) ----------------
 if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
   const CLI_COLA_FILAS = 200, CLI_COLA_CUENTAS = 8000;   // trozos de la cola nocturna
-  const CLI_LOTE = 250, CLI_PARALELO = 4, CLI_TOPE_DIA = 80000;   // tope diario de clientes nuevos (plan gratuito de D1: 100.000 escrituras/día; el resto lo usa la app)                          // filas por envío al servidor
+  const CLI_LOTE = 250, CLI_PARALELO = 4, CLI_TOPE_DIA = 79000;   // tope diario de clientes nuevos (plan gratuito de D1: 100.000 escrituras/día; el resto lo usa la app)                          // filas por envío al servidor
   let cliAnalisis = null, cliNombreArchivo = "", cliFechaBase = "";
   const el = (id) => document.getElementById(id);
   const fmtFecha = (iso) => { const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso || ""); return m ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}` : (iso || ""); };
@@ -361,7 +361,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_archivo")) {
       for (let g = 0; g < lista.length; g++) {
         const [sucursal, filas] = lista[g];
         const etiqueta = `Sucursal ${g + 1} de ${lista.length} (${sucursal})`;
-        const ini = await apiSend("/clientes/carga/iniciar", "POST", { sucursal, archivo: cliNombreArchivo, fecha_base: cliFechaBase, filas_leidas: filas.length, filas_descartadas: 0 });
+        const ini = await apiSend("/clientes/carga/iniciar", "POST", { sucursal, archivo: cliNombreArchivo, fecha_base: cliFechaBase, filas_leidas: filas.length, filas_descartadas: 0, cola: true });
         cargaId = ini.carga_id;
         await apiSend("/clientes/cola/subir", "POST", { carga_id: cargaId, abrir: true });
         const trozos = []; for (let i = 0; i < filas.length; i += CLI_COLA_FILAS) trozos.push(filas.slice(i, i + CLI_COLA_FILAS));
@@ -675,7 +675,7 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
     el("cli_aud_estados").textContent = Object.entries(estados).map(([k, v]) => `${k}: ${formatearMiles(v)}`).join(" · ");
     el("cli_aud_utc").textContent = `${fmt(items[0].meta.utc)} a ${fmt(items[items.length - 1].meta.utc)} (UTC)`;
     el("cli_aud_fecha").closest(".field").classList.add("hidden");   // en lote se usa la hora del nombre de cada archivo
-    el("cli_aud_lote").innerHTML = `<p class="hint">Se cargarán uno por uno, del más antiguo al más reciente, con la hora de Caracas que trae el nombre de cada archivo.</p>` +
+    el("cli_aud_lote").innerHTML = `<p class="hint">Se cargarán uno por uno, del más antiguo al más reciente, con la hora de Caracas que trae el nombre de cada archivo, en tandas de ${TANDA_AUD} archivos: al terminar cada tanda pulsas «Confirmar y cargar» otra vez. Si D1 llega a su tope diario (margen de 1.000), no se puede subir nada más hasta las 8:00 pm.</p>` +
       `<table class="rows-table"><thead><tr><th>Archivo / OLT</th><th>ONUs</th><th>Hora (Caracas)</th></tr></thead><tbody>` +
       items.map((x) => `<tr><td>${esc(x.olt)} <small>${esc(x.nombre.slice(0, 60))}</small></td><td>${x.a.onus.length}</td><td>${esc(fmt(x.meta.local))}</td></tr>`).join("") + `</tbody></table>` +
       (yaCargados ? `<p class="hint">Se saltan ${yaCargados} archivo(s) que ya estaban cargados.</p>` : "") + (problemas.length ? `<p class="msg error">No se incluyen ${problemas.length} archivo(s): ${problemas.slice(0, 8).map(esc).join(" · ")}${problemas.length > 8 ? " …" : ""}</p>` : "");
@@ -757,29 +757,37 @@ if (typeof document !== "undefined" && document.getElementById("cli_aud_archivo"
     }
   }
 
+  const TANDA_AUD = 25;   // archivos de SmartOLT por pulsación: así el consumo diario de D1 se puede vigilar entre tandas
   const audCargarVarios = async () => {
     const msg = el("cli_aud_msg_carga"), btn = el("cli_aud_btn_cargar");
-    const lote = audLote.slice(), acepta = { ok: false }, filas = [];
+    const todos = audLote.slice(), lote = todos.slice(0, TANDA_AUD), acepta = { ok: false }, filas = [];
     let hechas = 0, detenido = null;
     btn.disabled = true;
     try {
       for (let i = 0; i < lote.length; i++) {
         const it = lote[i];
-        const prefijo = `Archivo ${i + 1} de ${lote.length} (${it.olt}): `;
+        const prefijo = `Archivo ${i + 1} de ${lote.length}${todos.length > lote.length ? ` (tanda de ${todos.length})` : ""} (${it.olt}): `;
         let r;
         try { r = await subirAuditoria(it, it.meta.local.slice(0, 16), msg, { acepta, nLote: lote.length, prefijo }); }
-        catch (err) { detenido = `Se detuvo en el archivo ${i + 1} de ${lote.length} (${it.olt}): ${err.message}`; break; }
+        catch (err) { detenido = `Se detuvo en el archivo ${i + 1} de ${todos.length} (${it.olt}): ${err.message}`; break; }
         if (!r) { detenido = `Cargas canceladas desde el archivo ${i + 1} de ${lote.length}.`; break; }
         hechas++;
         filas.push(`<tr><td>${esc(it.olt)}</td><td>${r.fin.resumen.total}</td><td>${r.fin.resumen.cruzadas}</td><td>${esc(fmt(r.fin.auditoria.fecha_local))}</td><td>${formatearMiles(r.lecturas)}</td></tr>`);
-        audLote = lote.slice(i + 1);
+        audLote = todos.slice(i + 1);
       }
       el("cli_aud_resultado").innerHTML = filas.length ? `<h4>Auditorías cargadas en este lote (${hechas})</h4><table class="rows-table"><thead><tr><th>OLT</th><th>ONUs</th><th>Cruzadas</th><th>Hora (Caracas)</th><th>Lecturas D1</th></tr></thead><tbody>${filas.join("")}</tbody></table>` : "";
       cargarAlertas(); cargarAuditorias();
       if (detenido) {
-        const pend = lote.slice(hechas);
+        const pend = todos.slice(hechas);
         el("cli_aud_lote").innerHTML = `<p class="msg error">Quedan ${pend.length} archivo(s) sin cargar:</p><ul>${pend.slice(0, 40).map((x) => `<li>${esc(x.olt)} <small>${esc(x.nombre.slice(0, 70))}</small></li>`).join("")}${pend.length > 40 ? `<li>… y ${pend.length - 40} más</li>` : ""}</ul>`;
-        showMsg(msg, `${hechas} de ${lote.length} archivos cargados. ${detenido} Lo ya cargado quedó guardado. Pulsa «Confirmar y cargar» para seguir con los pendientes (si fue el límite diario de D1, mañana después de las 8:00 pm).`, false);
+        showMsg(msg, `${hechas} de ${todos.length} archivos cargados. ${detenido} Lo ya cargado quedó guardado. Pulsa «Confirmar y cargar» para seguir con los pendientes (si fue el límite diario de D1, mañana después de las 8:00 pm).`, false);
+        return false;
+      }
+      if (todos.length > lote.length) {
+        const resto = todos.length - lote.length;
+        el("cli_aud_lote").innerHTML = `<p class="hint">Quedan ${resto} archivo(s) para la siguiente tanda.</p>`;
+        showMsg(msg, `Tanda lista: ${hechas} auditorías cargadas. Quedan ${resto} archivos: revisa el consumo de D1 y pulsa «Confirmar y cargar» para seguir con la siguiente tanda de ${Math.min(TANDA_AUD, resto)}.`, true);
+        cliCargarUso();
         return false;
       }
       el("cli_aud_preview").classList.add("hidden"); el("cli_aud_archivo").value = ""; audLote = [];

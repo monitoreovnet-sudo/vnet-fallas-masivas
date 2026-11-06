@@ -2,7 +2,7 @@ import { json, badRequest, requireRole } from "../../../_lib/helpers.js";
 import { ROLES_CLIENTES, normSerial } from "../../../_lib/clientes.js";
 import { claves, buscarClientes, cruzarUna, clasificar, normFechaCambio, basesDesactualizadas } from "../../../_lib/cruce.js";
 import { contextoSucursales } from "../../../_lib/sucursal.js";
-import { registrarUso, escrituras, usadoHoy, lecturasHoy, TOPE_DIA, LECT_SUAVE, LECT_DURO } from "../../../_lib/uso-d1.js";
+import { registrarUso, escrituras, lecturasHoy, LECT_SUAVE, revisarCupo } from "../../../_lib/uso-d1.js";
 import { registrarMapa } from "../../../_lib/mapa-clientes.js";
 
 const MAX_LOTE = 100;
@@ -23,14 +23,13 @@ export async function onRequestPost({ request, env }) {
   const onus = Array.isArray(b.onus) ? b.onus : [];
   if (!onus.length) return badRequest("El lote viene vacío.");
   if (onus.length > MAX_LOTE) return badRequest(`El lote no puede pasar de ${MAX_LOTE} ONUs.`);
-  if (await usadoHoy(env.DB) >= TOPE_DIA) return json({ error: `Se alcanzó el tope diario de ${TOPE_DIA.toLocaleString("es-VE")} escrituras de D1. Continúe después de las 8:00 pm (hora de Caracas).` }, 429);
+  { const sin = await revisarCupo(env.DB); if (sin) return json(sin, 429); }
   const aud = await env.DB.prepare("SELECT * FROM auditorias WHERE id = ?").bind(Number(b.auditoria_id)).first();
   if (!aud) return badRequest("La auditoría no existe.");
 
   const { mapa, alguna } = await basesDesactualizadas(env.DB, aud);
   const lista = onus.map(claves);
   const leidasHoy = await lecturasHoy(env.DB);
-  if (leidasHoy >= LECT_DURO) return json({ error: "Se alcanzó el tope diario de lecturas de D1. Continúe después de las 8:00 pm (hora de Caracas)." }, 429);
   const mapas = await buscarClientes(env.DB, lista, { barrido: leidasHoy < LECT_SUAVE, sucursales: await contextoSucursales(env.DB), olts: onus.map((o) => t(o.olt, 80) || aud.olt_nombre) });
   const cruces = lista.map((k) => {
     const { cliente: c, metodo } = cruzarUna(k, mapas);
