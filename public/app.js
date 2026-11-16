@@ -3721,12 +3721,16 @@ function aplicarFiltros(prefix) {
   };
   paso("tarjetas de estado", () => renderKpisGenerico(filtrarDatos(datosCompletos, prefix, true), prefix));
   paso("semáforo", () => renderSemaforoBar(filtrados, `${prefix}_semaforo_bar`));
-  paso("top 5 por estado", () => renderTop5PorEstado(filtrados, `${prefix}_top5_estado`));
+  // La Pizarra de Monitoreo solo muestra filtros y tabla principal (sin gráficas ni Top 5 por Estado).
+  const soloTabla = prefix === "piz";
+  if (!soloTabla) paso("top 5 por estado", () => renderTop5PorEstado(filtrados, `${prefix}_top5_estado`));
   paso("tabla de tickets", () => renderTablaDinamica(prefix, filtrados));
-  paso("gráfica de unidades", () => renderChartUnidad(filtrados, `${prefix}_chart_unidad`));
-  paso("gráfica de oficinas", () => renderChartOficina(filtrados, `${prefix}_chart_oficina`));
-  if (prefix === "cic") paso("top 10 de OLT", () => renderTop10Olt(filtrados, "cic_top10_olt"));
-  else paso("desglose de activos", () => renderChartDesglose(filtrados, `${prefix}_chart_desglose`));
+  if (!soloTabla) {
+    paso("gráfica de unidades", () => renderChartUnidad(filtrados, `${prefix}_chart_unidad`));
+    paso("gráfica de oficinas", () => renderChartOficina(filtrados, `${prefix}_chart_oficina`));
+    if (prefix === "cic") paso("top 10 de OLT", () => renderTop10Olt(filtrados, "cic_top10_olt"));
+    else paso("desglose de activos", () => renderChartDesglose(filtrados, `${prefix}_chart_desglose`));
+  }
   let descartado = false;
   paso("filtros", () => { descartado = actualizarCascada(prefix, universo); });
   if (descartado && !aplicarFiltros._reintento) {   // un padre cambió y se descartó una selección que ya no existe: se redibuja con lo vigente
