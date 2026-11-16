@@ -4386,6 +4386,8 @@ async function exportarPdfDashboard(prefix) {
       onclone: (doc) => {
         const sec = doc.getElementById(cfg.seccion);
         [...sec.children].forEach((h) => { if (!mostrar.some((sel) => h.matches(sel))) h.style.display = "none"; });
+        sec.classList.remove("db-compacto");   // el PDF siempre lleva indicadores y filtros, aunque en pantalla estén ocultos
+        sec.querySelectorAll(".db-toggle-vista").forEach((e) => { e.style.display = "none"; });
         sec.querySelectorAll(".db-acciones, .db-aviso").forEach((e) => { e.style.display = "none"; });
         sec.querySelectorAll(".db-estado-row").forEach((e) => { e.style.gridTemplateColumns = `repeat(${e.querySelectorAll(".db-estado-card").length || 5}, 1fr)`; });
       },
@@ -4456,6 +4458,27 @@ async function exportarPdfDashboard(prefix) {
   }
 }
 document.getElementById("piz_btn_pdf").addEventListener("click", () => exportarPdfDashboard("piz"));
+
+// Pizarra: botón discreto en la barra del título para ocultar/mostrar indicadores, filtros y botones
+(function () {
+  const btn = document.getElementById("piz_btn_vista");
+  const sec = document.getElementById("tab-pizarra");
+  if (!btn || !sec) return;
+  const aplicar = (compacto) => {
+    sec.classList.toggle("db-compacto", compacto);
+    btn.textContent = compacto ? "▼" : "▲";
+    btn.title = compacto ? "Mostrar indicadores y filtros" : "Ocultar indicadores y filtros";
+    btn.setAttribute("aria-expanded", compacto ? "false" : "true");
+  };
+  let inicial = false;
+  try { inicial = localStorage.getItem("piz_compacto") === "1"; } catch (e) { /* sin almacenamiento: queda visible */ }
+  aplicar(inicial);
+  btn.addEventListener("click", () => {
+    const c = !sec.classList.contains("db-compacto");
+    aplicar(c);
+    try { localStorage.setItem("piz_compacto", c ? "1" : "0"); } catch (e) { /* ignorar */ }
+  });
+})();
 document.getElementById("rep_btn_pdf").addEventListener("click", () => exportarPdfDashboard("rep"));
 document.getElementById("cic_btn_pdf").addEventListener("click", () => exportarPdfDashboard("cic"));
 

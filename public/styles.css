@@ -1007,3 +1007,10 @@ input, select, textarea, .multi-cat summary, .multi-cat .multi-lista { font-fami
 @media (max-width: 1000px) {
   #tab-pizarra .db-estado-row { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Pizarra: botón pequeño y discreto para ocultar/mostrar indicadores y filtros */
+#tab-pizarra .db-topbar { position: relative; }
+.db-toggle-vista { position: absolute; right: 6px; bottom: 2px; width: 22px; height: 18px; padding: 0; line-height: 16px; font-size: 10px; color: var(--db-primary, #4A1259); background: transparent; border: 0; border-radius: 4px; opacity: .35; cursor: pointer; }
+.db-toggle-vista:hover, .db-toggle-vista:focus-visible { opacity: .9; background: rgba(74, 18, 89, .1); }
+#tab-pizarra.db-compacto .db-estado-row,
+#tab-pizarra.db-compacto .db-filtros-grid { display: none; }
