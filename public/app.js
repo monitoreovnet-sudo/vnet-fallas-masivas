@@ -3758,7 +3758,7 @@ function renderKpisGenerico(filas, prefix) {
   document.getElementById(`${prefix}_kpi_observacion`).textContent = formatearMiles(observacion);
   pintarKpiVentanas(prefix);
   document.getElementById(`${prefix}_kpi_resuelto`).textContent = formatearMiles(resuelto);
-  document.getElementById(`${prefix}_kpi_cerrado`).textContent = formatearMiles(cerrado);
+  const kC = document.getElementById(`${prefix}_kpi_cerrado`); if (kC) kC.textContent = formatearMiles(cerrado);
   const kA = document.getElementById(`${prefix}_kpi_activos`); if (kA) kA.textContent = formatearMiles(curso + observacion + ventana);
   const kG = document.getElementById(`${prefix}_kpi_gestionados`); if (kG) kG.textContent = formatearMiles(resuelto + cerrado);
 }
@@ -4387,7 +4387,7 @@ async function exportarPdfDashboard(prefix) {
         const sec = doc.getElementById(cfg.seccion);
         [...sec.children].forEach((h) => { if (!mostrar.some((sel) => h.matches(sel))) h.style.display = "none"; });
         sec.querySelectorAll(".db-acciones, .db-aviso").forEach((e) => { e.style.display = "none"; });
-        sec.querySelectorAll(".db-estado-row").forEach((e) => { e.style.gridTemplateColumns = "repeat(5, 1fr)"; });
+        sec.querySelectorAll(".db-estado-row").forEach((e) => { e.style.gridTemplateColumns = `repeat(${e.querySelectorAll(".db-estado-card").length || 5}, 1fr)`; });
       },
     });
 

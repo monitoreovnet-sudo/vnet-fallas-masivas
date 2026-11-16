@@ -972,3 +972,38 @@ input, select, textarea, .multi-cat summary, .multi-cat .multi-lista { font-fami
 .ig-card.vacia { border-left-color: #bbb; opacity: .8; }
 .ig-barra { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0 10px; }
 #ig_grid { font-size: 13px; }
+
+/* ===== Pizarra de Monitoreo: 4 indicadores del mismo tamaño y filtros ordenados ===== */
+#tab-pizarra .db-estado-row { grid-template-columns: repeat(4, 1fr) 240px; align-items: stretch; }
+#tab-pizarra .db-estado-card { height: 96px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; }
+#tab-pizarra .db-acciones { align-self: start; }
+/* Computador y televisor: todos los filtros en 1 sola fila */
+@media (min-width: 1101px) {
+  #tab-pizarra .db-filtros-grid { grid-template-columns: repeat(10, minmax(0, 1fr)) minmax(0, 2.1fr); gap: 8px; padding-left: 16px; padding-right: 16px; }
+  #tab-pizarra .db-filtro-item label { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #tab-pizarra .db-filtro-item select, #tab-pizarra .db-filtro-item input { font-size: 12px; padding: 7px 6px; }
+  #tab-pizarra .db-filtro-item select { padding-right: 20px; background-position: right 5px center; }
+  #tab-pizarra .ms-btn { font-size: 12px; padding: 7px 20px 7px 6px; background-position: right 4px center; }
+}
+@media (min-width: 1101px) and (max-width: 1250px) {
+  #tab-pizarra .db-filtros-grid { gap: 5px; padding-left: 10px; padding-right: 10px; }
+  #tab-pizarra .db-filtro-item label { font-size: 10px; }
+  #tab-pizarra .db-filtro-item select, #tab-pizarra .db-filtro-item input, #tab-pizarra .ms-btn { font-size: 11px; padding-left: 4px; }
+  #tab-pizarra .ms-btn { padding-right: 16px; }
+}
+/* Tablet (iPad): 2 filas de 6 columnas; la fecha ocupa 2 columnas */
+@media (min-width: 761px) and (max-width: 1100px) {
+  #tab-pizarra .db-filtros-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; padding-left: 14px; padding-right: 14px; }
+  #tab-pizarra .db-filtro-fecha-item { grid-column: span 2; }
+  #tab-pizarra .db-filtro-item label { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #tab-pizarra .db-filtro-item select, #tab-pizarra .db-filtro-item input, #tab-pizarra .ms-btn { font-size: 12px; padding-left: 6px; }
+  #tab-pizarra .ms-btn { padding-right: 18px; }
+}
+/* Teléfono: 2 columnas (la fecha ocupa las 2) para que se puedan leer y tocar */
+@media (max-width: 760px) {
+  #tab-pizarra .db-filtros-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  #tab-pizarra .db-filtro-fecha-item { grid-column: 1 / -1; }
+}
+@media (max-width: 1000px) {
+  #tab-pizarra .db-estado-row { grid-template-columns: repeat(2, 1fr); }
+}
