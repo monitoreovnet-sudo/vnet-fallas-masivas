@@ -973,39 +973,76 @@ input, select, textarea, .multi-cat summary, .multi-cat .multi-lista { font-fami
 .ig-barra { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0 10px; }
 #ig_grid { font-size: 13px; }
 
-/* ===== Pizarra de Monitoreo: 4 indicadores del mismo tamaño y filtros ordenados ===== */
-#tab-pizarra .db-estado-row { grid-template-columns: repeat(4, 1fr) 240px; align-items: stretch; }
-#tab-pizarra .db-estado-card { height: 96px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; }
-#tab-pizarra .db-acciones { align-self: start; }
-/* Computador y televisor: todos los filtros en 1 sola fila */
+/* ===== Informes (Pizarra, Reporte Diario, Ciclo 2026): tamaños, letra y filtros ===== */
+/* Indicadores: todos del mismo ancho y alto, siempre */
+.dash-v2 .db-estado-row { align-items: stretch; }
+@media (min-width: 1001px) { #tab-pizarra .db-estado-row { grid-template-columns: repeat(4, minmax(0, 1fr)) 240px; } }
+.dash-v2 .db-estado-card { height: 96px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; }
+.dash-v2 .db-acciones { align-self: start; }
+/* Nota "Actualizado: ..." de la ventana de mantenimiento: siempre centrada */
+.dash-v2 .db-ventana-card .vent-act { text-align: center; }
+/* Botón Actualizar: blanco con letras moradas en todos los informes */
+.dash-v2 .db-btn-circular { background: #fff; color: var(--db-primary, #4A1259); }
+
+/* Letra de los informes: 2 px más pequeña */
+.dash-v2 .db-estado-card .titulo { font-size: 16px; }
+.dash-v2 .db-estado-card .valor { font-size: 14px; }
+.dash-v2 .db-resumen-card .titulo, .dash-v2 .db-resumen-card .valor { font-size: 18px; }
+.dash-v2 .db-btn-circular { font-size: 13px; }
+.dash-v2 .db-btn-rect { font-size: 10px; }
+.dash-v2 .db-ventana-card .vent-menu { font-size: 11px; }
+.dash-v2 .db-col-titulo { font-size: 16px; }
+.dash-v2 .db-top5-tabla th { font-size: 13px; }
+.dash-v2 .db-top5-tabla td:first-child { font-size: 12px; }
+.dash-v2 .db-top5-tabla td:not(:first-child) { font-size: 11px; }
+.dash-v2 #cic_top10_olt th { font-size: 12px; }
+.dash-v2 #cic_top10_olt td:first-child, .dash-v2 #cic_top10_olt td:not(:first-child) { font-size: 10px; }
+.dash-v2 .db-tabla-maestra th, .dash-v2 .db-tabla-maestra td { font-size: 10px; }
+.dash-v2 .db-semaforo-bar .seg, .dash-v2 .db-semaforo-labels > div { font-size: 11px; }
+.dash-v2 .db-semaforo-vacio { font-size: 11px; }
+.dash-v2 .db-aviso { font-size: 10px; }
+.dash-v2 .db-filtro-item label { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash-v2 .db-filtro-item select, .dash-v2 .db-filtro-item input, .dash-v2 .ms-btn { font-size: 12px; }
+.dash-v2 .ms-op { font-size: 11px; }
+.dash-v2 .ms-vacio, .dash-v2 .ms-limpiar { font-size: 10px; }
+.dash-v2 .ms-buscar input { font-size: 11px; }
+
+/* Filtros. Reporte Diario y Ciclo 2026: siempre 2 filas (6 columnas; la fecha ocupa 2) */
+#tab-reporte .db-filtros-grid, #tab-ciclo .db-filtros-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; padding-left: 16px; padding-right: 16px; }
+#tab-reporte .db-filtro-fecha-item, #tab-ciclo .db-filtro-fecha-item { grid-column: span 2; }
+/* Pizarra: computador y televisor, 1 sola fila */
 @media (min-width: 1101px) {
   #tab-pizarra .db-filtros-grid { grid-template-columns: repeat(10, minmax(0, 1fr)) minmax(0, 2.1fr); gap: 8px; padding-left: 16px; padding-right: 16px; }
-  #tab-pizarra .db-filtro-item label { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #tab-pizarra .db-filtro-item select, #tab-pizarra .db-filtro-item input { font-size: 12px; padding: 7px 6px; }
-  #tab-pizarra .db-filtro-item select { padding-right: 20px; background-position: right 5px center; }
-  #tab-pizarra .ms-btn { font-size: 12px; padding: 7px 20px 7px 6px; background-position: right 4px center; }
+  .dash-v2 .db-filtro-item select, .dash-v2 .db-filtro-item input { padding: 7px 6px; }
+  .dash-v2 .db-filtro-item select { padding-right: 20px; background-position: right 5px center; }
+  .dash-v2 .ms-btn { padding: 7px 20px 7px 6px; background-position: right 4px center; }
 }
 @media (min-width: 1101px) and (max-width: 1250px) {
-  #tab-pizarra .db-filtros-grid { gap: 5px; padding-left: 10px; padding-right: 10px; }
-  #tab-pizarra .db-filtro-item label { font-size: 10px; }
-  #tab-pizarra .db-filtro-item select, #tab-pizarra .db-filtro-item input, #tab-pizarra .ms-btn { font-size: 11px; padding-left: 4px; }
-  #tab-pizarra .ms-btn { padding-right: 16px; }
+  .dash-v2 .db-filtros-grid { gap: 5px; padding-left: 10px; padding-right: 10px; }
+  .dash-v2 .db-filtro-item label { font-size: 10px; }
+  .dash-v2 .db-filtro-item select, .dash-v2 .db-filtro-item input, .dash-v2 .ms-btn { font-size: 11px; padding-left: 4px; }
+  .dash-v2 .ms-btn { padding-right: 16px; }
 }
-/* Tablet (iPad): 2 filas de 6 columnas; la fecha ocupa 2 columnas */
-@media (min-width: 761px) and (max-width: 1100px) {
-  #tab-pizarra .db-filtros-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; padding-left: 14px; padding-right: 14px; }
-  #tab-pizarra .db-filtro-fecha-item { grid-column: span 2; }
-  #tab-pizarra .db-filtro-item label { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #tab-pizarra .db-filtro-item select, #tab-pizarra .db-filtro-item input, #tab-pizarra .ms-btn { font-size: 12px; padding-left: 6px; }
-  #tab-pizarra .ms-btn { padding-right: 18px; }
+/* Tablet y teléfono: los tres informes en 2 filas de 6 columnas */
+@media (max-width: 1100px) {
+  .dash-v2 .db-filtros-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; padding-left: 12px; padding-right: 12px; }
+  .dash-v2 .db-filtro-fecha-item { grid-column: span 2; }
+  .dash-v2 .db-filtro-item select, .dash-v2 .db-filtro-item input, .dash-v2 .ms-btn { padding: 6px 16px 6px 5px; background-position: right 4px center; }
+  .dash-v2 .db-filtro-item input { padding-right: 5px; }
 }
-/* Teléfono: 2 columnas (la fecha ocupa las 2) para que se puedan leer y tocar */
 @media (max-width: 760px) {
-  #tab-pizarra .db-filtros-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  #tab-pizarra .db-filtro-fecha-item { grid-column: 1 / -1; }
+  .dash-v2 .db-filtros-grid { gap: 4px; padding-left: 8px; padding-right: 8px; }
+  .dash-v2 .db-filtro-item label { font-size: 9px; }
+  .dash-v2 .db-filtro-item select, .dash-v2 .db-filtro-item input, .dash-v2 .ms-btn { font-size: 10px; padding: 5px 12px 5px 4px; background-position: right 3px center; }
+  .dash-v2 .db-filtro-item input { padding-right: 4px; }
+  .dash-v2 .db-filtro-fecha { gap: 3px; }
+  .dash-v2 .db-btn-circular { font-size: 11px; }
 }
 @media (max-width: 1000px) {
-  #tab-pizarra .db-estado-row { grid-template-columns: repeat(2, 1fr); }
+  .dash-v2 .db-estado-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 680px) {
+  .dash-v2 .db-estado-row { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* Pizarra: botón pequeño y discreto para ocultar/mostrar indicadores y filtros */

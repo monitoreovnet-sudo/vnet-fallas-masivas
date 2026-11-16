@@ -3940,11 +3940,11 @@ function renderChartUnidad(filas, canvasId = "piz_chart_unidad") {
       layout: { padding: { right: 24 } },
       scales: {
         x: { display: false, grid: { display: false } },
-        y: { grid: { display: false }, ticks: { font: { family: FONT_DASH, size: 10 } } },
+        y: { grid: { display: false }, ticks: { font: { family: FONT_DASH, size: 8 } } },
       },
       plugins: {
         legend: { display: false },
-        datalabels: { anchor: "end", align: "right", color: "#000", formatter: (v) => formatearMiles(v), font: { family: FONT_DASH, weight: "bold", size: 12 } },
+        datalabels: { anchor: "end", align: "right", color: "#000", formatter: (v) => formatearMiles(v), font: { family: FONT_DASH, weight: "bold", size: 10 } },
         tooltip: { callbacks: { label: tooltipMiles } },
       },
     },
@@ -3977,12 +3977,12 @@ function renderChartOficina(filas, canvasId = "piz_chart_oficina") {
       maintainAspectRatio: false,
       layout: { padding: { top: 20 } },
       scales: {
-        x: { grid: { display: false }, ticks: { font: { family: FONT_DASH, size: 9 }, maxRotation: 45, minRotation: 45 } },
+        x: { grid: { display: false }, ticks: { font: { family: FONT_DASH, size: 8 }, maxRotation: 45, minRotation: 45 } },
         y: { display: false, grid: { display: false } },
       },
       plugins: {
         legend: { display: false },
-        datalabels: { anchor: "end", align: "top", color: "#000", formatter: (v) => formatearMiles(v), font: { family: FONT_DASH, weight: "bold", size: 11 } },
+        datalabels: { anchor: "end", align: "top", color: "#000", formatter: (v) => formatearMiles(v), font: { family: FONT_DASH, weight: "bold", size: 9 } },
         tooltip: { callbacks: { label: tooltipMiles } },
       },
     },
@@ -4020,16 +4020,16 @@ function renderChartDesglose(filas, canvasId) {
       maintainAspectRatio: false,
       cutout: "55%",
       plugins: {
-        legend: { position: "bottom", labels: { font: { family: FONT_DASH, size: 10 }, color: "#000", boxWidth: 12 } },
+        legend: { position: "bottom", labels: { font: { family: FONT_DASH, size: 8 }, color: "#000", boxWidth: 12 } },
         datalabels: {
           labels: {
             porcentaje: {
-              color: "#fff", font: { family: FONT_DASH, weight: "bold", size: 11 },
+              color: "#fff", font: { family: FONT_DASH, weight: "bold", size: 9 },
               formatter: (v) => (total ? Math.round((v / total) * 100) + "%" : "0%"),
             },
             valor: {
               anchor: "end", align: "end", offset: 8,
-              color: "#000", font: { family: FONT_DASH, weight: "bold", size: 11 },
+              color: "#000", font: { family: FONT_DASH, weight: "bold", size: 9 },
               formatter: (v) => formatearMiles(v),
             },
           },
@@ -4470,14 +4470,8 @@ document.getElementById("piz_btn_pdf").addEventListener("click", () => exportarP
     btn.title = compacto ? "Mostrar indicadores y filtros" : "Ocultar indicadores y filtros";
     btn.setAttribute("aria-expanded", compacto ? "false" : "true");
   };
-  let inicial = false;
-  try { inicial = localStorage.getItem("piz_compacto") === "1"; } catch (e) { /* sin almacenamiento: queda visible */ }
-  aplicar(inicial);
-  btn.addEventListener("click", () => {
-    const c = !sec.classList.contains("db-compacto");
-    aplicar(c);
-    try { localStorage.setItem("piz_compacto", c ? "1" : "0"); } catch (e) { /* ignorar */ }
-  });
+  aplicar(true);   // por defecto la Pizarra abre con indicadores y filtros ocultos
+  btn.addEventListener("click", () => aplicar(!sec.classList.contains("db-compacto")));
 })();
 document.getElementById("rep_btn_pdf").addEventListener("click", () => exportarPdfDashboard("rep"));
 document.getElementById("cic_btn_pdf").addEventListener("click", () => exportarPdfDashboard("cic"));
@@ -5107,13 +5101,11 @@ async function entrarModoPublico() {
   document.getElementById("btn_login_publico").classList.remove("hidden");
   document.getElementById("topbar_usuario_nombre").textContent = "";
   ["piz_btn_csv", "piz_btn_excel", "piz_btn_pdf"].forEach((id) => document.getElementById(id).classList.add("hidden"));
-  document.getElementById("piz_btn_login").classList.remove("hidden");
   try { await loadLookups(); } catch (e) { console.warn("Modo público: no se pudo cargar todo", e); }
   document.querySelector('.tab-btn[data-tab="pizarra"]').click();
 }
 const irAlLogin = () => { document.getElementById("app_shell").classList.add("hidden"); document.getElementById("login_screen").classList.remove("hidden"); };
 document.getElementById("btn_login_publico").addEventListener("click", irAlLogin);
-document.getElementById("piz_btn_login").addEventListener("click", irAlLogin);
 document.getElementById("login_volver").addEventListener("click", () => { document.getElementById("login_screen").classList.add("hidden"); document.getElementById("app_shell").classList.remove("hidden"); });
 
 async function iniciarSesionApp() {
