@@ -3759,8 +3759,8 @@ function renderKpisGenerico(filas, prefix) {
   pintarKpiVentanas(prefix);
   document.getElementById(`${prefix}_kpi_resuelto`).textContent = formatearMiles(resuelto);
   document.getElementById(`${prefix}_kpi_cerrado`).textContent = formatearMiles(cerrado);
-  document.getElementById(`${prefix}_kpi_activos`).textContent = formatearMiles(curso + observacion + ventana);
-  document.getElementById(`${prefix}_kpi_gestionados`).textContent = formatearMiles(resuelto + cerrado);
+  const kA = document.getElementById(`${prefix}_kpi_activos`); if (kA) kA.textContent = formatearMiles(curso + observacion + ventana);
+  const kG = document.getElementById(`${prefix}_kpi_gestionados`); if (kG) kG.textContent = formatearMiles(resuelto + cerrado);
 }
 function renderKpisPizarra(filas) { renderKpisGenerico(filas, "piz"); }
 
