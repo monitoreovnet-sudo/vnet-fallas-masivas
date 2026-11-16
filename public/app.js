@@ -5446,14 +5446,15 @@ document.getElementById("repo_btn_importar").addEventListener("click", async () 
   btn.disabled = true;
   cont.innerHTML = "";
 
-  const total = { tickets_recibidos: 0, tickets_insertados: 0, tickets_ya_existian: 0, puertos_recibidos: 0,
-    puertos_insertados: 0, puertos_ya_existian: 0, puertos_sin_ticket: 0, puertos_sin_oficina_reconocida: 0 };
+  const reemplazar = document.getElementById("repo_reemplazar").checked;
+  const total = { tickets_recibidos: 0, tickets_insertados: 0, tickets_ya_existian: 0, tickets_actualizados: 0, puertos_recibidos: 0,
+    puertos_insertados: 0, puertos_actualizados: 0, puertos_eliminados: 0, puertos_ya_existian: 0, puertos_sin_ticket: 0, puertos_sin_oficina_reconocida: 0 };
   const lotes = dividirEnLotesRepo(repoParsed.tickets, repoParsed.puertos, 100);
   let error = null;
   for (let i = 0; i < lotes.length; i++) {
     btn.textContent = `Importando ${i + 1} de ${lotes.length}...`;
     try {
-      const r = await apiSend("/admin/importar", "POST", lotes[i]);
+      const r = await apiSend("/admin/importar", "POST", { ...lotes[i], reemplazar });
       for (const k of Object.keys(total)) total[k] += r[k] || 0;
     } catch (err) {
       error = `Se detuvo en el lote ${i + 1} de ${lotes.length}: ${err.message}. Lo ya importado quedó guardado; puedes volver a subir el archivo y continuará sin duplicar.`;
@@ -5468,10 +5469,10 @@ document.getElementById("repo_btn_importar").addEventListener("click", async () 
       <div class="kv">
         <div><span>Tickets recibidos:</span> ${total.tickets_recibidos}</div>
         <div><span>Tickets nuevos insertados:</span> ${total.tickets_insertados}</div>
-        <div><span>Tickets que ya existían (no se tocan):</span> ${total.tickets_ya_existian}</div>
+        ${reemplazar ? `<div><span>Tickets existentes reescritos:</span> ${total.tickets_actualizados}</div>` : `<div><span>Tickets que ya existían (no se tocan):</span> ${total.tickets_ya_existian}</div>`}
         <div><span>Filas de detalle recibidas:</span> ${total.puertos_recibidos}</div>
         <div><span>Filas de detalle nuevas insertadas:</span> ${total.puertos_insertados}</div>
-        <div><span>Filas omitidas (el ticket ya tenía detalle):</span> ${total.puertos_ya_existian}</div>
+        ${reemplazar ? `<div><span>Filas de detalle actualizadas:</span> ${total.puertos_actualizados}</div><div><span>Filas de detalle eliminadas (ya no vienen en el archivo):</span> ${total.puertos_eliminados}</div>` : `<div><span>Filas omitidas (el ticket ya tenía detalle):</span> ${total.puertos_ya_existian}</div>`}
         <div><span>Filas sin ticket válido:</span> ${total.puertos_sin_ticket}</div>
         <div><span>Filas con oficina no reconocida:</span> ${total.puertos_sin_oficina_reconocida}</div>
       </div>

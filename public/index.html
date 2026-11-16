@@ -817,7 +817,7 @@
       NOMBRE DEL EDIFICIO (SI APLICA), UBICACIÓN, FECHA DE CREACION DEL CMR, FECHA DE CREACION DEL CDA,
       FECHA DE SOLUCION DEL CMR, FECHA DE SOLUCION DEL CDA, CANTIDAD DE CLIENTES AFECTADOS,
       N° CLIENTES QUE REPORTARON FALLA, COMENTARIO, AVANCE DEL CMR, DESCRIPCION.
-      Los tickets que ya existen no se modifican y nada se duplica, así que es seguro subir el mismo archivo más de una vez.
+      Nada se duplica, así que es seguro subir el mismo archivo más de una vez. Con la casilla de abajo marcada, los tickets que ya existen se reescriben con los datos del archivo.
     </p>
 
     <div class="field">
@@ -826,6 +826,13 @@
     </div>
     <button id="repo_btn_analizar" class="btn-secondary" type="button">1. Analizar archivo</button>
     <div id="repo_msg_analisis" class="msg"></div>
+
+    <label class="chk" style="display:flex;gap:8px;align-items:flex-start;margin:10px 0;">
+      <input type="checkbox" id="repo_reemplazar" checked style="margin-top:3px;" />
+      <span><strong>Reescribir los tickets que ya existen</strong> (mismo número de ticket): se actualizan con los datos del archivo y se sincroniza su detalle OLT/Tarjeta/Puerto
+      (se agregan los nuevos y se quitan los que ya no vienen). Conservan su historial, sus clientes cruzados, la causa y el correctivo de cada puerto, y la descripción o tickets vinculados si el archivo los trae vacíos.
+      Si la desmarcas, los tickets existentes no se tocan.</span>
+    </label>
 
     <div id="repo_preview" class="hidden">
       <div class="kv" style="margin: 12px 0;">
