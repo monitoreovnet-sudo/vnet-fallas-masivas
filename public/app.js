@@ -3720,7 +3720,7 @@ function aplicarFiltros(prefix) {
     }
   };
   paso("tarjetas de estado", () => renderKpisGenerico(filtrarDatos(datosCompletos, prefix, true), prefix));
-  paso("semáforo", () => renderSemaforoBar(filtrados, `${prefix}_semaforo_bar`));
+  if (prefix !== "piz") paso("semáforo", () => renderSemaforoBar(filtrados, `${prefix}_semaforo_bar`));
   // La Pizarra de Monitoreo solo muestra filtros y tabla principal (sin gráficas ni Top 5 por Estado).
   const soloTabla = prefix === "piz";
   if (!soloTabla) paso("top 5 por estado", () => renderTop5PorEstado(filtrados, `${prefix}_top5_estado`));
