@@ -996,6 +996,22 @@
     <div id="cli_resultado"></div>
     <div id="cli_aud_resultado"></div>
 
+    <h3>Lista de clientes para un ticket (archivo de «Clientes por OLT»)</h3>
+    <p class="hint">Sube el archivo ya cruzado y escribe el número de ticket: la lista se guarda en ese ticket sin cruzar nada contra Grafana ni SmartOLT. Cada subida queda como una lista nueva con su fecha y hora.</p>
+    <div class="row">
+      <label>N° de ticket <input type="text" id="tl_ticket" placeholder="Ej.: 12345" /></label>
+      <label>Archivo (.xlsx o .csv) <input type="file" id="tl_archivo" accept=".xlsx,.xls,.csv" /></label>
+      <button type="button" id="tl_revisar">Revisar</button>
+    </div>
+    <div id="tl_msg"></div>
+    <div id="tl_decision" style="display:none">
+      <p id="tl_comparacion"></p>
+      <label><input type="radio" name="tl_usar" value="archivo" checked /> Usar el número del archivo</label><br />
+      <label><input type="radio" name="tl_usar" value="registrado" /> Dejar el número registrado en el ticket</label>
+      <p><button type="button" id="tl_guardar">Guardar lista en el ticket</button></p>
+    </div>
+    <div id="tl_historial"></div>
+
     <h3>Cola nocturna de Grafana</h3>
     <div id="cli_cola"></div>
 

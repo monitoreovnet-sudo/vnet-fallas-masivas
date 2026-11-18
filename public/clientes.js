@@ -1234,3 +1234,92 @@ function ccaHojaSectores(filas) {
   el("co_actualizar").addEventListener("click", actualizar);
   window.coAbrir = () => cargarOpciones();
 })();
+
+// ---------------------------------------------------------------
+// PLAN B — Lista de clientes ya cruzada (exportada de «Clientes por OLT») anclada a un ticket
+// ---------------------------------------------------------------
+(function () {
+  const el = (id) => document.getElementById(id);
+  if (!el("tl_revisar")) return;
+  const CAMPOS = { nombre: "nombre", telefono: "telefono", telefono_oficina: "telefono oficina", correo: "correo", contrato: "nro. de contrato", cedula: "cedula", sucursal: "sucursal", estado: "estado", oficina: "oficina", olt: "olt", tarjeta: "tarjeta", puerto: "puerto", sector: "sector", municipio: "municipio", direccion: "direccion", ubicacion: "ubicacion (smartolt)", estatus_grafana: "estatus grafana", estatus_smartolt: "estatus smartolt", serial: "serial onu", visto: "visto en smartolt" };
+  const ENC = { nombre: "Nombre", telefono: "Teléfono", telefono_oficina: "Teléfono oficina", correo: "Correo", contrato: "Nro. de contrato", cedula: "Cédula", sucursal: "Sucursal", estado: "Estado", oficina: "Oficina", olt: "OLT", tarjeta: "Tarjeta", puerto: "Puerto", sector: "Sector", municipio: "Municipio", direccion: "Dirección", ubicacion: "Ubicación (SmartOLT)", estatus_grafana: "Estatus Grafana", estatus_smartolt: "Estatus SmartOLT", serial: "Serial ONU", visto: "Visto en SmartOLT" };
+  const norm = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const num = (n) => Number(n).toLocaleString("es-VE");
+  let filas = null, nombreArchivo = "", info = null, ocupado = false;
+  const msg = (t, ok = true) => { const m = el("tl_msg"); m.textContent = t || ""; m.style.color = ok ? "" : "#b00020"; };
+
+  async function leer(file) {
+    const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+    const hoja = wb.Sheets[wb.SheetNames[0]];
+    const datos = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: "", raw: false });
+    if (!datos.length) throw new Error("El archivo está vacío.");
+    const enc = datos[0].map(norm), idx = {};
+    for (const [k, h] of Object.entries(CAMPOS)) idx[k] = enc.indexOf(h);
+    if (idx.olt < 0 || idx.tarjeta < 0 || idx.puerto < 0 || idx.nombre < 0) throw new Error("No parece un archivo de «Clientes por OLT»: faltan las columnas Nombre, OLT, Tarjeta o Puerto.");
+    return datos.slice(1).filter((r) => r.some((c) => String(c).trim() !== "")).map((r) => {
+      const o = {}; for (const k of Object.keys(CAMPOS)) o[k] = idx[k] >= 0 ? String(r[idx[k]] ?? "").trim() : ""; return o;
+    });
+  }
+
+  async function revisar() {
+    if (ocupado) return;
+    const tk = el("tl_ticket").value.trim(), f = el("tl_archivo").files[0];
+    if (!tk) return msg("Escribe el número de ticket.", false);
+    if (!f) return msg("Elige el archivo.", false);
+    ocupado = true; el("tl_decision").style.display = "none"; msg("Leyendo…");
+    try {
+      filas = await leer(f); nombreArchivo = f.name;
+      if (!filas.length) throw new Error("El archivo no tiene clientes.");
+      info = await apiGet("/clientes/ticket-lista/info?ticket=" + encodeURIComponent(tk));
+      el("tl_comparacion").textContent = `Tienes registrado ${num(info.registrados)} cliente(s) afectado(s) para este ticket (${num(info.registros)} registro(s)), y hay ${num(filas.length)} en el archivo. ¿Cuál quieres poner en el ticket?`;
+      el("tl_decision").style.display = "";
+      msg("");
+    } catch (e) { msg(e.message, false); }
+    finally { ocupado = false; }
+    historial(tk);
+  }
+
+  async function guardar() {
+    if (ocupado || !filas || !info) return;
+    ocupado = true; el("tl_guardar").disabled = true;
+    const usar = (document.querySelector('input[name="tl_usar"]:checked') || {}).value || "registrado";
+    let listaId = 0;
+    try {
+      for (let i = 0; i < filas.length; i += 500) {
+        const r = await apiSend("/clientes/ticket-lista/lote", "POST", listaId ? { lista_id: listaId, filas: filas.slice(i, i + 500) } : { ticket: info.ticket.ticket_cmr, archivo: nombreArchivo, filas: filas.slice(i, i + 500) });
+        listaId = r.lista_id; msg(`Guardando… ${num(Math.min(i + 500, filas.length))} de ${num(filas.length)}`);
+      }
+      const f = await apiSend("/clientes/ticket-lista/finalizar", "POST", { lista_id: listaId, usar });
+      let t = `Lista guardada: ${num(f.total)} clientes.`;
+      if (usar === "archivo") t += ` Se actualizaron ${num(f.actualizados)} registro(s) del ticket.`;
+      if (f.sin_registro.length) t += ` Puertos del archivo que el ticket no tiene (no se cambiaron): ${f.sin_registro.map((x) => `${x.olt} ${x.tarjeta}/${x.puerto} (${x.clientes})`).join(", ")}.`;
+      msg(t); el("tl_decision").style.display = "none"; filas = null; el("tl_archivo").value = "";
+      historial(info.ticket.ticket_cmr);
+    } catch (e) { msg(`Se detuvo: ${e.message}. Si ya se guardaron filas, vuelve a subir el archivo (queda como una lista nueva; la incompleta no se muestra).`, false); }
+    finally { ocupado = false; el("tl_guardar").disabled = false; }
+  }
+
+  async function historial(tk) {
+    const cont = el("tl_historial");
+    try {
+      const r = await apiGet("/clientes/ticket-lista/info?ticket=" + encodeURIComponent(tk));
+      if (!r.listas.length) { cont.innerHTML = ""; return; }
+      cont.innerHTML = `<h4>Listas guardadas del ticket ${r.ticket.ticket_cmr}</h4><table><thead><tr><th>Subida</th><th>Archivo</th><th>Clientes</th><th>Número aplicado al ticket</th><th></th></tr></thead><tbody>` +
+        r.listas.map((l, i) => `<tr><td>${l.subido_en}${i === 0 ? " (vigente)" : ""}</td><td>${(l.archivo || "").replace(/</g, "&lt;")}</td><td>${num(l.total)}</td><td>${l.aplicada ? "Sí" : "No"}</td><td><button type="button" data-lista="${l.id}">Descargar</button></td></tr>`).join("") + "</tbody></table>";
+      cont.querySelectorAll("button[data-lista]").forEach((b) => b.addEventListener("click", () => descargar(Number(b.dataset.lista), r.ticket.ticket_cmr)));
+    } catch (e) { cont.innerHTML = ""; }
+  }
+
+  async function descargar(id, tk) {
+    try {
+      let desde = 0, todas = [];
+      for (let g = 0; g < 100; g++) { const r = await apiGet(`/clientes/ticket-lista/ver?lista_id=${id}&desde=${desde}`); todas = todas.concat(r.filas); if (r.siguiente === null) break; desde = r.siguiente; }
+      const datos = todas.map((f) => { const o = {}; for (const k of Object.keys(ENC)) o[ENC[k]] = f[k] || ""; return o; });
+      const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(datos), "Clientes");
+      XLSX.writeFile(wb, `ticket_${tk}_lista_${id}.xlsx`);
+    } catch (e) { msg(e.message, false); }
+  }
+
+  el("tl_revisar").addEventListener("click", revisar);
+  el("tl_guardar").addEventListener("click", guardar);
+})();
