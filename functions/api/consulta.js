@@ -45,11 +45,13 @@ export async function onRequestGet({ request, env }) {
   let extrasSql = "";
   const pedidas = publico ? [] : p("extras").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 40);
   if (pedidas.length) {
-    const permitidas = new Map((await columnasBD(env.DB)).map((c) => [c.db_column_name, c]));
-    for (const clave of new Set(pedidas)) {
-      const c = permitidas.get(clave);
-      if (c) extrasSql += `, ${TABLAS_REPORTE[c.tabla].alias}."${c.columna}" AS "${clave}"`;
-    }
+    try {
+      const permitidas = new Map((await columnasBD(env.DB)).map((c) => [c.db_column_name, c]));
+      for (const clave of new Set(pedidas)) {
+        const c = permitidas.get(clave);
+        if (c) extrasSql += `, ${TABLAS_REPORTE[c.tabla].alias}."${c.columna}" AS "${clave}"`;
+      }
+    } catch (e) { extrasSql = ""; }   // sin columnas extra antes que no devolver nada
   }
 
   let sql = `
@@ -188,7 +190,7 @@ export async function onRequestGet({ request, env }) {
   if (Number.isInteger(limite) && limite > 0) filas = filas.slice(0, Math.min(limite, 200));
 
   // Clientes afectados según las auditorías vigentes (solo con sesión): clientes_falla y clientes_sin_luz
-  if (!publico) { try { await agregarConteosClientes(env.DB, filas); } catch (e) { /* módulo de clientes no instalado: las columnas quedan vacías */ } }
+  if (!publico && !p("sin_clientes")) { try { await agregarConteosClientes(env.DB, filas); } catch (e) { /* módulo de clientes no instalado: las columnas quedan vacías */ } }
 
   if (publico) {
     // Público: se quitan datos internos (quién lo creó, descripción libre, avance).

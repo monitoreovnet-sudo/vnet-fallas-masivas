@@ -2975,6 +2975,31 @@ setInterval(() => {
   if (clGrid && !clModoEdicion && vistaTabla && !vistaTabla.classList.contains("hidden")) cargarConsulta({ forzar: true, silencioso: true });
 }, 3600000);
 
+// ---------------------------------------------------------------
+// MODO TV (tiempo real): solo se activa si la página se abre con ?tv=1 (ej. https://vnet-fallas-masivas.pages.dev/?tv=1)
+// y con la sesión iniciada. Abre la Pizarra y, cada 20 segundos, pregunta si hubo cambios en la base (consulta muy liviana);
+// si los hubo, recarga la Pizarra. (La recarga de cada hora de los informes sigue funcionando como antes.)
+// En cualquier otra computadora (sin ?tv=1) no hace nada de esto.
+// ---------------------------------------------------------------
+const MODO_TV = new URLSearchParams(location.search).get("tv") === "1";
+let tvHuella = null, tvIniciado = false;
+function iniciarModoTV() {
+  if (!MODO_TV || tvIniciado || !currentUser || !currentUser.registrado) return;
+  tvIniciado = true;
+  const tab = document.querySelector('.tab-btn[data-tab="pizarra"]');
+  if (tab) tab.click();
+  setInterval(async () => {
+    const pz = document.getElementById("tab-pizarra");
+    if (!pz || !pz.classList.contains("active")) return;
+    try {
+      const r = await apiGet("/cambios");
+      const cambio = tvHuella !== null && r.huella !== tvHuella;
+      tvHuella = r.huella;
+      if (cambio) await cargarPizarra();
+    } catch (e) { /* sin conexión o sesión vencida: se reintenta en el próximo ciclo */ }
+  }, 20000);
+}
+
 document.getElementById("q_btn_volver").addEventListener("click", () => {
   document.getElementById("q_resultado").classList.add("hidden");
   document.getElementById("q_btn_volver").classList.add("hidden");
@@ -5135,6 +5160,7 @@ async function iniciarSesionApp() {
   mostrarApp();
   await loadLookups();
   aplicarPermisosRol();
+  iniciarModoTV();
 }
 
 document.getElementById("login_btn").addEventListener("click", async () => {
@@ -5151,6 +5177,7 @@ document.getElementById("login_btn").addEventListener("click", async () => {
     mostrarApp();
     await loadLookups();
     aplicarPermisosRol();
+    iniciarModoTV();
   } catch (err) {
     showMsg(msg, err.message, false);
   }
