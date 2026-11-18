@@ -1157,7 +1157,7 @@ function construirPuertosSegunModo(ctx) {
 
 // ---------------------------------------------------------------
 // Aviso de ticket repetido (Crear Ticket): al salir del cuadro del ticket se busca en la BD.
-//   Si existe: alerta con "Validar" (muestra el Log del ticket), "Continuar" (pide la contraseña y da 2 minutos) y "Cancelar".
+//   Si existe: alerta con "Validar" (muestra el Log del ticket), "Continuar" (sin contraseña) y "Cancelar".
 // ---------------------------------------------------------------
 const DUP = { cmr: null, token: null, hasta: 0 };
 const dupVigente = (cmr) => DUP.cmr === cmr && DUP.token && Date.now() < DUP.hasta;
@@ -1197,11 +1197,8 @@ async function revisarTicketRepetidoInterno(cmr) {
     for (;;) {
       const op = await dupMostrarAviso(cmr);
       if (op === "cancelar") { input.value = ""; return false; }
-      const res = await pedirClave(`Para continuar con el ticket ${formatearTicket(cmr)} (ya existente) escribe tu contraseña. Podrás registrarlo durante los próximos 2 minutos.`,
-        (password) => apiSend("/auth/verificar-duplicado", "POST", { password, ticket_cmr: cmr }),
-        { titulo: "Confirmar ticket existente", boton: "Continuar", peligro: false });
-      if (res && res.token) { DUP.cmr = cmr; DUP.token = res.token; DUP.hasta = Date.now() + (res.minutos || 2) * 60000; return true; }
-      // clave cancelada: vuelve al aviso
+      // "Continuar": ya no se pide contraseña; se recuerda la decisión para no volver a preguntar con este número.
+      DUP.cmr = cmr; DUP.token = "continuar"; DUP.hasta = Date.now() + 30 * 60000; return true;
     }
     } finally { /* nada */ }
   }
@@ -3658,6 +3655,7 @@ function actualizarCascada(prefix, datosCompletos) {
       valores.set(String(val), flt.labelCampo ? f[flt.labelCampo] : flt.etiqueta ? flt.etiqueta(val) : val);
     });
     const select = document.getElementById(`${prefix}_${flt.id}`);
+    if (!select) return;   // filtro que este informe no tiene (p. ej. la Pizarra simplificada)
     const set = selDe(prefix, flt.id);
     const placeholder = select.options[0] ? select.options[0].textContent : "Todos";
     const ordenados = Array.from(valores.entries()).sort((a, b) =>
@@ -4312,6 +4310,23 @@ function rutaConsultaInforme(prefix) {
   return "/consulta" + (extras.length ? "?extras=" + encodeURIComponent(extras.join(",")) : "");
 }
 
+// Carga un informe; si la consulta completa falla (p. ej. tarda demasiado), reintenta una versión liviana y muestra el motivo en pantalla.
+async function consultaInformeConRespaldo(prefix) {
+  try {
+    return await apiGet(rutaConsultaInforme(prefix));
+  } catch (err1) {
+    console.error(`Consulta completa de ${prefix} falló:`, err1);
+    try {
+      const data = await apiGet("/consulta?sin_clientes=1");
+      avisoDash(prefix, `Se cargó una versión reducida (sin conteo de clientes ni columnas extra). Motivo: ${err1.message}`);
+      return data;
+    } catch (err2) {
+      avisoDash(prefix, `No se pudieron cargar los datos: ${err2.message}`);
+      throw err2;
+    }
+  }
+}
+
 function renderTablaPizarra(filas) {
   renderTablaDinamica("piz", filas);
 }
@@ -4609,7 +4624,7 @@ function renderTablaReporte(filas) {
 
 async function cargarReporte() {
   try {
-    const data = await apiGet(rutaConsultaInforme("rep"));
+    const data = await consultaInformeConRespaldo("rep");
     reporteDatos = data.filas;
     aplicarFiltros("rep");
   } catch (err) {
@@ -4685,7 +4700,7 @@ function mapearCiclo(filas) {
 }
 async function cargarCiclo() {
   try {
-    const data = await apiGet(rutaConsultaInforme("cic"));
+    const data = await consultaInformeConRespaldo("cic");
     cicloDatos = mapearCiclo(data.filas);
     aplicarFiltros("cic");
   } catch (err) {

@@ -82,12 +82,9 @@ export async function onRequestPost({ request, env, waitUntil }) {
   }
 
   const existing = await db.prepare("SELECT id FROM tickets WHERE ticket_cmr = ?").bind(String(ticket_cmr)).first();
-  // Ticket repetido: solo se permite con el permiso de 2 minutos (contraseña re-escrita); en ese caso los registros
+  // Ticket repetido: ya no se pide contraseña (el usuario confirma con "Continuar" en pantalla); los registros
   // (OLT/Tarjeta/Puerto) se AGREGAN al ticket existente y sus datos generales no se tocan.
   const agregando = !!existing;
-  if (existing && !(await verificarTokenDuplicado(body.token_duplicado, usuario, ticket_cmr, env))) {
-    return badRequest(`Ya existe un ticket registrado con el número ${ticket_cmr}.`);
-  }
 
   // Ticket NUEVO: las tres fechas son obligatorias (los registros que se agregan a un ticket existente no tocan sus datos generales).
   if (!agregando) {
