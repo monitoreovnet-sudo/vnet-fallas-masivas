@@ -45,7 +45,7 @@ const SQL_REGISTROS = (n) => `
    WHERE p.olt IN (${Array(n).fill("?").join(",")}) AND t.fecha_apertura_cmr IS NOT NULL`;
 
 // Re-evalúa UNA auditoría completa. Devuelve un resumen (tickets asociados, caídas previas, alertas).
-export async function reevaluarAuditoria(db, audId) {
+export async function reevaluarAuditoria(db, audId, acumulador = null) {
   const aud = await db.prepare("SELECT * FROM auditorias WHERE id = ?").bind(audId).first();
   if (!aud) return null;
   const eq = await mapaEquivalencias(db);
@@ -110,6 +110,10 @@ export async function reevaluarAuditoria(db, audId) {
         WHERE ticket_id IN (${parte.map(() => "?").join(",")})`).bind(...parte).run();
   }
 
+  // Clientes afectados guardados: solo se recalculan los tickets tocados por esta auditoría (los que tenía y los que ahora tiene).
+  if (acumulador) tocados.forEach((id) => acumulador.add(id));
+  else { try { await recalcularConteos(db, [...tocados]); } catch (e) { /* tabla aún no creada (migración 050) */ } }
+
   // Alertas de "Posible falla no reportada": ONUs afectadas (no caída previa, no Power fail) en un puerto sin ticket
   const existentes = (await db.prepare("SELECT id, olt, tarjeta, puerto, estado FROM alertas_no_reportadas WHERE auditoria_id = ?").bind(audId).all()).results;
   const clave = (o, t, p) => `${o}|${t}|${p}`;
@@ -166,7 +170,9 @@ export async function reevaluarTicket(db, ticketId) {
         ORDER BY a.fecha_auditoria_local DESC LIMIT 60`).bind(...olts, ...(apertura ? [apertura] : [])).all()).results;
     q.forEach((r) => ids.add(r.id));
   }
-  for (const id of ids) await reevaluarAuditoria(db, id);
+  const acc = new Set([Number(ticketId)]);
+  for (const id of ids) await reevaluarAuditoria(db, id, acc);
+  try { await recalcularConteos(db, [...acc]); } catch (e) { /* tabla aún no creada (migración 050) */ }
   return ids.size;
 }
 
@@ -184,4 +190,55 @@ export function programarReevaluacion(context, ticketIds) {
   })();
   if (typeof context.waitUntil === "function") { context.waitUntil(tarea); return Promise.resolve(); }
   return tarea;
+}
+
+// ---------------------------------------------------------------
+// Clientes afectados por registro, GUARDADOS en ticket_clientes_conteo (migración 050).
+//   falla    = ONUs en LOS / Offline que ya estaban bien antes de la falla
+//   sin_luz  = ONUs en Power fail
+// Cada puerto físico vigente se reparte al registro del ticket que lo cubre con más detalle (puerto > tarjeta > solo OLT),
+// así la suma de los registros coincide con el total del ticket y nada se cuenta dos veces.
+// Solo se recalculan los tickets que se piden (nunca todos): llamar cuando cambia una auditoría asociada o los registros de un ticket.
+// ---------------------------------------------------------------
+const SQL_PUERTOS_VIGENTES_TICKETS = (n) => `
+  SELECT ta.ticket_id, ta.olt, ta.tarjeta, ta.puerto,
+         SUM(o.clasificacion = 'falla') AS falla, SUM(o.clasificacion = 'powerfail') AS sin_luz
+    FROM ticket_auditoria ta
+    JOIN auditoria_onus o ON o.auditoria_id = ta.auditoria_id AND o.olt_nombre = ta.olt AND o.tarjeta = ta.tarjeta AND o.puerto = ta.puerto
+   WHERE ta.vigente = 1 AND ta.ticket_id IN (${Array(n).fill("?").join(",")})
+   GROUP BY ta.id`;
+
+export async function recalcularConteos(db, ticketIds) {
+  const ids = [...new Set((ticketIds || []).map(Number).filter(Number.isFinite))];
+  if (!ids.length) return 0;
+  const eq = await mapaEquivalencias(db);
+  for (let i = 0; i < ids.length; i += 40) {
+    const parte = ids.slice(i, i + 40), marcas = parte.map(() => "?").join(",");
+    const puertos = (await db.prepare(SQL_PUERTOS_VIGENTES_TICKETS(parte.length)).bind(...parte).all()).results;
+    const stmts = [db.prepare(`DELETE FROM ticket_clientes_conteo WHERE ticket_id IN (${marcas})`).bind(...parte)];
+    if (puertos.length) {
+      const regs = (await db.prepare(`SELECT id, ticket_id, olt, tarjeta, puerto FROM ticket_puertos WHERE ticket_id IN (${marcas})`).bind(...parte).all()).results;
+      const porTicket = new Map(), regsTicket = new Map(), acum = new Map();
+      puertos.forEach((p) => { if (!porTicket.has(p.ticket_id)) porTicket.set(p.ticket_id, []); porTicket.get(p.ticket_id).push(p); });
+      regs.forEach((r) => {
+        if (!porTicket.has(r.ticket_id)) return;
+        if (!regsTicket.has(r.ticket_id)) regsTicket.set(r.ticket_id, []);
+        regsTicket.get(r.ticket_id).push({ id: r.id, canon: canon(r.olt, eq), tar: numDe(r.tarjeta), pue: numDe(r.puerto) });
+      });
+      for (const [tid, rs] of regsTicket) {
+        for (const p of porTicket.get(tid)) {
+          const co = canon(p.olt, eq);
+          const cubre = rs.filter((r) => co && r.canon === co && (r.tar === null || r.tar === p.tarjeta) && (r.tar === null || r.pue === null || r.pue === p.puerto));
+          if (!cubre.length) continue;
+          cubre.sort((a, b) => ((b.tar !== null) + (b.pue !== null)) - ((a.tar !== null) + (a.pue !== null)));
+          const g = cubre[0];
+          const a = acum.get(g.id) || { tid, falla: 0, sin_luz: 0 };
+          a.falla += p.falla || 0; a.sin_luz += p.sin_luz || 0; acum.set(g.id, a);
+        }
+      }
+      for (const [rid, a] of acum) stmts.push(db.prepare("INSERT INTO ticket_clientes_conteo (ticket_puerto_id, ticket_id, falla, sin_luz) VALUES (?,?,?,?)").bind(rid, a.tid, a.falla, a.sin_luz));
+    }
+    for (let j = 0; j < stmts.length; j += 100) await db.batch(stmts.slice(j, j + 100));
+  }
+  return ids.length;
 }

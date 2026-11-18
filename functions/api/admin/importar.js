@@ -1,4 +1,5 @@
 import { json, badRequest, requireAdmin } from "../../_lib/helpers.js";
+import { recalcularConteos } from "../../_lib/asociacion.js";
 
 // POST /api/admin/importar
 // Body: { tickets: [...], puertos: [...] }  (ya parseados y normalizados en el navegador;
@@ -199,6 +200,11 @@ export async function onRequestPost({ request, env }) {
          VALUES (?, NULL, 'masivo', 'importación', NULL, 'Ticket reescrito desde archivo (Repositorio de tickets)', ?, datetime('now','-4 hours'))`
       ).bind(id, usuario.email));
     for (let i = 0; i < logs.length; i += 100) await db.batch(logs.slice(i, i + 100));
+  }
+
+  // Tickets reescritos: se refresca su conteo guardado de clientes afectados (solo esos tickets)
+  if (cmrActualizados.size) {
+    try { await recalcularConteos(db, [...cmrActualizados].map((cmr) => idPorTicketCmr.get(cmr)).filter(Boolean)); } catch (e) { /* conteo guardado aún no instalado (migración 050) */ }
   }
 
   return json({

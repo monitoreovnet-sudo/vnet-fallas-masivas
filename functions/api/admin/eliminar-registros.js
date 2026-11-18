@@ -1,5 +1,5 @@
 import { json, badRequest, nowIso } from "../../_lib/helpers.js";
-import { reabrirAlertasHuerfanas } from "../../_lib/asociacion.js";
+import { reabrirAlertasHuerfanas, recalcularConteos } from "../../_lib/asociacion.js";
 import { confirmarAdminConClave } from "../../_lib/confirmar.js";
 
 // POST /api/admin/eliminar-registros   (RUTA 2: registro ÚNICO / registros sueltos)
@@ -99,6 +99,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
   }
 
   try { await reabrirAlertasHuerfanas(env.DB); } catch (e) { /* módulo no instalado */ }
+  try { await recalcularConteos(env.DB, afectados); } catch (e) { /* conteo guardado aún no instalado (migración 050) */ }
   return json({
     ok: true,
     solicitados: ids.length,
