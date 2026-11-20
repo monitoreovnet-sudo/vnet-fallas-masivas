@@ -246,6 +246,7 @@ body {
   gap: 10px;
 }
 .topbar-usuario { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+.tv-estado { max-width: 360px; color: #8a4b08; font-size: 11px; line-height: 1.25; }
 .topbar-usuario #btn_logout { background: white; color: var(--purple-dark); border: none; padding: 6px 14px; }
 .brand-mark { font-weight: 800; font-size: 20px; margin-right: 12px; }
 .brand-sub { font-size: 14px; opacity: 0.9; }

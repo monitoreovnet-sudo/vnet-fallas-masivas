@@ -11,7 +11,7 @@ function textoErrorApi(data) {
 async function apiGet(path) {
   const r = await fetch(API + path);
   const data = await r.json();
-  if (!r.ok) throw new Error(textoErrorApi(data));
+  if (!r.ok) { const err = new Error(textoErrorApi(data)); err.status = r.status; throw err; }
   return data;
 }
 async function apiSend(path, method, body) {
@@ -2976,28 +2976,70 @@ setInterval(() => {
 }, 3600000);
 
 // ---------------------------------------------------------------
-// MODO TV (tiempo real): solo se activa si la página se abre con ?tv=1 (ej. https://vnet-fallas-masivas.pages.dev/?tv=1)
-// y con la sesión iniciada. Abre la Pizarra y, cada 20 segundos, pregunta si hubo cambios en la base (consulta muy liviana);
-// si los hubo, recarga la Pizarra. (La recarga de cada hora de los informes sigue funcionando como antes.)
-// En cualquier otra computadora (sin ?tv=1) no hace nada de esto.
-// ---------------------------------------------------------------
+// MODO TV: sondeo de cambios cada 60 segundos, solo durante el horario operativo
+// de Caracas (05:45 a 00:15). La última Pizarra permanece visible si falla la red.
 const MODO_TV = new URLSearchParams(location.search).get("tv") === "1";
-let tvHuella = null, tvIniciado = false;
+let tvHuella = null, tvIniciado = false, tvRequiereLogin = false, tvErrorRed = false;
+
+function tvDentroHorario() {
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Caracas", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date());
+  const hora = Number(partes.find((p) => p.type === "hour")?.value);
+  const minuto = Number(partes.find((p) => p.type === "minute")?.value);
+  const total = hora * 60 + minuto;
+  return total >= (5 * 60 + 45) || total <= 15;
+}
+
+function tvMostrarEstado(texto, visible = true) {
+  const el = document.getElementById("tv_estado");
+  if (!el) return;
+  el.textContent = texto;
+  el.classList.toggle("hidden", !visible);
+}
+
+function tvSesionVencida() {
+  if (tvRequiereLogin) return;
+  tvRequiereLogin = true;
+  irAlLogin();
+  showMsg(document.getElementById("login_msg"), "La sesión de la TV venció. Inicia sesión nuevamente para reanudar la actualización automática.", false);
+}
+
 function iniciarModoTV() {
   if (!MODO_TV || tvIniciado || !currentUser || !currentUser.registrado) return;
   tvIniciado = true;
+  tvRequiereLogin = false;
   const tab = document.querySelector('.tab-btn[data-tab="pizarra"]');
   if (tab) tab.click();
-  setInterval(async () => {
+
+  const consultarCambios = async () => {
+    if (tvRequiereLogin || !tvDentroHorario()) return;
     const pz = document.getElementById("tab-pizarra");
     if (!pz || !pz.classList.contains("active")) return;
     try {
       const r = await apiGet("/cambios");
       const cambio = tvHuella !== null && r.huella !== tvHuella;
       tvHuella = r.huella;
+      tvErrorRed = false;
+      tvMostrarEstado("", false);
       if (cambio) await cargarPizarra();
-    } catch (e) { /* sin conexión o sesión vencida: se reintenta en el próximo ciclo */ }
-  }, 20000);
+    } catch (e) {
+      if (e.status === 401) { tvSesionVencida(); return; }
+      // 503 indica que se publicó el código antes de aplicar la migración.
+      if (e.status === 503) {
+        tvMostrarEstado("Falta inicializar la sincronización: aplicar migration_052_sync_estado.sql en D1.");
+      } else if (!tvErrorRed) {
+        tvMostrarEstado("Sin conexión con D1. Se conservan los últimos datos y se reintentará automáticamente.");
+      }
+      // Conserva los datos actuales y reintenta en el próximo minuto.
+      tvErrorRed = true;
+      console.warn("TV: no se pudo consultar la versión de sincronización; se reintentará.", e);
+    }
+  };
+
+  // Establece una huella inicial sin esperar al primer minuto.
+  consultarCambios();
+  setInterval(consultarCambios, 60000);
 }
 
 document.getElementById("q_btn_volver").addEventListener("click", () => {
@@ -5173,6 +5215,9 @@ document.getElementById("login_btn").addEventListener("click", async () => {
     document.getElementById("login_password").value = "";
     if (currentUser.debe_cambiar) { mostrarCambioPassword(); return; }
     currentUser.registrado = true;
+    tvRequiereLogin = false;
+    tvErrorRed = false;
+    document.getElementById("login_msg").textContent = "";
     if (MODO_PUBLICO) { location.reload(); return; }   // viene de la pizarra pública: se recarga con todos los permisos
     mostrarApp();
     await loadLookups();
