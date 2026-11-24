@@ -3113,10 +3113,14 @@ const TABS_POR_ROL = {
   administrador: ["crear", "modificar", "pizarra", "reporte", "ciclo", "informe_clientes", "informe_general", "informe_olt", "consultar", "admin", "repositorio", "clientes"],
 };
 
+// Pestañas ocultas para todos los roles (se pueden volver a mostrar quitándolas de esta lista).
+// "Reporte General de Clientes" y "Clientes por OLT" pasaron a la app "Clientes por OLT".
+const TABS_OCULTAS = ["informe_general", "informe_olt"];
+
 function aplicarPermisosRol() {
   document.getElementById("topbar_usuario_nombre").textContent = currentUser.nombre || currentUser.email || "";
 
-  const permitidas = TABS_POR_ROL[currentUser.rol] || [];
+  const permitidas = (TABS_POR_ROL[currentUser.rol] || []).filter((t) => !TABS_OCULTAS.includes(t));
   document.querySelectorAll(".tab-btn[data-tab]").forEach((btn) => {
     btn.classList.toggle("hidden", !permitidas.includes(btn.dataset.tab));
   });
