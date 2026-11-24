@@ -1,4 +1,5 @@
 import { json, badRequest, currentUserEmail, logCambio, nowIso } from "../../_lib/helpers.js";
+import { sentenciaOnuTicket } from "../../_lib/onus-ticket.js";
 import { programarReevaluacion } from "../../_lib/asociacion.js";
 import { verificarTokenDuplicado } from "../../_lib/auth.js";
 import { registrarUso, escrituras } from "../../_lib/uso-d1.js";
@@ -202,10 +203,7 @@ export async function onRequestPost({ request, env, waitUntil }) {
     try {
       const t = (v, n) => String(v ?? "").trim().slice(0, n) || null;
       const ahora = nowIso();
-      const stmts = onus.slice(0, MAX_ONUS).map((o) => db.prepare(
-        `INSERT INTO ticket_onus (ticket_id, olt, tarjeta, puerto, serial, cuenta, cedula, nombre, estado, direccion, creado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
-        .bind(ticketId, t(o.olt, 80), t(o.tarjeta, 30), t(o.puerto, 30), normSerial(o.serial) || null, t(String(o.cuenta ?? "").replace(/\D/g, ""), 20),
-          normCedula(o.cedula), t(o.nombre, 200), t(o.estado, 40), t(o.direccion, 300), ahora));
+      const stmts = onus.slice(0, MAX_ONUS).map((o) => sentenciaOnuTicket(db, ticketId, o, ahora));
       let esc = 0;
       for (let i = 0; i < stmts.length; i += 100) esc += escrituras(await db.batch(stmts.slice(i, i + 100)));
       onusGuardadas = stmts.length;

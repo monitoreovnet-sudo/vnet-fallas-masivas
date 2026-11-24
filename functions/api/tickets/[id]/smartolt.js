@@ -1,7 +1,7 @@
 import { json, badRequest, notFound, currentUserEmail, logCambio, nowIso } from "../../../_lib/helpers.js";
 import { programarReevaluacion } from "../../../_lib/asociacion.js";
 import { registrarUso, escrituras } from "../../../_lib/uso-d1.js";
-import { normCedula, normSerial } from "../../../_lib/clientes.js";
+import { sentenciaOnuTicket } from "../../../_lib/onus-ticket.js";
 
 // POST /api/tickets/:id/smartolt   (Editar Ticket > Cambio de campo > archivos de SmartOLT)
 // Body: {
@@ -84,10 +84,7 @@ export async function onRequestPost({ request, env, params, waitUntil }) {
       onus.forEach((o) => llaves.set(`${t(o.olt, 80)}|${t(o.tarjeta, 30)}|${t(o.puerto, 30)}`, [t(o.olt, 80), t(o.tarjeta, 30), t(o.puerto, 30)]));
       const ahora = nowIso();
       const stmts = [...llaves.values()].map(([olt, tar, pue]) => db.prepare("DELETE FROM ticket_onus WHERE ticket_id = ? AND olt IS ? AND tarjeta IS ? AND puerto IS ?").bind(ticket.id, olt, tar, pue));
-      onus.forEach((o) => stmts.push(db.prepare(
-        `INSERT INTO ticket_onus (ticket_id, olt, tarjeta, puerto, serial, cuenta, cedula, nombre, estado, direccion, creado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?)`)
-        .bind(ticket.id, t(o.olt, 80), t(o.tarjeta, 30), t(o.puerto, 30), normSerial(o.serial) || null, t(String(o.cuenta ?? "").replace(/\D/g, ""), 20),
-          normCedula(o.cedula), t(o.nombre, 200), t(o.estado, 40), t(o.direccion, 300), ahora)));
+      onus.forEach((o) => stmts.push(sentenciaOnuTicket(db, ticket.id, o, ahora)));
       let esc = 0;
       for (let i = 0; i < stmts.length; i += 100) esc += escrituras(await db.batch(stmts.slice(i, i + 100)));
       onusGuardadas = onus.length;

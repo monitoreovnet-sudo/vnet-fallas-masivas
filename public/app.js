@@ -617,9 +617,9 @@ function smoAgrupar(analisis, incluidos) {
     if (suma) {
       pt.afectados++;
       if (o.address) { g.direcciones.push(o.address); pt.direcciones.push(o.address); }
-      const n = smoParsearName(o.name);
+      const n = o.cli ? { cuenta: String(o.cli.cuenta || "").replace(/\D/g, "").replace(/^0+(?=\d)/, ""), cedula: o.cli.cedula || "", nombre: o.cli.nombre || "" } : smoParsearName(o.name);
       pt.onus.push({ olt, tarjeta: `Tarjeta ${b}`, puerto: `Puerto ${p}`, serial: String(o.sn || "").trim(), cuenta: n.cuenta, cedula: n.cedula,
-        nombre: n.nombre || String(o.name || "").trim(), estado: e, direccion: String(o.address || "").trim() });
+        nombre: n.nombre || String(o.name || "").trim(), estado: e, direccion: String(o.address || "").trim(), ...(o.cli ? { cli: o.cli } : {}) });
     }
   }
   const salida = [...olts.values()].map((g) => ({ olt: g.olt, direcciones: g.direcciones,
@@ -743,22 +743,78 @@ function smoPreguntarEstados(analisis, estadosOtros) {
     document.getElementById("smo_cancel").onclick = () => cerrar(null);
   });
 }
-// Lee los CSV elegidos y devuelve { analisis, incluidos, malos } (null si el usuario canceló la ventana de estados).
+// ---- Flujo 1: archivo ya cruzado (generado por la app "Clientes por OLT") ----
+// Se reconoce por sus encabezados ("Nro. de contrato" + "Serial ONU"). Sus ONUs entran al mismo análisis que las de SmartOLT,
+// pero traen los datos del cliente, que se guardan con el ticket sin consultar la base de Grafana.
+const CC_COLS = { nombre: "nombre", tel_casa: "telefono", tel_oficina: "telefono oficina", correo: "correo", cuenta: "nro. de contrato", cedula: "cedula",
+  sucursal: "sucursal", olt: "olt", tarjeta: "tarjeta", puerto: "puerto", sector: "sector", municipio: "municipio", direccion: "direccion",
+  estado_contrato: "estatus grafana", status: "estatus smartolt", sn: "serial onu", visto: "visto en smartolt" };
+const CC_OBLIGATORIAS = ["cuenta", "olt", "tarjeta", "puerto", "sn"];
+function ccEsEncabezadoCruzado(enc) { const n = enc.map(cliNormEncabezado); return n.includes("nro. de contrato") && n.includes("serial onu"); }
+// Devuelve { tipo: "cruzado", filas } o { tipo: "smartolt", texto }
+async function ccLeerArchivo(file) {
+  const buf = await file.arrayBuffer();
+  if (/\.xlsx?$/i.test(file.name)) {
+    const wb = XLSX.read(buf, { type: "array" });
+    const filas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: "" }).map((r) => r.map((v) => String(v ?? "").trim()));
+    if (!filas.length || !ccEsEncabezadoCruzado(filas[0])) throw new Error("el Excel no es el archivo ya cruzado (faltan «Nro. de contrato» y «Serial ONU»). Para SmartOLT use el CSV.");
+    return { tipo: "cruzado", filas };
+  }
+  const texto = cliDecodificar(new Uint8Array(buf));
+  const lineas = texto.replace(/^\uFEFF/, "").split(/\r\n|\n|\r/);
+  const primera = lineas.find((l) => l.trim()) || "";
+  const delim = primera.includes(";") ? ";" : primera.includes("\t") ? "\t" : ",";
+  const enc = cliPartirLinea(primera, delim) || [];
+  if (!ccEsEncabezadoCruzado(enc)) return { tipo: "smartolt", texto };
+  const filas = lineas.filter((l) => l.trim()).map((l) => (cliPartirLinea(l, delim) || []).map((v) => String(v ?? "").trim()));
+  return { tipo: "cruzado", filas };
+}
+function ccParsear(filas) {
+  const enc = filas[0].map(cliNormEncabezado), idx = {};
+  for (const [k, nombre] of Object.entries(CC_COLS)) { const p = enc.indexOf(nombre); if (p >= 0) idx[k] = p; }
+  const faltan = CC_OBLIGATORIAS.filter((k) => idx[k] === undefined).map((k) => CC_COLS[k]);
+  if (faltan.length) throw new Error("al archivo ya cruzado le faltan columnas: " + faltan.join(", "));
+  const onus = [], malformadas = [];
+  for (let i = 1; i < filas.length; i++) {
+    const f = filas[i];
+    if (!f.some((v) => v)) continue;
+    const g = (k) => (idx[k] === undefined ? "" : String(f[idx[k]] ?? "").trim());
+    if (!g("olt") || !g("tarjeta") || !g("puerto")) { malformadas.push(i + 1); continue; }
+    onus.push({ sn: g("sn"), name: g("nombre"), olt: g("olt"), board: g("tarjeta"), port: g("puerto"), onu: "", status: g("status"), address: g("direccion"), contact: "",
+      cli: { cuenta: g("cuenta"), nombre: g("nombre"), cedula: g("cedula"), correo: g("correo"), tel_casa: g("tel_casa"), tel_oficina: g("tel_oficina"),
+        direccion: g("direccion"), municipio: g("municipio"), sector: g("sector"), estado_contrato: g("estado_contrato"), sucursal: g("sucursal") } });
+  }
+  return { onus, malformadas };
+}
+// Lee los archivos elegidos y devuelve { analisis, incluidos, malos } (null si el usuario canceló la ventana de estados).
+// Reconoce solo el tipo de archivo: SmartOLT (flujo 2: solo llena los datos del ticket) o ya cruzado (flujo 1: además guarda los datos del cliente).
 async function smoLeerYPreguntar(files) {
   if (typeof cliParsearAuditoria !== "function") throw new Error("No se cargó el lector de SmartOLT; recargue la página (Ctrl+F5).");
   const archivos = [], malos = [];
+  let nCruzados = 0, nSmart = 0;
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
     try {
-      const a = cliParsearAuditoria(cliDecodificar(new Uint8Array(await f.arrayBuffer())));
-      const nm = cliParsearNombreSmartolt(f.name);
-      archivos.push({ nombre: f.name, fecha: nm ? nm.local : "", orden: i, onus: a.onus });
-      if (a.malformadas.length) malos.push(`${f.name}: ${a.malformadas.length} línea(s) ilegible(s) omitidas`);
+      const lec = await ccLeerArchivo(f);
+      if (lec.tipo === "cruzado") {
+        const a = ccParsear(lec.filas);
+        nCruzados++;
+        archivos.push({ nombre: f.name, fecha: "", orden: i, onus: a.onus });
+        if (a.malformadas.length) malos.push(`${f.name}: ${a.malformadas.length} fila(s) sin OLT, tarjeta o puerto omitidas`);
+      } else {
+        const a = cliParsearAuditoria(lec.texto);
+        const nm = cliParsearNombreSmartolt(f.name);
+        nSmart++;
+        archivos.push({ nombre: f.name, fecha: nm ? nm.local : "", orden: i, onus: a.onus });
+        if (a.malformadas.length) malos.push(`${f.name}: ${a.malformadas.length} línea(s) ilegible(s) omitidas`);
+      }
     } catch (e) { malos.push(`${f.name}: ${e.message}`); }
   }
+  if (nCruzados && nSmart) throw new Error("No mezcle el archivo ya cruzado con archivos de SmartOLT en la misma carga: súbalos por separado.");
   if (!archivos.length) throw new Error(malos.join(" · "));
   const analisis = smoAnalizar(archivos);
   if (!analisis.onus.length) throw new Error("Los archivos no traen ONUs.");
+  if (nCruzados) malos.push("Archivo ya cruzado: los datos del cliente se guardan con las ONU del ticket (no se consulta Grafana).");
   const otros = Object.keys(analisis.estados).filter((e) => !smoEsLos(e)).sort();
   let incluidos = new Set();
   if (otros.length) { incluidos = await smoPreguntarEstados(analisis, otros); if (!incluidos) return null; }
@@ -809,7 +865,6 @@ async function enviarMapaClientes(onus) {
         crearOficina: (ofi) => ({ oficina_id: ofi.id, nombre: ofi.nombre, olts_catalogo: catalogos[ofi.id] || [], olts: Array.from({ length: NUM_OLTS_POR_OFICINA }, nuevaOlt) }),
       });
       const oltsNuevas = new Set(grupos.map((g) => g.olt));
-      MAPA_ONUS = MAPA_ONUS.filter((o) => !oltsNuevas.has(o.olt)).concat(analisis.onus);
       SMO_ONUS = SMO_ONUS.filter((o) => !oltsNuevas.has(o.olt)).concat(r.onus);   // un nuevo análisis reemplaza solo las OLTs que trae
       renderOficinas();
       const d = el("c_descripcion");
@@ -1317,12 +1372,6 @@ document.getElementById("btn_crear_ticket").addEventListener("click", async () =
       ? `Ticket ${res.ticket_cmr} ya existía: se agregaron ${payload.puertos.length} registro(s) (#${res.id}).`
       : `Ticket ${res.ticket_cmr} creado correctamente (#${res.id}) con ${payload.puertos.length} puerto(s).`, true);
     limpiarFormularioCrear();
-    if (MAPA_ONUS.length) { const todas = MAPA_ONUS; MAPA_ONUS = []; enviarMapaClientes(todas).then((m) => { if (!m.error) showMsg(msg, msg.textContent + textoMapa(m), true); }); }
-    if (payload.onus && payload.onus.length) {
-      const r = await cruzarTicketGrafana(res.ticket_cmr);
-      const t = textoCruce(r);
-      if (t) showMsg(msg, msg.textContent + t, true);
-    }
   } catch (err) {
     showMsg(msg, err.message, false);
   }
@@ -1502,8 +1551,7 @@ document.getElementById("mcs_btn").addEventListener("click", async () => {
     });
     await mcRefrescarTicket();
     document.getElementById("mcs_archivos").value = "";
-    enviarMapaClientes(analisis.onus).then((m) => { if (!m.error) showMsg(msg, msg.textContent + textoMapa(m), true); });
-    const cr = res.onus_guardadas > 0 ? textoCruce(await cruzarTicketGrafana(mcTicket.ticket_cmr)) : "";
+    const cr = "";
     showMsg(msg, `Listo: ${res.agregados} puerto(s) agregado(s), ${res.actualizados} con clientes afectados actualizados, ${res.onus_guardadas > 0 ? res.onus_guardadas : 0} ONU(s) registradas. El detalle quedó en la descripción.` + cr +
       (malos.length ? " " + malos.join(" · ") : ""), true);
   } catch (err) { showMsg(msg, err.message, false); }
@@ -2970,7 +3018,11 @@ document.getElementById("cl_btn_filtrar").addEventListener("click", () => cargar
 // (los tiempos "en curso" se calculan al momento de la consulta), sin depender de que alguien registre un ticket.
 setInterval(() => {
   if (!currentUser || !currentUser.registrado) return;
-  ["piz", "rep", "cic"].forEach((p) => { if (datosInforme(p).length) cargarInforme(p); });
+  ["piz", "rep", "cic"].forEach((p) => {
+    // En modo TV no se recarga la Pizarra fuera del horario operativo (05:45 a 00:15, hora de Caracas).
+    if (p === "piz" && MODO_TV && !tvDentroHorario()) return;
+    if (datosInforme(p).length) cargarInforme(p);
+  });
   const vistaTabla = document.getElementById("cl_vista_tabla");
   if (clGrid && !clModoEdicion && vistaTabla && !vistaTabla.classList.contains("hidden")) cargarConsulta({ forzar: true, silencioso: true });
 }, 3600000);
@@ -4971,7 +5023,7 @@ function filaExcelOnu(o) {
 }
 function filaExcelOnuTicket(o) {
   const tel = [o.cli_tel_casa, o.cli_tel_oficina].filter(Boolean).join(" / ");
-  const METODO = { serial: "Serial", cuenta_en_name: "Cuenta", cedula_en_name: "Cédula", nombre: "Nombre" };
+  const METODO = { archivo_cruzado: "Archivo cruzado", serial: "Serial", cuenta_en_name: "Cuenta", cedula_en_name: "Cédula", nombre: "Nombre" };
   return {
     "OLT": o.olt ?? "", "Tarjeta": o.tarjeta ?? "", "Puerto": o.puerto ?? "", "Serial ONU": o.serial ?? "", "Estado SmartOLT": o.estado ?? "",
     "Cuenta": o.cli_cuenta ?? o.cuenta ?? "", "Nombre": o.cli_nombre ?? o.nombre ?? "", "Cédula": o.cli_cedula ?? o.cedula ?? "", "Teléfonos": tel,
@@ -5062,14 +5114,14 @@ function htmlOnusAlCrear(d) {
   if (!onus.length) return `<p class="ml-vacio">Este ticket no tiene ONUs registradas con archivos de SmartOLT.</p>`;
   const conCli = onus.filter((o) => o.cli_cuenta).length;
   const tel = (o) => [o.cli_tel_casa, o.cli_tel_oficina].filter(Boolean).join(" / ");
-  const METODO = { serial: "Serial", cuenta_en_name: "Cuenta", cedula_en_name: "Cédula", nombre: "Nombre" };
+  const METODO = { archivo_cruzado: "Archivo cruzado", serial: "Serial", cuenta_en_name: "Cuenta", cedula_en_name: "Cédula", nombre: "Nombre" };
   const filas = onus.map((o) => `<tr><td>${escHtml(o.olt ?? "")}</td><td>${escHtml(o.tarjeta ?? "")}</td><td>${escHtml(o.puerto ?? "")}</td><td>${escHtml(o.serial ?? "")}</td><td>${escHtml(o.estado ?? "")}</td>` +
     `<td>${escHtml(o.cli_cuenta ?? o.cuenta ?? "")}</td><td>${escHtml(o.cli_nombre ?? o.nombre ?? "")}</td><td>${escHtml(o.cli_cedula ?? o.cedula ?? "")}</td>` +
     `<td>${escHtml(tel(o))}</td><td>${escHtml(o.cli_correo ?? "")}</td><td>${escHtml(o.cli_correo_iptv ?? "")}</td><td>${escHtml(o.cli_direccion ?? o.direccion ?? "")}</td>` +
     `<td>${escHtml(o.cli_municipio ?? "")}</td><td>${escHtml(o.cli_parroquia ?? "")}</td><td>${escHtml(o.cli_sector ?? "")}</td>` +
-    `<td>${escHtml([o.cli_estado_contrato, o.cli_fecha_contrato].filter(Boolean).join(" · "))}</td><td>${o.cli_cuenta ? escHtml(METODO[o.cruce_metodo] || o.cruce_metodo || "") : "Sin cruzar"}</td></tr>`).join("");
-  return `<p class="hint">${numCli(onus.length)} ONU(s) del ticket · ${numCli(conCli)} cruzadas con la base de Grafana · ${numCli(onus.length - conCli)} sin cruzar (las sin cruzar muestran los datos de SmartOLT).</p>` +
-    `<div class="search-row"><button type="button" class="btn-secondary" id="ml_cruzar">Cruzar con Grafana ahora</button> ${BTN_XLSX("alcrear")} <span id="ml_cruce_msg" class="hint"></span></div>` +
+    `<td>${escHtml([o.cli_estado_contrato, o.cli_fecha_contrato].filter(Boolean).join(" · "))}</td><td>${o.cli_cuenta ? escHtml(METODO[o.cruce_metodo] || o.cruce_metodo || "") : "Sin datos del cliente"}</td></tr>`).join("");
+  return `<p class="hint">${numCli(onus.length)} ONU(s) del ticket · ${numCli(conCli)} con datos del cliente (archivo ya cruzado) · ${numCli(onus.length - conCli)} sin datos del cliente (muestran los datos de SmartOLT).</p>` +
+    `<div class="search-row">${BTN_XLSX("alcrear")}</div>` +
     `<div class="ml-scroll"><table class="rows-table"><thead><tr>${["OLT", "Tarjeta", "Puerto", "Serial ONU", "Estado SmartOLT", "Cuenta", "Nombre", "Cédula", "Teléfonos", "Correo", "Correo IPTV", "Dirección", "Municipio", "Parroquia", "Sector", "Contrato", "Cruzada por"].map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${filas}</tbody></table></div>`;
 }
 async function abrirModalLog(cmr) {
@@ -5107,15 +5159,6 @@ async function abrirModalLog(cmr) {
           descargarExcelFilas([["ONUs y clientes", (datosCrear.onus || []).map(filaExcelOnuTicket)]], `${base}_onus_y_clientes_${hoy}.xlsx`);
         }
       }));
-      const bc = caja.querySelector("#ml_cruzar");
-      if (bc) bc.addEventListener("click", async () => {
-        const m = caja.querySelector("#ml_cruce_msg"); bc.disabled = true; m.textContent = "Cruzando...";
-        const r = await cruzarTicketGrafana(cmr, (t) => { m.textContent = `Cruzando... ${t.cruzadas} cruzadas`; });
-        if (!r) { m.textContent = "No se pudo cruzar con Grafana."; bc.disabled = false; return; }
-        try { datosCrear = await apiGet(`/tickets/${encodeURIComponent(cmr)}/onus`); } catch (e) { /* se queda con lo anterior */ }
-        pintar();
-        const m2 = caja.querySelector("#ml_cruce_msg"); if (m2) m2.textContent = r.omitido ? r.omitido : (r.cruzadas ? `Listo: ${r.cruzadas} ONU(s) cruzadas ahora.` : "No hay ONUs nuevas que cruzar (o están fuera de la ventana de días respecto a la base de Grafana).");
-      });
     };
     ov.querySelectorAll(".ml-tab").forEach((b) => b.addEventListener("click", async () => {
       ov.querySelectorAll(".ml-tab").forEach((x) => x.classList.toggle("activo", x === b));

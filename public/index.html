@@ -169,10 +169,10 @@
       <p class="hint">Agrega cada oficina donde ocurrió la falla. Dentro de cada oficina podrás registrar sus OLTs, y dentro de cada OLT sus Tarjetas y Puertos.</p>
 
       <div class="smo-box">
-        <label for="smo_archivos">Cargar archivos de SmartOLT (opcional)</label>
+        <label for="smo_archivos">Cargar archivos de SmartOLT o el archivo ya cruzado (opcional)</label>
         <p class="hint">Suba uno o varios CSV de "ONUs list". Se llenan solos las oficinas, OLTs, tarjetas, puertos, edificio y clientes afectados por puerto, y el detalle queda en la descripción. Si una ONU está en dos archivos se cuenta una sola vez.</p>
         <div class="search-row">
-          <input type="file" id="smo_archivos" accept=".csv,.txt" multiple />
+          <input type="file" id="smo_archivos" accept=".csv,.txt,.xlsx,.xls" multiple />
           <button id="smo_btn" class="btn-secondary" type="button">Analizar y llenar</button>
         </div>
         <div id="smo_msg" class="msg"></div>
@@ -252,10 +252,10 @@
 
     <!-- Archivos de SmartOLT (solo en "Cambio de Campo" de tickets por Oficina que no estén resueltos/cerrados) -->
     <div id="mc_smartolt" class="smo-box hidden">
-      <label for="mcs_archivos">Cargar archivos de SmartOLT (opcional)</label>
+      <label for="mcs_archivos">Cargar archivos de SmartOLT o el archivo ya cruzado (opcional)</label>
       <p class="hint">Sube uno o varios CSV de "ONUs list". Los puertos y tarjetas que falten se agregan al ticket; los que ya están se dejan como están y, si SmartOLT trae otro número de clientes afectados, podrás decidir puerto por puerto si lo actualizas.</p>
       <div class="search-row">
-        <input type="file" id="mcs_archivos" accept=".csv,.txt" multiple />
+        <input type="file" id="mcs_archivos" accept=".csv,.txt,.xlsx,.xls" multiple />
         <button id="mcs_btn" class="btn-secondary" type="button">Analizar archivos</button>
       </div>
       <div id="mcs_msg" class="msg"></div>

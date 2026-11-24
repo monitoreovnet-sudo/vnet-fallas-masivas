@@ -1,10 +1,13 @@
 import { json, badRequest, notFound } from "../../../_lib/helpers.js";
 import { cruzarTandaTicket } from "../../../_lib/cruce-ticket.js";
+import { CRUCE_GRAFANA_ACTIVO, MSG_CRUCE_DESACTIVADO } from "../../../_lib/config-cruce.js";
 
 // POST /api/tickets/:id/cruzar   Body: { desde_id }
 // Cruza una tanda de ONUs del ticket con la base de clientes de Grafana. Solo devuelve conteos (no datos personales), por eso la puede
 // disparar cualquier usuario al crear o editar un ticket; los datos del cliente solo los ven administrador y supervisor.
 export async function onRequestPost({ request, env, params }) {
+  // Cruce con Grafana desactivado: no lee ni escribe nada en la base.
+  if (!CRUCE_GRAFANA_ACTIVO) return json({ siguiente: null, cruzadas: 0, fuera_ventana: 0, omitido: MSG_CRUCE_DESACTIVADO });
   const b = await request.json().catch(() => ({}));
   const ticket = await env.DB.prepare("SELECT id, ticket_cmr, estado_ticket FROM tickets WHERE id = ? OR ticket_cmr = ?").bind(params.id, params.id).first();
   if (!ticket) return notFound("Ticket no encontrado");

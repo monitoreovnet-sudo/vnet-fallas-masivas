@@ -4,6 +4,7 @@ import { claves, buscarClientes, cruzarUna } from "../../../_lib/cruce.js";
 import { contextoSucursales } from "../../../_lib/sucursal.js";
 import { registrarUso, usadoHoy, TOPE_DIA, sinCupoEscritura } from "../../../_lib/uso-d1.js";
 import { registrarMapa } from "../../../_lib/mapa-clientes.js";
+import { CRUCE_GRAFANA_ACTIVO } from "../../../_lib/config-cruce.js";
 
 const MAX_LOTE = 100;
 const t = (v, n = 80) => { const s = String(v ?? "").trim(); return s ? s.slice(0, n) : null; };
@@ -13,6 +14,8 @@ const ent = (v) => { const m = /^\s*(\d+)\s*$/.exec(String(v ?? "")); return m ?
 // Para los archivos de SmartOLT que se suben al crear o editar un ticket: TODAS las ONUs (en cualquier estado) se cruzan con Grafana y,
 // si coinciden, entran al mapa de clientes por OLT/tarjeta/puerto. No devuelve datos de clientes, solo conteos.
 export async function onRequestPost({ request, env }) {
+  // Mapa de clientes desactivado: no cruza ni escribe nada.
+  if (!CRUCE_GRAFANA_ACTIVO) return json({ recibidas: 0, cruzadas: 0, nuevos: 0, actualizados: 0, desactivado: true });
   const no = await requireRole(env.DB, request, ["administrador", "supervisor", "especialista"]);
   if (no) return no;
   const b = await request.json();
