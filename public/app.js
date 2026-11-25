@@ -14,15 +14,47 @@ async function apiGet(path) {
   if (!r.ok) { const err = new Error(textoErrorApi(data)); err.status = r.status; throw err; }
   return data;
 }
+// Aviso permanente mientras una escritura de tickets (crear / editar / cerrar...) espera respuesta, y protección contra el doble clic:
+// si se repite exactamente la misma solicitud mientras la anterior sigue en curso, no se envía otra vez.
+const AVISO_ENVIO = "Su solicitud ya fue enviada, no le dé clic otra vez. Si se tarda mucho, salga de la pestaña sin cerrarla y espere a que el cambio se vea en el televisor. Si después de 10 minutos sigue pegado, cierre sesión y vuelva a empezar.";
+const ESCRITURAS_CON_AVISO = /^\/(tickets|consulta-editar)/;
+const ENVIOS_EN_CURSO = new Set();
+function avisoEnvio(mostrar) {
+  let el = document.getElementById("aviso_envio");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "aviso_envio";
+    el.setAttribute("role", "status");
+    el.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:10000;padding:12px 20px;background:#fff3cd;color:#664d03;border-bottom:2px solid #ffda6a;font-weight:600;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.25)";
+    el.textContent = AVISO_ENVIO;
+    document.body.appendChild(el);
+  }
+  el.style.display = mostrar ? "block" : "none";
+}
 async function apiSend(path, method, body) {
-  const r = await fetch(API + path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await r.json();
-  if (!r.ok) { const err = new Error(textoErrorApi(data)); if (data.reautenticar) err.reautenticar = true; throw err; }
-  return data;
+  const avisar = ESCRITURAS_CON_AVISO.test(path);
+  const cuerpo = JSON.stringify(body);
+  const clave = method + " " + path + " " + cuerpo;
+  if (avisar) {
+    if (ENVIOS_EN_CURSO.has(clave)) throw new Error("La solicitud anterior sigue en proceso. No le dé clic otra vez.");
+    ENVIOS_EN_CURSO.add(clave);
+    avisoEnvio(true);
+  }
+  const t0 = performance.now();
+  try {
+    const r = await fetch(API + path, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: cuerpo,
+    });
+    const data = await r.json();
+    if (!r.ok) { const err = new Error(textoErrorApi(data)); if (data.reautenticar) err.reautenticar = true; throw err; }
+    return data;
+  } finally {
+    if (avisar) { ENVIOS_EN_CURSO.delete(clave); if (!ENVIOS_EN_CURSO.size) avisoEnvio(false); }
+    const seg = (performance.now() - t0) / 1000;
+    if (seg > 15) console.warn(`[lento] ${method} ${path} tardó ${seg.toFixed(1)} s`);
+  }
 }
 function fillSelect(select, items, { valueKey = "nombre", labelKey = "nombre", placeholder = "Seleccione:" } = {}) {
   select.innerHTML = "";
@@ -3114,8 +3146,8 @@ const TABS_POR_ROL = {
 };
 
 // Pestañas ocultas para todos los roles (se pueden volver a mostrar quitándolas de esta lista).
-// "Reporte General de Clientes" y "Clientes por OLT" pasaron a la app "Clientes por OLT".
-const TABS_OCULTAS = ["informe_general", "informe_olt"];
+// "Reporte General de Clientes" y "Clientes por OLT" pasaron a la app "Clientes por OLT"; "Repositorio de clientes" también se oculta.
+const TABS_OCULTAS = ["informe_general", "informe_olt", "repositorio"];
 
 function aplicarPermisosRol() {
   document.getElementById("topbar_usuario_nombre").textContent = currentUser.nombre || currentUser.email || "";

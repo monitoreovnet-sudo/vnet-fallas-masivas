@@ -48,18 +48,30 @@ export async function onRequest(context) {
     }
   }
 
+  // Mide cuánto tarda el servidor en responder (cabecera Server-Timing, visible en F12 > Network > Timing)
+  // y deja una advertencia en los registros de Cloudflare si una solicitud tarda más de 5 s.
+  const t0 = Date.now();
+  const medir = (res) => {
+    if (!esApi) return res;
+    const ms = Date.now() - t0;
+    if (ms > 5000) console.warn(`[lento] ${request.method} ${url.pathname} ${ms} ms`);
+    const out = new Response(res.body, res);
+    out.headers.set("Server-Timing", `total;dur=${ms}`);
+    return out;
+  };
+
   try {
-    return await next();
+    return medir(await next());
   } catch (err) {
     if (err && typeof err.status === "number" && err.body) {
-      return new Response(JSON.stringify(err.body), {
+      return medir(new Response(JSON.stringify(err.body), {
         status: err.status,
         headers: { "content-type": "application/json;charset=UTF-8" },
-      });
+      }));
     }
-    return new Response(
+    return medir(new Response(
       JSON.stringify({ error: "Error interno", detalle: String(err && err.message ? err.message : err) }),
       { status: 500, headers: { "content-type": "application/json;charset=UTF-8" } }
-    );
+    ));
   }
 }
